@@ -122,6 +122,7 @@ try {
     if (!globalCssTemplate.includes('.tf-world-hub') || !globalCssTemplate.includes('.tf-fortune-ritual') || !globalCssTemplate.includes('.tf-health-case')) throw new Error('global CSS template does not cover current world apps');
     if (globalCssTemplate.split('\n').some(line => line.trim().startsWith('.') && !line.includes('#tavern-forum-root'))) throw new Error('global CSS template contains an unscoped selector');
     if (!await desktop.locator('.tf-custom-css-scope-note').count()) throw new Error('global CSS scope guidance is missing');
+    if (await desktop.locator('.tf-world-layout-settings').count()) throw new Error('world home layout controls should no longer be buried in appearance settings');
     await desktop.screenshot({ path: 'preview-appearance.png' });
 
     await desktop.locator('[data-action="me-section"][data-section="prompts"]').click();
@@ -165,6 +166,9 @@ try {
     await desktop.locator('[data-action="select-api-profile"]').selectOption('sillytavern-default');
 
     await desktop.locator('[data-action="me-section"][data-section="modules"]').click();
+    if (!await desktop.locator('.tf-modules-page > .tf-world-layout-settings').count()) throw new Error('world home layout controls are missing from world settings');
+    const firstWorldSettingsCard = await desktop.locator('.tf-modules-page > .tf-card').first().getAttribute('class');
+    if (!firstWorldSettingsCard?.includes('tf-world-layout-settings')) throw new Error('world home layout controls are not the first world settings card');
     if (await desktop.locator('[data-action="test-module-probability"]').count()) throw new Error('obsolete 100-run probability test should not be rendered');
     if (await desktop.locator('[data-action="toggle-module-injection"][data-module-id="forum"]').count()) throw new Error('forum injection switch should only exist on the main-chat injection page');
     if (!await desktop.getByText('主聊天读取论坛内容', { exact: true }).count()) throw new Error('forum card is missing its injection status summary');
@@ -248,6 +252,32 @@ try {
     if (await desktop.locator('[data-action="save-companion-appearance"]').count() !== 1) throw new Error('companion appearance has no explicit save action');
     const speciesBodyColors = await desktop.locator('[data-action="choose-companion-species"] .tf-pixel-body').evaluateAll(nodes => [...new Set(nodes.map(node => getComputedStyle(node).fill))]);
     if (speciesBodyColors.length < 5) throw new Error(`companion species are still visually monochrome: ${JSON.stringify(speciesBodyColors)}`);
+    const companionSpecies = ['frog', 'cat', 'rabbit', 'fox', 'penguin', 'robo-bird'];
+    const companionAccessories = ['scarf', 'satchel', 'flower', 'charm', 'ribbon', 'glasses', 'crown', 'leaf', 'headphones', 'cape', 'bell'];
+    const accessoryPreviews = [];
+    for (const speciesId of companionSpecies) {
+        await desktop.locator(`[data-action="choose-companion-species"][data-species-id="${speciesId}"]`).click();
+        const bodyFillBeforeAccessories = await desktop.locator('.tf-pet-stage .tf-pixel-body').first().evaluate(node => getComputedStyle(node).fill);
+        for (const accessoryId of companionAccessories) {
+            await desktop.locator('[data-companion-appearance-field="accessory"]').selectOption(accessoryId);
+            const visibleAccessory = desktop.locator(`.tf-pet-stage .tf-pixel-accessory[data-accessory="${accessoryId}"]`);
+            if (!await visibleAccessory.count()) throw new Error(`${speciesId} did not render ${accessoryId}`);
+            if (await desktop.locator(`.tf-pet-stage .tf-pixel-accessory:not([data-accessory="${accessoryId}"])`).count()) throw new Error(`${speciesId} rendered inactive accessory layers beside ${accessoryId}`);
+            const currentBodyFill = await desktop.locator('.tf-pet-stage .tf-pixel-body').first().evaluate(node => getComputedStyle(node).fill);
+            if (currentBodyFill !== bodyFillBeforeAccessories) throw new Error(`${accessoryId} changed ${speciesId}'s body color`);
+            accessoryPreviews.push({ speciesId, accessoryId, svg: await desktop.locator('.tf-pet-stage .tf-pixel-pet').evaluate(node => node.outerHTML) });
+        }
+    }
+    await desktop.evaluate(previews => {
+        const sheet = document.createElement('section');
+        sheet.id = 'tf-accessory-contact-sheet';
+        sheet.style.cssText = 'position:fixed;inset:12px;z-index:99999;display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:8px;padding:14px;background:#f4efe6;overflow:auto;color:#29352f;font:700 11px/1.2 sans-serif';
+        sheet.innerHTML = previews.map(item => `<article style="display:grid;place-items:center;gap:3px;min-height:128px;padding:7px;background:#fff;border:1px solid #d9d0c3;border-radius:10px"><span>${item.speciesId}<br>${item.accessoryId}</span>${item.svg}</article>`).join('');
+        sheet.querySelectorAll('.tf-pixel-pet').forEach(node => { node.style.width = '82px'; node.style.height = '82px'; });
+        document.querySelector('#tavern-forum-root').append(sheet);
+    }, accessoryPreviews);
+    await desktop.locator('#tf-accessory-contact-sheet').screenshot({ path: 'preview-companion-accessories-v2.png' });
+    await desktop.locator('#tf-accessory-contact-sheet').evaluate(node => node.remove());
     await desktop.locator('[data-action="choose-companion-species"][data-species-id="fox"]').click();
     await desktop.locator('[data-companion-appearance-field="bodyColor"]').fill('#2f6f9f');
     await desktop.locator('[data-companion-appearance-field="accentColor"]').fill('#f1b54a');
@@ -270,6 +300,12 @@ try {
     await desktop.locator('[data-action="companion-feed-food"][data-food-id="berry"]').click();
     const callsAfterPet = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
     if (callsAfterPet !== callsBeforePet) throw new Error('local companion care unexpectedly called the API');
+    if (await desktop.locator('.tf-feed-drop').getAttribute('data-food-animation') !== 'berry') throw new Error('feed animation did not use the selected food');
+    if (!await desktop.locator('.tf-food-offering').count() || await desktop.locator('.tf-food-crumb').count() !== 3) throw new Error('feed sequence is missing its offering or bite crumbs');
+    const feedAnimationName = await desktop.locator('.tf-food-offering').evaluate(node => getComputedStyle(node).animationName);
+    if (!feedAnimationName.includes('tf-food-offer')) throw new Error(`food offering animation is inactive: ${feedAnimationName}`);
+    await desktop.waitForTimeout(620);
+    await desktop.locator('.tf-pet-screen').screenshot({ path: 'preview-companion-feed-v2.png' });
     if (await desktop.locator('[data-action="choose-companion-species"][data-species-id="fox"]').getAttribute('aria-pressed') !== 'true') throw new Error('pixel companion selection did not update species');
     if (!await desktop.locator('.tf-companion-v3.is-action-feed .tf-feed-drop').isVisible()) throw new Error('feed animation did not activate');
     await desktop.locator('[data-action="companion-care"][data-care="pet"]').first().click();
@@ -483,6 +519,11 @@ try {
     await mobile.screenshot({ path: 'preview-api-model-picker-mobile-v3.png', fullPage: true });
     await mobile.locator('[data-action="select-api-profile"]').selectOption('sillytavern-default');
     await mobile.locator('[data-action="me-section"][data-section="modules"]').evaluate(node => node.click());
+    if (await mobile.locator('.tf-world-layout-options input').count() !== 2) throw new Error('mobile world settings lost the two home layouts');
+    const mobileLayoutWidth = await mobile.locator('.tf-world-layout-settings').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
+    if (mobileLayoutWidth.scroll > mobileLayoutWidth.client + 2) throw new Error(`mobile world layout selector overflowed horizontally (${mobileLayoutWidth.scroll} > ${mobileLayoutWidth.client})`);
+    await mobile.locator('.tf-world-layout-settings').scrollIntoViewIfNeeded();
+    await mobile.screenshot({ path: 'preview-settings-world-mobile-v2.png' });
     const mobileTravelToggle = mobile.locator('[data-action="toggle-world-module"][data-module-id="travel"]');
     if (!await mobileTravelToggle.isChecked()) await mobileTravelToggle.check({ force: true });
     await mobile.locator('[data-action="open-module-context"][data-module-id="travel"]').click();

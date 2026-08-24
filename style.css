@@ -67,13 +67,26 @@
 #tavern-forum-root .tf-pixel-pet.is-kind-penguin { --pet-body: #354b62; --pet-accent: #e6a94f; --pet-light: #e8e0c8; }
 #tavern-forum-root .tf-pixel-pet.is-kind-robo-bird { --pet-body: #5c8f91; --pet-accent: #e1b75a; --pet-light: #b8d6cf; }
 #tavern-forum-root .tf-pixel-pet .tf-pixel-body { fill: var(--pet-body-user, var(--pet-body)); }
-#tavern-forum-root .tf-pixel-pet .tf-pixel-accent,
-#tavern-forum-root .tf-pixel-pet .tf-pixel-accessory { fill: var(--pet-accent-user, var(--pet-accent)); }
-#tavern-forum-root .tf-pixel-pet .tf-pixel-accessory { display: none; }
-#tavern-forum-root .tf-pixel-pet.is-accessory-scarf .tf-pixel-accessory.is-scarf,
-#tavern-forum-root .tf-pixel-pet.is-accessory-satchel .tf-pixel-accessory.is-satchel,
-#tavern-forum-root .tf-pixel-pet.is-accessory-flower .tf-pixel-accessory.is-flower,
-#tavern-forum-root .tf-pixel-pet.is-accessory-charm .tf-pixel-accessory.is-charm { display: block; }
+#tavern-forum-root .tf-pixel-pet .tf-pixel-accent { fill: var(--pet-accent-user, var(--pet-accent)); }
+#tavern-forum-root .tf-pixel-pet .tf-pixel-accessory {
+    fill: var(--pet-accessory-user, #d88ba3);
+    pointer-events: none;
+}
+#tavern-forum-root .tf-pixel-pet .tf-pixel-accessory-shadow { fill: color-mix(in srgb, var(--pet-accessory-user, #d88ba3) 68%, #26372d); }
+#tavern-forum-root .tf-pixel-pet .tf-pixel-accessory-light { fill: color-mix(in srgb, var(--pet-accessory-user, #d88ba3) 35%, #fff); }
+#tavern-forum-root .tf-pixel-pet .tf-pixel-accessory-jewel { fill: #f0d66e; }
+#tavern-forum-root .tf-pixel-pet .tf-pixel-accessory-stem { fill: #486f48; }
+#tavern-forum-root .tf-pixel-pet .tf-pixel-accessory-line,
+#tavern-forum-root .tf-pixel-pet .tf-pixel-accessory-frame {
+    fill: none;
+    stroke: var(--pet-accessory-user, #d88ba3);
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+    stroke-width: 3px;
+}
+#tavern-forum-root .tf-pixel-pet .tf-pixel-accessory-line.is-thin { stroke-width: 2px; }
+#tavern-forum-root .tf-pixel-pet .tf-pixel-accessory-line.is-wide { stroke-width: 5px; }
+#tavern-forum-root .tf-pixel-pet .tf-pixel-accessory-glint { fill: rgb(255 255 255 / 72%); }
 #tavern-forum-root .tf-pixel-pet .tf-pixel-light { fill: var(--pet-light); }
 #tavern-forum-root .tf-pixel-pet .tf-pixel-ink { fill: var(--pet-character-ink); }
 #tavern-forum-root .tf-pixel-pet .tf-pixel-screen { fill: var(--pet-screen, #b8c9ad); }
@@ -83,7 +96,8 @@
 #tavern-forum-root .tf-pixel-pet .tf-pixel-ears,
 #tavern-forum-root .tf-pixel-pet .tf-pixel-wings,
 #tavern-forum-root .tf-pixel-pet .tf-pixel-antenna,
-#tavern-forum-root .tf-pixel-pet .tf-pixel-eyes {
+#tavern-forum-root .tf-pixel-pet .tf-pixel-eyes,
+#tavern-forum-root .tf-pixel-pet .tf-pixel-accessory-art {
     transform-box: fill-box;
     transform-origin: center;
 }
@@ -93,17 +107,23 @@
 #tavern-forum-root .tf-pixel-pet:not(.is-mini).is-kind-penguin .tf-pixel-wings { transform-origin: 50% 65%; animation: tf-penguin-wings 2.6s steps(3, end) infinite; }
 #tavern-forum-root .tf-pixel-pet:not(.is-mini).is-kind-robo-bird .tf-pixel-antenna { animation: tf-robo-scan 1.35s steps(2, end) infinite; }
 #tavern-forum-root .tf-pixel-pet:not(.is-mini).is-kind-frog .tf-pixel-eyes { animation: tf-pet-blink 4.6s steps(2, end) infinite; }
-#tavern-forum-root .tf-companion-v4.is-action-pet.is-species-cat .tf-pixel-tail,
-#tavern-forum-root .tf-companion-v4.is-action-play.is-species-fox .tf-pixel-tail { animation-duration: .5s; }
-#tavern-forum-root .tf-companion-v4.is-action-play.is-species-rabbit .tf-pixel-ears,
-#tavern-forum-root .tf-companion-v4.is-action-play.is-species-penguin .tf-pixel-wings { animation-duration: .45s; }
-#tavern-forum-root .tf-companion-v4.is-action-rest .tf-pixel-eyes { transform: scaleY(.22); }
+#tavern-forum-root .tf-companion-page.is-action-pet.is-species-cat .tf-pixel-tail,
+#tavern-forum-root .tf-companion-page.is-action-play.is-species-fox .tf-pixel-tail { animation-duration: .5s; }
+#tavern-forum-root .tf-companion-page.is-action-play.is-species-rabbit .tf-pixel-ears,
+#tavern-forum-root .tf-companion-page.is-action-play.is-species-penguin .tf-pixel-wings { animation-duration: .45s; }
+#tavern-forum-root .tf-companion-page.is-action-rest .tf-pixel-eyes { transform: scaleY(.22); }
+#tavern-forum-root .tf-companion-page.is-action-pet .tf-pixel-accessory.is-slot-head .tf-pixel-accessory-art { animation: tf-accessory-head-pet .48s steps(3, end) 2; }
+#tavern-forum-root .tf-companion-page.is-action-play .tf-pixel-accessory:not(.is-slot-back) .tf-pixel-accessory-art { animation: tf-accessory-play .54s steps(3, end) 2; }
+#tavern-forum-root .tf-companion-page.is-action-feed .tf-pixel-accessory.is-slot-neck .tf-pixel-accessory-art { animation: tf-accessory-neck-feed .42s steps(2, end) 2; }
 @keyframes tf-cat-tail { 0%, 100% { transform: rotate(0); } 33% { transform: rotate(10deg); } 66% { transform: rotate(-7deg); } }
 @keyframes tf-fox-tail { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(8deg) translateY(-1px); } }
 @keyframes tf-rabbit-ears { 0%, 86%, 100% { transform: rotate(0); } 90% { transform: rotate(-5deg); } 95% { transform: rotate(4deg); } }
 @keyframes tf-penguin-wings { 0%, 88%, 100% { transform: scaleX(1); } 93% { transform: scaleX(1.12) translateY(-1px); } }
 @keyframes tf-robo-scan { 0%, 49% { filter: brightness(.85); } 50%, 100% { filter: brightness(1.5); } }
 @keyframes tf-pet-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.18); } }
+@keyframes tf-accessory-head-pet { 0%, 100% { transform: rotate(0); } 35% { transform: rotate(-5deg) translateY(-1px); } 70% { transform: rotate(4deg); } }
+@keyframes tf-accessory-play { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px) rotate(2deg); } }
+@keyframes tf-accessory-neck-feed { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(2px); } }
 #tavern-forum-root .tf-companion-v4 .tf-pet-food-select {
     display: block;
     padding: 4px 5px;
@@ -6666,21 +6686,46 @@ button.tf-avatar {
 #tavern-forum-root .tf-companion-v3.is-action-play .tf-play-trail,
 #tavern-forum-root .tf-companion-v3.is-action-rest .tf-sleep-cloud { display: block; }
 
-#tavern-forum-root .tf-companion-v3 .tf-feed-drop i {
-    top: -13px;
-    left: calc(50% - 7px);
-    width: 14px;
-    height: 14px;
+#tavern-forum-root .tf-companion-v3 .tf-food-offering {
+    top: 56%;
+    left: 50%;
+    z-index: 2;
+    display: grid;
+    width: 28px;
+    height: 24px;
+    margin: -12px 0 0 -14px;
+    place-items: center;
+    color: var(--pet-ink);
+    background: var(--tf-food-color, #bd8a55);
     border: 3px solid var(--pet-ink);
-    background: var(--pet-screen);
-    box-shadow: inset 3px 3px 0 color-mix(in srgb, var(--pet-ink), transparent 55%);
+    box-shadow: inset 4px 4px 0 var(--tf-food-highlight, rgb(255 255 255 / 35%));
     opacity: 0;
-    animation: tf-food-rain 1.65s steps(7, end) both;
+    animation: tf-food-offer 2s steps(10, end) both;
 }
-
-#tavern-forum-root .tf-companion-v3 .tf-feed-drop i:nth-child(2) { margin-left: -42px; animation-delay: .16s; transform: rotate(45deg); }
-#tavern-forum-root .tf-companion-v3 .tf-feed-drop i:nth-child(3) { margin-left: 42px; animation-delay: .3s; }
-#tavern-forum-root .tf-companion-v3 .tf-feed-drop i:nth-child(4) { margin-left: 20px; animation-delay: .46s; transform: rotate(45deg); }
+#tavern-forum-root .tf-companion-v3 .tf-food-offering b { font: 900 12px/1 ui-monospace, monospace; }
+#tavern-forum-root .tf-companion-v3 .tf-food-offering em {
+    position: absolute;
+    right: -8px;
+    bottom: -7px;
+    left: -8px;
+    height: 4px;
+    background: var(--pet-ink);
+    box-shadow: inset 5px 0 0 color-mix(in srgb, var(--pet-screen) 55%, transparent), inset -5px 0 0 color-mix(in srgb, var(--pet-screen) 55%, transparent);
+}
+#tavern-forum-root .tf-companion-v3 .tf-food-crumb {
+    top: 55%;
+    left: 50%;
+    z-index: 3;
+    width: 5px;
+    height: 5px;
+    margin: -2px;
+    background: var(--tf-food-color, #bd8a55);
+    opacity: 0;
+    animation: tf-food-crumb 1s steps(6, end) .92s both;
+}
+#tavern-forum-root .tf-companion-v3 .tf-food-crumb.is-two { animation-delay: 1.08s; --tf-food-crumb-x: 17px; --tf-food-crumb-y: -16px; }
+#tavern-forum-root .tf-companion-v3 .tf-food-crumb.is-three { animation-delay: 1.23s; --tf-food-crumb-x: -18px; --tf-food-crumb-y: -12px; }
+#tavern-forum-root .tf-companion-v3 .tf-food-species-fx { display: none; }
 #tavern-forum-root .tf-companion-v3.is-action-feed .tf-pet-sprite-control { animation: tf-pet-eat 1.85s steps(8, end) .25s both; }
 
 #tavern-forum-root .tf-companion-v3 .tf-pet-stars i { top: 57%; left: 50%; opacity: 0; animation: tf-pixel-spark 1s steps(5, end) 1.05s both; }
@@ -6869,7 +6914,8 @@ button.tf-avatar {
 @keyframes tf-screen-glint { 0%, 75% { transform: translateX(-150%); } 88%, 100% { transform: translateX(150%); } }
 @keyframes tf-menu-cursor { 0%, 68% { filter: none; } 69%, 100% { filter: invert(.12) brightness(1.18); } }
 @keyframes tf-profile-open { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes tf-food-rain { 0% { opacity: 0; transform: translateY(0) rotate(0); } 12% { opacity: 1; } 70% { opacity: 1; transform: translateY(102px) rotate(180deg); } 84%, 100% { opacity: 0; transform: translateY(124px) rotate(260deg) scale(.4); } }
+@keyframes tf-food-offer { 0% { opacity: 0; transform: translate(-125px, 35px) scale(.72); } 10% { opacity: 1; } 30% { opacity: 1; transform: translate(-62px, 14px) scale(.9); } 46% { transform: translate(-15px, 2px) scale(1); } 55% { transform: translate(0, 0) scale(1); } 65% { transform: translate(0, 0) scale(.78); } 75% { transform: translate(0, 0) scale(.54); } 84% { opacity: 1; transform: translate(0, 0) scale(.28); } 90%, 100% { opacity: 0; transform: translate(0, 0) scale(.08); } }
+@keyframes tf-food-crumb { 0%, 18% { opacity: 0; transform: translate(0, 0) scale(.4); } 28%, 64% { opacity: .9; } 72% { transform: translate(var(--tf-food-crumb-x, -13px), var(--tf-food-crumb-y, -19px)) rotate(90deg) scale(1); } 100% { opacity: 0; transform: translate(var(--tf-food-crumb-x, -13px), var(--tf-food-crumb-y, -19px)) rotate(180deg) scale(.25); } }
 @keyframes tf-pet-eat { 0%, 20% { transform: translateY(0) scale(1); } 30% { transform: translateY(11px) scale(1.04, .91); } 40% { transform: translate(-7px, 10px) scale(1.05, .9); } 50% { transform: translate(7px, 10px) scale(1.05, .9); } 60% { transform: translate(-5px, 9px) scale(1.05, .91); } 72% { transform: translate(5px, 8px) scale(1.04, .92); } 84% { transform: translateY(-13px) scale(.96, 1.09); } 100% { transform: translateY(0) scale(1); } }
 @keyframes tf-pixel-spark { 0% { opacity: 0; transform: translate(-50%, 0) scale(.4); } 30%, 65% { opacity: 1; transform: translate(-50%, -15px) scale(1.2); } 100% { opacity: 0; transform: translate(-50%, -25px) scale(.6); } }
 @keyframes tf-heart-float { 0% { opacity: 0; transform: translateY(0) scale(.5); } 20%, 70% { opacity: 1; } 38% { transform: translate(-8px, -22px) scale(1.1); } 68% { transform: translate(7px, -47px) scale(.9); } 100% { opacity: 0; transform: translate(-3px, -72px) scale(.6); } }
@@ -7412,15 +7458,6 @@ button.tf-avatar {
 }
 
 /* 0.10.9 — probabilistic linking, task exchange, companion expansion and mobile launch stability. */
-#tavern-forum-root .tf-pixel-pet .tf-pixel-accessory { fill: var(--pet-accessory-user, #d88ba3); }
-#tavern-forum-root .tf-pixel-pet.is-accessory-ribbon .tf-pixel-accessory.is-ribbon,
-#tavern-forum-root .tf-pixel-pet.is-accessory-glasses .tf-pixel-accessory.is-glasses,
-#tavern-forum-root .tf-pixel-pet.is-accessory-crown .tf-pixel-accessory.is-crown,
-#tavern-forum-root .tf-pixel-pet.is-accessory-leaf .tf-pixel-accessory.is-leaf,
-#tavern-forum-root .tf-pixel-pet.is-accessory-headphones .tf-pixel-accessory.is-headphones,
-#tavern-forum-root .tf-pixel-pet.is-accessory-cape .tf-pixel-accessory.is-cape,
-#tavern-forum-root .tf-pixel-pet.is-accessory-bell .tf-pixel-accessory.is-bell { display: block; }
-
 #tavern-forum-root .tf-world-layout-options {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -7527,7 +7564,56 @@ button.tf-avatar {
 #tavern-forum-root .tf-companion-v4 .tf-pet-screen-menu:not(.tf-pet-food-select) button span { font-size: 11px; }
 #tavern-forum-root .tf-companion-v4 .tf-pet-screen-menu:not(.tf-pet-food-select) button b { font-size: 6px; }
 #tavern-forum-root .tf-pet-auto-accessory { display: flex; gap: 9px; align-items: center; margin-top: 10px; padding: 9px 11px; background: color-mix(in srgb, var(--tf-card) 70%, transparent); border-radius: 10px; }
-#tavern-forum-root .tf-companion-v4 .tf-feed-drop i { display: grid; place-items: center; color: var(--pet-ink); font: 900 11px/1 ui-monospace, monospace; }
+#tavern-forum-root .tf-companion-v4 { --tf-food-color: #bd8a55; --tf-food-highlight: #e9c48c; }
+#tavern-forum-root .tf-companion-v4.is-food-fish-flake { --tf-food-color: #8eb4b6; --tf-food-highlight: #d5e7dc; }
+#tavern-forum-root .tf-companion-v4.is-food-carrot-cube { --tf-food-color: #d88943; --tf-food-highlight: #f3c96d; }
+#tavern-forum-root .tf-companion-v4.is-food-berry { --tf-food-color: #9a628f; --tf-food-highlight: #dd9ebf; }
+#tavern-forum-root .tf-companion-v4.is-food-seed-mix { --tf-food-color: #b79d59; --tf-food-highlight: #e4d49a; }
+#tavern-forum-root .tf-companion-v4.is-food-battery { --tf-food-color: #d4bc4d; --tf-food-highlight: #fff0a1; }
+#tavern-forum-root .tf-companion-v4.is-food-melon-jelly { --tf-food-color: #76ae73; --tf-food-highlight: #c8e19b; }
+#tavern-forum-root .tf-companion-v4.is-food-honey-drop { --tf-food-color: #d7a13f; --tf-food-highlight: #ffe08a; }
+#tavern-forum-root .tf-companion-v4.is-food-ice-fish { --tf-food-color: #87bec4; --tf-food-highlight: #e2f5ec; }
+#tavern-forum-root .tf-companion-v4.is-food-oil-nut { --tf-food-color: #6f7770; --tf-food-highlight: #bfc49d; }
+#tavern-forum-root .tf-companion-v4.is-food-berry .tf-food-offering { width: 25px; height: 25px; border-radius: 50%; }
+#tavern-forum-root .tf-companion-v4.is-food-fish-flake .tf-food-offering,
+#tavern-forum-root .tf-companion-v4.is-food-ice-fish .tf-food-offering { width: 32px; height: 19px; }
+#tavern-forum-root .tf-companion-v4.is-food-battery .tf-food-offering { width: 23px; height: 29px; border-width: 3px; }
+#tavern-forum-root .tf-companion-v4.is-food-honey-drop .tf-food-offering { width: 24px; height: 27px; border-radius: 50% 50% 45% 45%; }
+#tavern-forum-root .tf-companion-v4.is-food-melon-jelly .tf-food-offering { border-radius: 10px 10px 3px 3px; }
+#tavern-forum-root .tf-companion-v4.is-species-frog.is-action-feed .tf-food-species-fx {
+    top: 55%;
+    left: 50%;
+    display: block;
+    width: 42px;
+    height: 4px;
+    margin-left: -42px;
+    background: #c97f91;
+    transform-origin: right center;
+    animation: tf-frog-tongue 1.2s steps(5, end) .52s both;
+}
+#tavern-forum-root .tf-companion-v4.is-species-robo-bird.is-action-feed .tf-food-species-fx {
+    top: 55%;
+    left: 50%;
+    display: block;
+    width: 30px;
+    height: 30px;
+    margin: -15px;
+    border: 3px solid var(--pet-ink);
+    border-radius: 50%;
+    animation: tf-robo-food-scan 1.35s steps(6, end) .42s both;
+}
+#tavern-forum-root .tf-companion-v4.is-species-frog.is-action-feed .tf-pet-sprite-control { animation: tf-frog-eat 1.85s steps(8, end) .2s both; }
+#tavern-forum-root .tf-companion-v4:is(.is-species-cat,.is-species-fox).is-action-feed .tf-pet-sprite-control { animation: tf-predator-eat 1.9s steps(9, end) .2s both; }
+#tavern-forum-root .tf-companion-v4.is-species-rabbit.is-action-feed .tf-pet-sprite-control { animation: tf-rabbit-eat 1.8s steps(10, end) .22s both; }
+#tavern-forum-root .tf-companion-v4.is-species-penguin.is-action-feed .tf-pet-sprite-control { animation: tf-penguin-eat 1.85s steps(10, end) .2s both; }
+#tavern-forum-root .tf-companion-v4.is-species-robo-bird.is-action-feed .tf-pet-sprite-control { animation: tf-robo-eat 1.9s steps(9, end) .18s both; }
+@keyframes tf-frog-tongue { 0%, 22%, 100% { opacity: 0; transform: scaleX(0); } 34%, 52% { opacity: .9; transform: scaleX(1); } 66% { opacity: .75; transform: scaleX(.25); } }
+@keyframes tf-robo-food-scan { 0%, 100% { opacity: 0; transform: scale(.35); } 24%, 68% { opacity: .65; transform: scale(1.65); } 82% { opacity: .25; transform: scale(2); } }
+@keyframes tf-frog-eat { 0%, 100% { transform: translate(0) scale(1); } 24% { transform: translateY(10px) scale(1.08,.86); } 38% { transform: translate(-12px,3px) scale(1.12,.9); } 52% { transform: translateY(-8px) scale(.96,1.08); } 66% { transform: translateY(6px) scale(1.05,.93); } 82% { transform: translateY(-12px); } }
+@keyframes tf-predator-eat { 0%, 100% { transform: translate(0) rotate(0); } 24% { transform: translate(-14px,5px) rotate(-4deg); } 38% { transform: translate(-5px,8px) rotate(2deg); } 50% { transform: translate(4px,7px) rotate(-2deg); } 62% { transform: translate(-3px,6px) rotate(2deg); } 78% { transform: translateY(-10px) scale(1.03); } }
+@keyframes tf-rabbit-eat { 0%, 100% { transform: translateY(0) scale(1); } 22% { transform: translateY(7px) scale(1.02,.95); } 33%, 49%, 65% { transform: translateY(3px) scale(1.06,.98); } 41%, 57%, 73% { transform: translateY(7px) scale(.98,1.02); } 86% { transform: translateY(-10px); } }
+@keyframes tf-penguin-eat { 0%, 100% { transform: translateY(0) rotate(0); } 24%, 46%, 68% { transform: translateY(12px) rotate(4deg) scale(1.02,.92); } 34%, 56%, 78% { transform: translateY(1px) rotate(-2deg); } 88% { transform: translateY(-9px); } }
+@keyframes tf-robo-eat { 0%, 100% { transform: translateY(0); filter: none; } 24% { transform: translateY(5px) scale(.96); filter: brightness(.8); } 42%, 66% { transform: translateY(2px) scale(1.04); filter: brightness(1.65); } 54%, 76% { transform: translateY(4px) scale(.98); filter: brightness(1.05); } 88% { transform: translateY(-8px); filter: brightness(1.35); } }
 #tavern-forum-root .tf-companion-v4.is-habitat-pond .tf-pet-stage { background: linear-gradient(#c7d7ad 0 62%, #8fae91 62% 100%); }
 #tavern-forum-root .tf-companion-v4.is-habitat-bedroom .tf-pet-stage { background: linear-gradient(135deg, #d7cbaa, #b3c399 65%); }
 #tavern-forum-root .tf-companion-v4.is-habitat-forest .tf-pet-stage { background: linear-gradient(115deg, #879b70 0 22%, #bac89d 22% 74%, #738b68 74%); }
