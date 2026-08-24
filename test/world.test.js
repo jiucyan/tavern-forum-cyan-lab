@@ -237,6 +237,31 @@ test('moderation permissions gate destructive AI actions and keep confirmation p
     assert.equal(data.posts[0].moderation.hidden, true);
 });
 
+test('AI dismissal closes a report immediately while comment deletion stays confirmable', () => {
+    const config = settings();
+    config.modules.moderation.enabled = true;
+    config.modules.moderation.automation = 'confirm';
+    config.moderation.systemAdminEnabled = true;
+    const data = normalizeForumDataShape({
+        posts: [{ id: 'p1', author: '甲', handle: 'a', content: '帖子', comments: [{ id: 'c1', author: '乙', handle: 'b', content: '评论' }] }],
+    });
+    const dismissed = createPostReport({ postId: 'p1', reason: '误会' });
+    data.world.reports.push(dismissed);
+    applyWorldUpdates(data, { moderationActions: [{ systemAdmin: true, reportId: dismissed.id, postId: 'p1', action: 'dismiss', reason: '举报不成立' }] }, config);
+    assert.equal(data.world.reports.find(item => item.id === dismissed.id).status, 'dismissed');
+    assert.equal(data.world.proposals.length, 0);
+
+    const commentReport = createPostReport({ postId: 'p1', commentId: 'c1', reason: '评论违规' });
+    data.world.reports.push(commentReport);
+    applyWorldUpdates(data, { moderationActions: [{ systemAdmin: true, reportId: commentReport.id, postId: 'p1', commentId: 'c1', action: 'delete', reason: '违反规则' }] }, config);
+    assert.equal(data.posts[0].comments[0].moderation.hidden, false);
+    assert.equal(data.world.proposals.length, 1);
+    assert.equal(applyModerationProposal(data, config, data.world.proposals[0], true), true);
+    assert.equal(data.posts[0].comments[0].moderation.hidden, true);
+    assert.equal(data.posts[0].comments[0].moderation.action, 'delete');
+    assert.equal(data.world.reports.find(item => item.id === commentReport.id).status, 'actioned');
+});
+
 test('reports are local world records and do not enter module injection', () => {
     const config = settings();
     config.modules.moderation.enabled = true;
@@ -251,6 +276,26 @@ test('optional AI fortune and system AI administrator are both off by default', 
     assert.equal(config.modules.fortune.allowApiDraw, false);
     assert.equal(config.moderation.systemAdminEnabled, false);
     assert.equal(config.moderation.npcReportsEnabled, true);
+    assert.equal(config.moderation.autoAssignPermissions, true);
+});
+
+test('forum generation can assign multiple member permissions without another request', () => {
+    const config = settings();
+    config.modules.moderation.enabled = true;
+    config.moderation.autoAssignPermissions = true;
+    const first = createNpc({ name: '甲', handle: 'alpha', persona: '巡逻队员' });
+    const second = createNpc({ name: '乙', handle: 'beta', persona: '书记官' });
+    const data = normalizeForumDataShape({ npcs: [first, second] });
+    const updates = normalizeWorldUpdates({ worldUpdates: { permissionAssignments: [
+        { targetHandle: 'alpha', permissionRole: 'moderator', reason: '担任巡逻队员' },
+        { targetHandle: 'beta', permissionRole: 'admin', reason: '担任书记官' },
+        { targetHandle: 'me', permissionRole: 'official', reason: '受任官方账号' },
+    ] } });
+    applyWorldUpdates(data, updates, config);
+    assert.equal(first.permissionRole, 'moderator');
+    assert.equal(second.permissionRole, 'admin');
+    assert.equal(config.profile.permissionRole, 'official');
+    assert.match(buildLinkedWorldInstruction({ settings: config, data }), /permissionAssignments/);
 });
 
 test('returned companion souvenirs settle into inventory exactly once', () => {

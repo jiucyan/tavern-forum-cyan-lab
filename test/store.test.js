@@ -109,6 +109,29 @@ test('API profiles switch freely and source switches include selected lore entri
     assert.equal((await store.getRoleScopedSourceContext(role.id)).worldInfo.length, 1);
 });
 
+test('legacy numeric prompt positions migrate once into the canonical forum queue', async () => {
+    const context = createContext();
+    context.extensionSettings.tavern_forum = {
+        promptEntries: [{ id: 'legacy-tone', title: '旧论坛语气', enabled: true, constant: true, content: '自然交流', order: 1 }],
+        sources: {
+            promptPositions: {
+                'source:chat': 10,
+                'forum:legacy-tone': 20,
+                'builtin:forum-system': 30,
+                'builtin:generation': 40,
+            },
+        },
+    };
+    globalThis.SillyTavern = { getContext: () => context, libs: {} };
+    const store = await import(`../src/store.js?prompt-order-migration=${Date.now()}`);
+    const sources = store.getSettings().sources;
+    const positions = ['source:chat', 'forum:legacy-tone', 'builtin:forum-system', 'builtin:generation']
+        .map(id => sources.promptOrder.indexOf(id));
+    assert.ok(positions.every(index => index >= 0));
+    assert.ok(positions.every((index, item) => item === 0 || positions[item - 1] < index));
+    assert.equal(Object.hasOwn(sources, 'promptPositions'), false);
+});
+
 test('character lore recognizes both primary and auxiliary SillyTavern lorebooks', async () => {
     const context = createContext();
     context.characters[0].avatar = 'role-card.png';

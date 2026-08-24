@@ -164,6 +164,7 @@ function migrateSettings(settings) {
     }
     settings.moderation.systemAdminEnabled = Boolean(settings.moderation.systemAdminEnabled);
     settings.moderation.systemAdminName = String(settings.moderation.systemAdminName || '巡界者').trim().slice(0, 32) || '巡界者';
+    settings.moderation.autoAssignPermissions = settings.moderation.autoAssignPermissions !== false;
     settings.moderation.npcReportsEnabled = settings.moderation.npcReportsEnabled !== false;
     settings.moderation.permissionLevels = Array.isArray(settings.moderation.permissionLevels)
         ? settings.moderation.permissionLevels.filter(item => item && typeof item === 'object').map((item, index) => ({
@@ -241,11 +242,44 @@ function migrateSettings(settings) {
     settings.sources.presetEntries = settings.sources.presetEntries && typeof settings.sources.presetEntries === 'object'
         ? settings.sources.presetEntries
         : {};
-    settings.sources.promptPositions = settings.sources.promptPositions && typeof settings.sources.promptPositions === 'object'
+    const legacyPromptPositions = settings.sources.promptPositions && typeof settings.sources.promptPositions === 'object'
         ? Object.fromEntries(Object.entries(settings.sources.promptPositions)
             .filter(([, value]) => Number.isFinite(Number(value)))
             .map(([id, value]) => [String(id), Number(value)]))
         : {};
+    const fallbackPromptOrder = [
+        'builtin:forum-system',
+        ...[...settings.promptEntries]
+            .sort((left, right) => Number(right.order || 0) - Number(left.order || 0))
+            .map(entry => `forum:${entry.id}`),
+        'source:user-persona',
+        'source:character-persona',
+        'source:chat',
+        'source:facts',
+        'source:role-memories',
+        'source:excluded-roles',
+        'source:existing-posts',
+        'source:linked-world',
+        'builtin:generation',
+    ];
+    let promptOrder = Array.isArray(settings.sources.promptOrder)
+        ? settings.sources.promptOrder.map(String).filter(Boolean)
+        : [];
+    if (Object.keys(legacyPromptPositions).length) {
+        const legacyDefaults = new Map(fallbackPromptOrder.map((id, index) => [id, (index + 1) * 100]));
+        promptOrder = [...new Set([...fallbackPromptOrder, ...Object.keys(legacyPromptPositions)])]
+            .sort((left, right) => Number(legacyPromptPositions[left] ?? legacyDefaults.get(left) ?? 999999)
+                - Number(legacyPromptPositions[right] ?? legacyDefaults.get(right) ?? 999999));
+    }
+    if (!promptOrder.length) promptOrder = fallbackPromptOrder;
+    for (const id of fallbackPromptOrder) {
+        if (!promptOrder.includes(id)) {
+            const generationIndex = promptOrder.indexOf('builtin:generation');
+            promptOrder.splice(generationIndex < 0 ? promptOrder.length : generationIndex, 0, id);
+        }
+    }
+    settings.sources.promptOrder = [...new Set(promptOrder)];
+    delete settings.sources.promptPositions;
     settings.informationBoundary.worldInfoEntries = settings.informationBoundary.worldInfoEntries
         && typeof settings.informationBoundary.worldInfoEntries === 'object'
         ? settings.informationBoundary.worldInfoEntries
@@ -262,6 +296,7 @@ function migrateSettings(settings) {
         imageKey: String(item.imageKey || '').trim(),
     }));
     if (!['home', 'services', 'messages', 'me', 'settings'].includes(settings.ui.activeTab)) settings.ui.activeTab = 'home';
+    if (!settings.moderation.permissionLevels.some(level => level.id === settings.profile.permissionRole)) settings.profile.permissionRole = 'member';
     if (!['bento', 'window'].includes(settings.ui.worldHomeLayout)) settings.ui.worldHomeLayout = 'bento';
 }
 

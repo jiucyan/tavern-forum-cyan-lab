@@ -97,18 +97,8 @@ try {
     const firstPresetEntry = desktop.locator('[data-preset-entry]').first();
     const selectedPresetId = await firstPresetEntry.getAttribute('data-preset-entry');
     if (await firstPresetEntry.count() && !await firstPresetEntry.isChecked()) await firstPresetEntry.check({ force: true });
-    const visibleReadOrderIds = await desktop.locator('.tf-forum-read-order-entry').evaluateAll(entries => entries.map(entry => entry.dataset.readOrderId));
-    if (selectedPresetId && !visibleReadOrderIds.includes(`preset:${selectedPresetId}`)) throw new Error('selected preset entry did not appear in the actual API order');
     if (!await desktop.locator('[data-action="toggle-world-book"]').count()) throw new Error('world book master switch is missing');
     if (!await desktop.locator('.tf-world-bound-badge').count()) throw new Error('character-bound world book was not recognized');
-    if (await desktop.locator('.tf-forum-read-order-entry').count() < 4) throw new Error('actual forum read order does not list enabled sources');
-    if (await desktop.locator('.tf-forum-read-order-entry').filter({ hasText: '未选择读取' }).count()) throw new Error('disabled or empty placeholders leaked into the actual read order');
-    const firstReadOrderId = await desktop.locator('.tf-forum-read-order-entry').first().getAttribute('data-read-order-id');
-    await desktop.locator('.tf-forum-read-order-entry').first().locator('[data-action="move-read-order"][data-direction="1"]').click();
-    const movedReadOrderId = await desktop.locator('.tf-forum-read-order-entry').nth(1).getAttribute('data-read-order-id');
-    if (!firstReadOrderId || movedReadOrderId !== firstReadOrderId) throw new Error('forum source order controls did not persist the API message position');
-    const storedPromptPositions = await desktop.evaluate(() => globalThis.SillyTavern.getContext().extensionSettings.tavern_forum.sources.promptPositions);
-    if (!Number.isFinite(Number(storedPromptPositions[firstReadOrderId]))) throw new Error('forum source position was not saved');
     await desktop.screenshot({ path: 'preview-sources.png' });
 
     await desktop.locator('[data-action="me-section"][data-section="appearance"]').click();
@@ -123,15 +113,18 @@ try {
     await desktop.screenshot({ path: 'preview-appearance.png' });
 
     await desktop.locator('[data-action="me-section"][data-section="prompts"]').click();
+    if (selectedPresetId) await desktop.waitForFunction(id => [...document.querySelectorAll('.tf-prompt-entry[data-read-order-id]')].some(entry => entry.dataset.readOrderId === `preset:${id}`), selectedPresetId);
     if (!await desktop.locator('.tf-prompt-entry').count()) throw new Error('forum prompt preset list is missing');
+    const visibleReadOrderIds = await desktop.locator('.tf-prompt-entry[data-read-order-id]').evaluateAll(entries => entries.map(entry => entry.dataset.readOrderId));
+    if (selectedPresetId && !visibleReadOrderIds.includes(`preset:${selectedPresetId}`)) throw new Error('selected preset entry did not appear in the actual API order');
+    if (visibleReadOrderIds.length < 4) throw new Error('canonical forum queue does not list enabled sources');
     if (await desktop.locator('.tf-prompt-editor:visible').count()) throw new Error('forum prompt entries should be collapsed by default');
     await desktop.locator('[data-action="toggle-prompt-editor"]').first().click();
     if (!await desktop.locator('.tf-prompt-editor:visible').count()) throw new Error('collapsed forum prompt entry did not open');
-    await desktop.locator('[data-action="add-prompt-entry"]').click();
     while (await desktop.locator('.tf-prompt-entry.is-open').count()) await desktop.locator('.tf-prompt-entry.is-open [data-action="toggle-prompt-editor"]').first().click();
-    const promptEntriesBeforeDrag = await desktop.locator('.tf-prompt-entry').evaluateAll(entries => entries.map(entry => entry.dataset.entryId));
-    if (promptEntriesBeforeDrag.length < 2) throw new Error('forum prompt list did not add a reorderable entry');
-    const promptDropTarget = desktop.locator('.tf-prompt-entry').last();
+    const promptEntriesBeforeDrag = await desktop.locator('.tf-prompt-entry[data-read-order-id]').evaluateAll(entries => entries.map(entry => entry.dataset.readOrderId));
+    if (promptEntriesBeforeDrag.length < 2) throw new Error('forum prompt queue does not have enough reorderable entries');
+    const promptDropTarget = desktop.locator('.tf-prompt-entry[data-read-order-id]').last();
     const promptDragBox = await desktop.locator('.tf-prompt-drag-handle').first().boundingBox();
     const promptDropBox = await promptDropTarget.boundingBox();
     if (!promptDragBox || !promptDropBox) throw new Error('forum prompt drag geometry is unavailable');
@@ -139,7 +132,7 @@ try {
     await desktop.mouse.down();
     await desktop.mouse.move(promptDropBox.x + 24, promptDropBox.y + promptDropBox.height - 8, { steps: 8 });
     await desktop.mouse.up();
-    const promptEntriesAfterDrag = await desktop.locator('.tf-prompt-entry').evaluateAll(entries => entries.map(entry => entry.dataset.entryId));
+    const promptEntriesAfterDrag = await desktop.locator('.tf-prompt-entry[data-read-order-id]').evaluateAll(entries => entries.map(entry => entry.dataset.readOrderId));
     if (promptEntriesAfterDrag[0] === promptEntriesBeforeDrag[0]) throw new Error(`dragging a forum prompt did not persist its new order: ${JSON.stringify({ promptEntriesBeforeDrag, promptEntriesAfterDrag })}`);
     await desktop.screenshot({ path: 'preview-prompts-v2.png' });
 
@@ -182,7 +175,7 @@ try {
     await desktop.screenshot({ path: 'preview-injection-v2.png' });
     await desktop.locator('[data-action="me-section"][data-section="modules"]').click();
     await desktop.screenshot({ path: 'preview-settings-v3.png' });
-    if (await desktop.locator('.tf-world-layout-switch.is-settings [data-action="set-world-home-layout"]').count() !== 2) throw new Error('settings center is missing the two world home layouts');
+    if (await desktop.locator('[data-action="set-world-home-layout"], .tf-world-layout-switch').count()) throw new Error('removed world layout switch is still visible');
     const travelToggle = desktop.locator('[data-action="toggle-world-module"][data-module-id="travel"]');
     if (!await travelToggle.isChecked()) await travelToggle.check({ force: true });
     await desktop.locator('[data-module-id="travel"] [data-module-field="travelDurationPreset"]').selectOption('test');
@@ -211,7 +204,9 @@ try {
     await desktop.screenshot({ path: 'preview-inventory-empty-v2.png' });
     await desktop.locator('[data-action="back-world-home"]').click();
     const callsBeforeLayoutSwitch = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
-    await desktop.locator('[data-action="set-world-home-layout"][data-world-layout="window"]').click();
+    await desktop.evaluate(() => { globalThis.SillyTavern.getContext().extensionSettings.tavern_forum.ui.worldHomeLayout = 'window'; });
+    await desktop.locator('.tf-topbar .tf-main-nav [data-tab="home"]').click();
+    await desktop.locator('.tf-topbar [data-tab="services"]').click();
     if (!await desktop.locator('.tf-world-hub.is-layout-window .tf-world-window-scene').count()) throw new Error('world window layout did not render');
     if (!await desktop.locator('.tf-world-window-scene .tf-window-companion').count()) throw new Error('world window lost its companion overlay');
     if (await desktop.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-desktop') throw new Error('desktop layout switch replaced the app shell');
@@ -223,7 +218,9 @@ try {
     if (!await desktop.locator('.tf-fortune-ritual, .tf-fortune-reveal, .tf-fortune-app').count()) throw new Error('window fortune overlay opened the wrong world app');
     await desktop.locator('[data-action="back-world-home"]').click();
     if (!await desktop.locator('.tf-world-hub.is-layout-window').count()) throw new Error('returning from a window overlay lost the selected layout');
-    await desktop.locator('[data-action="set-world-home-layout"][data-world-layout="bento"]').click();
+    await desktop.evaluate(() => { globalThis.SillyTavern.getContext().extensionSettings.tavern_forum.ui.worldHomeLayout = 'bento'; });
+    await desktop.locator('.tf-topbar .tf-main-nav [data-tab="home"]').click();
+    await desktop.locator('.tf-topbar [data-tab="services"]').click();
     if (!await desktop.locator('.tf-world-hub.is-layout-bento').count()) throw new Error('world home did not switch back to bento');
     if (await desktop.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-desktop') throw new Error('returning to the card layout replaced the app shell');
     await desktop.locator('.tf-service-card[data-action="open-world-page"][data-module-id="travel"]').click();
@@ -412,13 +409,17 @@ try {
     const mobileWorldWidth = await mobile.locator('.tf-world-hub').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
     if (mobileWorldWidth.scroll > mobileWorldWidth.client + 2) throw new Error(`mobile world launcher overflowed horizontally (${mobileWorldWidth.scroll} > ${mobileWorldWidth.client})`);
     await mobile.screenshot({ path: 'preview-world-mobile.png' });
-    await mobile.locator('[data-action="set-world-home-layout"][data-world-layout="window"]').click();
+    await mobile.evaluate(() => { globalThis.SillyTavern.getContext().extensionSettings.tavern_forum.ui.worldHomeLayout = 'window'; });
+    await mobile.locator('.tf-mobile-main-nav [data-tab="home"]').click();
+    await mobile.locator('.tf-mobile-main-nav [data-tab="services"]').click();
     if (!await mobile.locator('.tf-world-hub.is-layout-window .tf-world-window-scene').count()) throw new Error('mobile world window is missing');
     if (await mobile.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-mobile') throw new Error('mobile layout switch replaced the app shell');
     const mobileWindowWidth = await mobile.locator('.tf-world-hub').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
     if (mobileWindowWidth.scroll > mobileWindowWidth.client + 2) throw new Error(`mobile world window overflowed horizontally (${mobileWindowWidth.scroll} > ${mobileWindowWidth.client})`);
     await mobile.screenshot({ path: 'preview-world-window-mobile.png', fullPage: true });
-    await mobile.locator('[data-action="set-world-home-layout"][data-world-layout="bento"]').click();
+    await mobile.evaluate(() => { globalThis.SillyTavern.getContext().extensionSettings.tavern_forum.ui.worldHomeLayout = 'bento'; });
+    await mobile.locator('.tf-mobile-main-nav [data-tab="home"]').click();
+    await mobile.locator('.tf-mobile-main-nav [data-tab="services"]').click();
     if (await mobile.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-mobile') throw new Error('mobile return to the card layout replaced the app shell');
     await mobile.locator('.tf-service-card[data-module-id="fortune"]').click();
     if (await mobile.locator('[data-action="revoke-local-fortune"]').count()) await mobile.locator('[data-action="revoke-local-fortune"]').click();
@@ -452,13 +453,13 @@ try {
     const mobileSettingsNav = mobile.locator('.tf-settings-page .tf-me-nav');
     await mobileSettingsNav.evaluate(node => { node.scrollLeft = Math.min(260, node.scrollWidth - node.clientWidth); });
     const settingsNavScrollBefore = await mobileSettingsNav.evaluate(node => node.scrollLeft);
-    await mobile.locator('[data-action="me-section"][data-section="sources"]').evaluate(node => node.click());
+    await mobile.locator('[data-action="me-section"][data-section="prompts"]').evaluate(node => node.click());
     await mobile.waitForTimeout(80);
     const settingsNavScrollAfter = await mobile.locator('.tf-settings-page .tf-me-nav').evaluate(node => node.scrollLeft);
     if (settingsNavScrollBefore > 20 && Math.abs(settingsNavScrollAfter - settingsNavScrollBefore) > 8) throw new Error(`switching settings reset horizontal navigation from ${settingsNavScrollBefore} to ${settingsNavScrollAfter}`);
-    const mobileReadOrderWidth = await mobile.locator('.tf-forum-read-order').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
+    const mobileReadOrderWidth = await mobile.locator('.tf-prompt-settings').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
     if (mobileReadOrderWidth.scroll > mobileReadOrderWidth.client + 2) throw new Error(`mobile forum read order overflowed horizontally (${mobileReadOrderWidth.scroll} > ${mobileReadOrderWidth.client})`);
-    await mobile.locator('.tf-forum-read-order').scrollIntoViewIfNeeded();
+    await mobile.locator('.tf-prompt-list').scrollIntoViewIfNeeded();
     await mobile.screenshot({ path: 'preview-sources-order-mobile.png' });
     await mobile.screenshot({ path: 'preview-settings-mobile.png' });
     await mobile.locator('[data-action="me-section"][data-section="api"]').evaluate(node => node.click());

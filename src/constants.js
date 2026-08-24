@@ -157,7 +157,19 @@ export const DEFAULT_SETTINGS = Object.freeze({
         worldInfoEntries: {},
         sillyTavernPreset: false,
         presetEntries: {},
-        promptPositions: {},
+        promptOrder: [
+            'builtin:forum-system',
+            'forum:default-forum-style',
+            'source:user-persona',
+            'source:character-persona',
+            'source:chat',
+            'source:facts',
+            'source:role-memories',
+            'source:excluded-roles',
+            'source:existing-posts',
+            'source:linked-world',
+            'builtin:generation',
+        ],
     },
     injection: {
         enabled: false,
@@ -207,6 +219,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     profile: {
         displayName: '',
         handle: 'me',
+        permissionRole: 'member',
         bio: '',
         avatarUrl: '',
         avatarKey: '',
@@ -290,6 +303,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     moderation: {
         systemAdminEnabled: false,
         systemAdminName: '巡界者',
+        autoAssignPermissions: true,
         npcReportsEnabled: true,
         communityRules: '不得恶意泄露他人私密信息。\n不得冒充管理身份。\n不得发布明显破坏当前世界观的内容。',
         permissionLevels: [

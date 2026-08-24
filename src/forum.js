@@ -300,6 +300,15 @@ export function normalizeForumDataShape(data) {
             comment.imageKey = text(comment.imageKey);
             comment.npcId ||= '';
             comment.isAi = comment.isAi !== false;
+            const commentModeration = comment.moderation && typeof comment.moderation === 'object' ? comment.moderation : {};
+            comment.moderation = {
+                hidden: Boolean(commentModeration.hidden),
+                action: ['hide', 'delete', 'warn'].includes(commentModeration.action) ? commentModeration.action : '',
+                reason: text(commentModeration.reason),
+                warning: text(commentModeration.warning),
+                actorNpcId: text(commentModeration.actorNpcId),
+                updatedAt: Math.max(0, Number(commentModeration.updatedAt || 0)),
+            };
             if (previousVersion < 7 && comment.isAi && comment.likes === 0) {
                 comment.likes = seedNumber(`${comment.handle}|${comment.content}`) % 9;
             }

@@ -8,6 +8,8 @@ import {
     buildRoleDirectMessageRequest,
     buildForumGenerationRequest,
     buildForumInjection,
+    buildForumPromptPresetExport,
+    buildModeratorProfilesRequest,
     buildNpcInjection,
     extractAssistantReasoning,
     extractAssistantText,
@@ -16,6 +18,7 @@ import {
     normalizeGeneratedForum,
     normalizeDirectMessage,
     normalizeNpcProfile,
+    normalizeModeratorProfiles,
     normalizeThreadReplies,
     parseJsonResponse,
     prunePosts,
@@ -196,12 +199,14 @@ test('AI reposts connect to existing posts and raise the source repost count', (
 test('forum injection includes only selected posts and optionally comments', () => {
     const posts = [
         { selectedForInjection: false, handle: 'off', author: '甲', content: '不要注入' },
-        { selectedForInjection: true, handle: 'on', author: '乙', content: '需要注入', tags: ['热议'], comments: [{ author: '丙', content: '评论' }] },
+        { selectedForInjection: true, handle: 'on', author: '乙', content: '需要注入', tags: ['热议'], comments: [{ author: '丙', content: '评论' }, { author: '丁', content: '已删评论', moderation: { hidden: true, action: 'delete' } }] },
+        { selectedForInjection: true, handle: 'gone', author: '戊', content: '已删帖子', moderation: { hidden: true, action: 'delete' } },
     ];
     const output = buildForumInjection(posts, { maxPosts: 8, includeComments: true });
     assert.match(output, /需要注入/);
     assert.match(output, /评论/);
     assert.doesNotMatch(output, /不要注入/);
+    assert.doesNotMatch(output, /已删评论|已删帖子/);
 });
 
 test('generation request excludes chat when reading is disabled', () => {
@@ -239,17 +244,17 @@ test('forum prompt preserves preset and plugin message roles', () => {
     assert.match(request.user, /1～3 条/);
 });
 
-test('forum prompt positions are the exact API message order and include only readable sources', () => {
+test('forum prompt queue is the exact API message order and includes only readable sources', () => {
     const request = buildForumGenerationRequest({
         settings: {
             generation: { postsMin: 1, postsMax: 1, commentsMin: 0, commentsMax: 0 },
-            sources: { promptPositions: {
-                'preset:preset-user': 10,
-                'source:character-persona': 20,
-                'forum:forum-tone': 30,
-                'builtin:forum-system': 40,
-                'builtin:generation': 50,
-            } },
+            sources: { promptOrder: [
+                'preset:preset-user',
+                'source:character-persona',
+                'forum:forum-tone',
+                'builtin:forum-system',
+                'builtin:generation',
+            ] },
             promptEntries: [{ id: 'forum-tone', enabled: true, constant: true, title: '论坛语气', role: 'assistant', content: '保持自然', order: 1 }],
         },
         sourceContext: {
@@ -271,6 +276,35 @@ test('forum prompt positions are the exact API message order and include only re
     assert.match(request.messages[0].content, /预设正文/);
     assert.match(request.messages[1].content, /角色资料/);
     assert.doesNotMatch(request.messages.map(message => message.content).join('\n'), /User 人设|最近的故事正文|世界书条目/);
+});
+
+test('moderator profiles use one explicit world-aware request and normalize multiple staff roles', () => {
+    const request = buildModeratorProfilesRequest({
+        settings: { moderation: { communityRules: '禁止泄露秘密。' } },
+        sourceContext: { characterPersona: '城邦由夜巡队维持秩序。' },
+        count: 3,
+    });
+    assert.equal(request.messages.length, 2);
+    assert.match(request.user, /禁止泄露秘密/);
+    assert.match(request.user, /夜巡队/);
+    const admins = normalizeModeratorProfiles('<admin_profiles>{"admins":[{"name":"岚","handle":"@lan","persona":"谨慎的夜巡队员","permissionRole":"moderator"},{"name":"衡","handle":"heng","persona":"负责终审的书记官","permissionRole":"admin"}]}</admin_profiles>');
+    assert.deepEqual(admins.map(item => item.handle), ['lan', 'heng']);
+    assert.deepEqual(admins.map(item => item.permissionRole), ['moderator', 'admin']);
+});
+
+test('prompt preset export contains only custom forum prompts and never copied SillyTavern sources', () => {
+    const payload = buildForumPromptPresetExport({
+        promptEntries: [{ id: 'tone', title: '论坛语气', role: 'system', enabled: true, constant: true, keywords: [], content: '自然交流' }],
+        sources: {
+            promptOrder: ['preset:main', 'source:user-persona', 'forum:tone', 'world:city:7'],
+            presetEntries: { main: true },
+            worldInfoEntries: { 'city:7': true },
+        },
+        copiedPresetText: '绝不能导出的酒馆预设正文',
+    });
+    assert.deepEqual(payload.promptOrder, ['forum:tone']);
+    assert.deepEqual(payload.promptEntries.map(entry => entry.content), ['自然交流']);
+    assert.doesNotMatch(JSON.stringify(payload), /preset:main|user-persona|world:city|绝不能导出/);
 });
 
 test('custom API parameters support types and nested paths without overriding messages', () => {

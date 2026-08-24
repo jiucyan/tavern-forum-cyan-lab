@@ -261,21 +261,31 @@ export function getActivePromptEntries(entries, scanText) {
         .sort((a, b) => safeInteger(b.order, 0, -99999) - safeInteger(a.order, 0, -99999));
 }
 
-export function orderForumPromptItems(items, positions = {}) {
+export function orderForumPromptItems(items, promptOrder = []) {
     if (!Array.isArray(items)) return [];
-    return items
-        .filter(item => item && safeString(item.content))
-        .map((item, index) => {
-            const saved = Number(positions?.[item.id]);
-            const fallback = Number(item.defaultPosition);
-            return {
-                ...item,
-                position: Number.isFinite(saved) ? saved : (Number.isFinite(fallback) ? fallback : (index + 1) * 10),
-            };
-        })
-        .sort((left, right) => left.position - right.position
-            || Number(left.defaultPosition || 0) - Number(right.defaultPosition || 0)
-            || safeString(left.id).localeCompare(safeString(right.id)));
+    const candidates = items.filter(Boolean);
+    const legacyOrder = promptOrder && !Array.isArray(promptOrder) && typeof promptOrder === 'object'
+        ? Object.entries(promptOrder)
+            .filter(([, value]) => Number.isFinite(Number(value)))
+            .sort((left, right) => Number(left[1]) - Number(right[1]))
+            .map(([id]) => id)
+        : [];
+    const savedOrder = [...new Set((Array.isArray(promptOrder) ? promptOrder : legacyOrder).map(String).filter(Boolean))];
+    const fallback = [...candidates].sort((left, right) => Number(left.defaultPosition || 0) - Number(right.defaultPosition || 0)
+        || safeString(left.id).localeCompare(safeString(right.id)));
+    if (!savedOrder.length) return fallback.map((item, index) => ({ ...item, position: index + 1 }));
+
+    const byId = new Map(candidates.map(item => [String(item.id), item]));
+    const ordered = savedOrder.map(id => byId.get(id)).filter(Boolean);
+    const included = new Set(ordered.map(item => String(item.id)));
+    for (const item of fallback) {
+        if (included.has(String(item.id))) continue;
+        const insertionIndex = ordered.findIndex(existing => Number(existing.defaultPosition || 0) > Number(item.defaultPosition || 0));
+        if (insertionIndex < 0) ordered.push(item);
+        else ordered.splice(insertionIndex, 0, item);
+        included.add(String(item.id));
+    }
+    return ordered.map((item, index) => ({ ...item, position: index + 1 }));
 }
 
 export function buildForumGenerationRequest({
@@ -297,7 +307,7 @@ export function buildForumGenerationRequest({
     const roleMemories = Array.isArray(sourceContext?.roleMemories) ? sourceContext.roleMemories : [];
     const presetPrompts = Array.isArray(sourceContext?.presetPrompts) ? sourceContext.presetPrompts : [];
     const recentPosts = Array.isArray(existingPosts)
-        ? existingPosts.slice(-6).map(post => `[帖子ID=${safeString(post.id)}] @${safeString(post.handle, 'user')}：${safeString(post.content)}`).join('\n')
+        ? existingPosts.filter(post => !post?.moderation?.hidden).slice(-6).map(post => `[帖子ID=${safeString(post.id)}] @${safeString(post.handle, 'user')}：${safeString(post.content)}`).join('\n')
         : '';
     const scanText = [context, userPersona, characterPersona, ...worldInfo.map(entry => entry.content), ...facts.map(entry => entry.content), recentPosts].filter(Boolean).join('\n');
     const activeEntries = getActivePromptEntries(settings?.promptEntries, scanText);
@@ -352,7 +362,10 @@ export function buildForumGenerationRequest({
         linkedWorldInstruction && { id: 'source:linked-world', title: '联动世界模块', source: 'world-module', role: 'user', content: `【联动模块】\n${safeString(linkedWorldInstruction)}`, defaultPosition: 750 },
         { id: 'builtin:generation', title: '生成与输出格式', source: 'builtin', role: 'user', content: generationInstruction, defaultPosition: 900 },
     ];
-    const sequence = orderForumPromptItems(promptItems, settings?.sources?.promptPositions);
+    const sequence = orderForumPromptItems(
+        promptItems.filter(item => item && safeString(item.content)),
+        settings?.sources?.promptOrder,
+    );
     const messages = sequence.map(({ role, content }) => ({ role: normalizeRole(role), content }));
     const system = messages.filter(message => message.role === 'system').map(message => message.content).join('\n\n');
     const user = messages.filter(message => message.role === 'user').map(message => message.content).join('\n\n');
@@ -364,6 +377,54 @@ export function buildForumGenerationRequest({
         activeEntries,
         presetPrompts,
         promptSequence: sequence.map(({ id, title, role, source, position }) => ({ id, title, role, source, position })),
+    };
+}
+
+export function buildModeratorProfilesRequest({ settings, sourceContext = {}, count = 2 } = {}) {
+    const amount = safeInteger(count, 2, 1, 4);
+    const world = [
+        safeString(sourceContext.chat),
+        safeString(sourceContext.userPersona),
+        safeString(sourceContext.characterPersona),
+        ...(Array.isArray(sourceContext.worldInfo) ? sourceContext.worldInfo.map(entry => safeString(entry.content)) : []),
+    ].filter(Boolean).join('\n\n');
+    const system = '你负责为一个虚构世界中的站内论坛设计社区管理员角色。管理员也是世界中的普通人物，必须符合世界观，各自拥有不同经历、性格、管理风格和论坛账号。不要使用现实平台名称，不要把系统或模型当作角色。';
+    const user = `请生成 ${amount} 位彼此不同、可以长期参与论坛互动的管理员。社区规则：\n${safeString(settings?.moderation?.communityRules, '未填写')}\n\n允许参考的世界资料：\n${world || '当前没有额外世界资料，请保持中性、可适配。'}\n\n只返回 <admin_profiles> 包裹的紧凑 JSON：<admin_profiles>{"admins":[{"name":"显示名","handle":"英文或拼音账号","persona":"完整人设与说话方式","bio":"公开简介","permissionRole":"moderator|admin"}]}</admin_profiles>。账号不能重复；至少一位 moderator，只有确实适合统筹全站时才使用 admin。`;
+    return { system, user, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] };
+}
+
+export function normalizeModeratorProfiles(raw) {
+    const parsed = parseJsonResponse(raw);
+    const admins = Array.isArray(parsed?.admins) ? parsed.admins : Array.isArray(parsed) ? parsed : [];
+    return admins.slice(0, 4).map((item, index) => ({
+        name: safeString(item?.name, `管理员 ${index + 1}`),
+        handle: safeString(item?.handle, `moderator_${index + 1}`).replace(/^@/, '').replace(/\s+/g, '_'),
+        persona: safeString(item?.persona),
+        bio: safeString(item?.bio, '社区管理员'),
+        permissionRole: item?.permissionRole === 'admin' ? 'admin' : 'moderator',
+    })).filter(item => item.persona);
+}
+
+export function buildForumPromptPresetExport(settings = {}) {
+    const promptEntries = (Array.isArray(settings.promptEntries) ? settings.promptEntries : []).map((entry, index) => ({
+        id: safeString(entry?.id, `prompt-${index + 1}`),
+        title: safeString(entry?.title, '未命名设定'),
+        enabled: entry?.enabled !== false,
+        constant: Boolean(entry?.constant),
+        keywords: Array.isArray(entry?.keywords) ? entry.keywords.map(value => safeString(value)).filter(Boolean) : [],
+        role: ['system', 'user', 'assistant'].includes(entry?.role) ? entry.role : 'system',
+        content: safeString(entry?.content),
+    }));
+    const exportedIds = new Set(promptEntries.map(entry => `forum:${entry.id}`));
+    const promptOrder = (Array.isArray(settings?.sources?.promptOrder) ? settings.sources.promptOrder : [])
+        .map(value => safeString(value))
+        .filter(id => exportedIds.has(id));
+    for (const id of exportedIds) if (!promptOrder.includes(id)) promptOrder.push(id);
+    return {
+        type: 'tavern-forum-prompt-preset',
+        version: 2,
+        promptEntries,
+        promptOrder,
     };
 }
 
@@ -747,15 +808,18 @@ export function recoverGeneratedForum(raw, now = Date.now(), alternateSources = 
 export function buildForumInjection(posts, options = {}) {
     if (!Array.isArray(posts)) return '';
     const maxPosts = safeInteger(options.maxPosts, 8, 1, 50);
-    const selected = posts.filter(post => post?.selectedForInjection).slice(-maxPosts);
+    const selected = posts.filter(post => post?.selectedForInjection && !post?.moderation?.hidden).slice(-maxPosts);
     if (!selected.length) return '';
 
     const lines = selected.map((post, index) => {
         const tags = Array.isArray(post.tags) && post.tags.length
             ? ` ${post.tags.map(tag => `#${safeString(tag).replace(/^#/, '')}#`).join(' ')}`
             : '';
-        const comments = options.includeComments && Array.isArray(post.comments) && post.comments.length
-            ? `\n  评论：${post.comments.map(comment => `${safeString(comment.author, DEFAULT_AUTHOR)}：${safeString(comment.content)}${safeString(comment.imagePrompt) ? ` [配图：${safeString(comment.imagePrompt)}]` : ''}`).join('；')}`
+        const visibleComments = Array.isArray(post.comments)
+            ? post.comments.filter(comment => !comment?.moderation?.hidden)
+            : [];
+        const comments = options.includeComments && visibleComments.length
+            ? `\n  评论：${visibleComments.map(comment => `${safeString(comment.author, DEFAULT_AUTHOR)}：${safeString(comment.content)}${safeString(comment.imagePrompt) ? ` [配图：${safeString(comment.imagePrompt)}]` : ''}`).join('；')}`
             : '';
         const image = safeString(post.imagePrompt) ? ` [配图：${safeString(post.imagePrompt)}]` : '';
         const repost = safeString(post.repostOf) && safeString(post.quoteText) ? ` [转发引用：${safeString(post.quoteText)}]` : '';

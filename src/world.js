@@ -176,6 +176,7 @@ export function normalizeWorldState(value) {
     world.reports = list(world.reports).map(item => ({
         id: text(item?.id) || createId('report'),
         postId: text(item?.postId),
+        commentId: text(item?.commentId),
         reason: text(item?.reason, '未填写原因'),
         reporter: text(item?.reporter, '我'),
         reporterNpcId: text(item?.reporterNpcId),
@@ -636,6 +637,7 @@ export function normalizeWorldUpdates(raw) {
     if (Array.isArray(updates.reports)) result.reports = updates.reports.filter(item => item && typeof item === 'object').map(item => ({
         reporterHandle: text(item.reporterHandle).replace(/^@/, ''),
         postId: text(item.postId),
+        commentId: text(item.commentId),
         reason: text(item.reason, '该角色认为内容需要管理员查看'),
     })).filter(item => item.reporterHandle && item.postId).slice(0, 12);
     if (Array.isArray(updates.socialActions)) result.socialActions = updates.socialActions.filter(item => item && typeof item === 'object').map(item => ({
@@ -646,9 +648,15 @@ export function normalizeWorldUpdates(raw) {
     if (Array.isArray(updates.moderationActions)) result.moderationActions = updates.moderationActions.filter(item => item && typeof item === 'object').map(item => ({
         actorHandle: text(item.actorHandle).replace(/^@/, ''),
         postId: text(item.postId),
+        commentId: text(item.commentId),
         action: ['hide', 'delete', 'warn', 'dismiss'].includes(item.action) ? item.action : 'dismiss',
         reason: text(item.reason),
     })).filter(item => item.postId);
+    if (Array.isArray(updates.permissionAssignments)) result.permissionAssignments = updates.permissionAssignments.filter(item => item && typeof item === 'object').map(item => ({
+        targetHandle: text(item.targetHandle).replace(/^@/, ''),
+        permissionRole: text(item.permissionRole),
+        reason: text(item.reason),
+    })).filter(item => item.targetHandle && item.permissionRole).slice(0, 20);
     return result;
 }
 
@@ -687,18 +695,32 @@ function findNpcByHandle(data, handle) {
 function executeModerationAction(data, settings, action) {
     const actor = findNpcByHandle(data, action.actorHandle);
     const post = list(data.posts).find(item => item.id === action.postId);
+    const comment = action.commentId ? list(post?.comments).find(item => item.id === action.commentId) : null;
+    const target = action.commentId ? comment : post;
     const systemAdmin = Boolean(action.systemAdmin && settings?.moderation?.systemAdminEnabled);
-    if (!post || (!systemAdmin && (!actor || !roleCan(settings, actor, 'adjudicateReport')))) return false;
+    if (!target || (!systemAdmin && (!actor || !roleCan(settings, actor, 'adjudicateReport')))) return false;
     if (['delete', 'hide'].includes(action.action) && !systemAdmin && !roleCan(settings, actor, 'deletePost')) return false;
-    post.moderation ||= {};
+    target.moderation ||= {};
     if (action.action === 'delete' || action.action === 'hide') {
-        post.moderation.hidden = true;
-        post.moderation.action = action.action;
-        post.moderation.reason = action.reason;
-        post.moderation.actorNpcId = systemAdmin ? 'system-ai-admin' : actor.id;
-        post.moderation.updatedAt = Date.now();
+        target.moderation.hidden = true;
+        target.moderation.action = action.action;
+        target.moderation.reason = action.reason;
+        target.moderation.actorNpcId = systemAdmin ? 'system-ai-admin' : actor.id;
+        target.moderation.updatedAt = Date.now();
     } else if (action.action === 'warn') {
-        post.moderation.warning = action.reason || '该内容已被社区管理提醒。';
+        target.moderation.warning = action.reason || '该内容已被社区管理提醒。';
+    }
+    const report = action.reportId
+        ? list(data?.world?.reports).find(item => item.id === action.reportId)
+        : list(data?.world?.reports).find(item => item.postId === action.postId
+            && (item.commentId || '') === (action.commentId || '')
+            && ['pending', 'reviewing'].includes(item.status));
+    if (report) {
+        report.status = action.action === 'dismiss' ? 'dismissed' : 'actioned';
+        report.action = action.action === 'dismiss' ? 'none' : action.action;
+        report.decision = action.reason || (action.action === 'dismiss' ? '举报不成立' : '管理操作已执行');
+        report.reviewerNpcId = systemAdmin ? 'system-ai-admin' : actor.id;
+        report.updatedAt = Date.now();
     }
     return true;
 }
@@ -810,10 +832,12 @@ export function applyWorldUpdates(data, updates, settings) {
         for (const incoming of updates.reports) {
             const reporterNpc = findNpcByHandle(data, incoming.reporterHandle);
             const post = list(data.posts).find(item => item.id === incoming.postId);
-            if (!reporterNpc || reporterNpc.blocked || !post || post.npcId === reporterNpc.id) continue;
-            if (data.world.reports.some(report => report.postId === post.id && report.reporterNpcId === reporterNpc.id && ['pending', 'reviewing'].includes(report.status))) continue;
+            const comment = incoming.commentId ? list(post?.comments).find(item => item.id === incoming.commentId) : null;
+            const targetAuthorNpcId = comment?.npcId || post?.npcId;
+            if (!reporterNpc || reporterNpc.blocked || !post || (incoming.commentId && !comment) || targetAuthorNpcId === reporterNpc.id) continue;
+            if (data.world.reports.some(report => report.postId === post.id && report.commentId === incoming.commentId && report.reporterNpcId === reporterNpc.id && ['pending', 'reviewing'].includes(report.status))) continue;
             data.world.reports.push(createPostReport({
-                postId: post.id, reason: `${reporterNpc.name}（@${reporterNpc.handle}）举报：${incoming.reason}`, reporter: reporterNpc.name,
+                postId: post.id, commentId: incoming.commentId, reason: `${reporterNpc.name}（@${reporterNpc.handle}）举报：${incoming.reason}`, reporter: reporterNpc.name,
                 reporterNpcId: reporterNpc.id, reporterHandle: reporterNpc.handle, source: 'npc',
             }));
             added += 1;
@@ -823,6 +847,10 @@ export function applyWorldUpdates(data, updates, settings) {
     if (settings.modules?.moderation?.enabled && updates.moderationActions?.length) {
         const mode = settings.modules.moderation.automation || 'confirm';
         for (const action of updates.moderationActions) {
+            if (action.action === 'dismiss' && executeModerationAction(data, settings, action)) {
+                applied.push('驳回举报');
+                continue;
+            }
             if (mode === 'auto' && executeModerationAction(data, settings, action)) {
                 applied.push('管理操作');
                 continue;
@@ -833,14 +861,32 @@ export function applyWorldUpdates(data, updates, settings) {
             });
         }
     }
+    if (settings.modules?.moderation?.enabled && settings.moderation?.autoAssignPermissions && updates.permissionAssignments?.length) {
+        let assigned = 0;
+        const validRoles = new Set(list(settings.moderation.permissionLevels).map(level => level.id));
+        for (const assignment of updates.permissionAssignments) {
+            if (!validRoles.has(assignment.permissionRole)) continue;
+            const targetHandle = text(assignment.targetHandle).replace(/^@/, '').toLocaleLowerCase();
+            const npc = findNpcByHandle(data, targetHandle);
+            if (npc) {
+                npc.permissionRole = assignment.permissionRole;
+                npc.updatedAt = Date.now();
+                assigned += 1;
+            } else if (['me', 'user', text(settings.profile?.handle).replace(/^@/, '').toLocaleLowerCase()].includes(targetHandle)) {
+                settings.profile.permissionRole = assignment.permissionRole;
+                assigned += 1;
+            }
+        }
+        if (assigned) applied.push(`权限分配 ${assigned}`);
+    }
     if (applied.length) data.world.auditLog.push({ id: createId('audit'), moduleId: 'orchestrator', summary: `联动更新：${applied.join('、')}`, createdAt: Date.now() });
     normalizeWorldState(data.world);
     return applied;
 }
 
-export function createPostReport({ postId, reason, reporter = '我', reporterNpcId = '', reporterHandle = '', source = 'user' }) {
+export function createPostReport({ postId, commentId = '', reason, reporter = '我', reporterNpcId = '', reporterHandle = '', source = 'user' }) {
     return {
-        id: createId('report'), postId: text(postId), reason: text(reason, '未填写原因'), reporter: text(reporter, '我'),
+        id: createId('report'), postId: text(postId), commentId: text(commentId), reason: text(reason, '未填写原因'), reporter: text(reporter, '我'),
         reporterNpcId: text(reporterNpcId), reporterHandle: text(reporterHandle).replace(/^@/, ''), source: source === 'npc' ? 'npc' : 'user',
         status: 'pending', decision: '', action: 'none', reviewerNpcId: '', createdAt: Date.now(), updatedAt: Date.now(),
     };
@@ -879,8 +925,9 @@ function moduleOutputShape(moduleIds) {
     if (moduleIds.includes('travel')) fields.push('"travel":{"companion":{"name":"旅伴名","species":"宠物种类","status":"away","mood":"出发心情","destination":"目的地","message":"出发留言","bond":0},"journeys":[{"traveler":"旅伴名","destination":"地点","status":"away","departureMessage":"出发留言","messages":[{"content":"途中消息","mood":"当时心情","progress":0.25}],"returnMessage":"返家留言","notes":"完整旅途摘要","souvenir":"返家后才揭晓的小物件","souvenirDescription":"物品描述","souvenirEffect":"轻微用途"}]}');
     if (moduleIds.includes('inventory')) fields.push('"inventory":[{"name":"物品","description":"描述","quantity":1,"effect":"剧情作用","source":"来源"}]');
     if (moduleIds.includes('health')) fields.push('"health":[{"subject":"角色","name":"状态","severity":"minor|moderate|serious","status":"active|recovering|resolved","symptoms":"表现","storyEffect":"剧情影响"}]');
-    if (moduleIds.includes('moderation')) fields.push('"moderationActions":[{"actorHandle":"有管理权限的角色账号","postId":"准确帖子ID","action":"hide|delete|warn|dismiss","reason":"依据"}]');
-    if (moduleIds.includes('__npcReports')) fields.push('"reports":[{"reporterHandle":"已有且未拉黑的NPC账号","postId":"已有帖子的准确ID","reason":"该NPC站内举报的具体理由"}]');
+    if (moduleIds.includes('moderation')) fields.push('"moderationActions":[{"actorHandle":"有管理权限的角色账号","postId":"准确帖子ID","commentId":"举报评论时填写准确评论ID，否则留空","action":"hide|delete|warn|dismiss","reason":"依据"}]');
+    if (moduleIds.includes('__npcReports')) fields.push('"reports":[{"reporterHandle":"已有且未拉黑的NPC账号","postId":"已有帖子的准确ID","commentId":"举报评论时填写准确评论ID，否则留空","reason":"该NPC站内举报的具体理由"}]');
+    if (moduleIds.includes('__permissionAssignments')) fields.push('"permissionAssignments":[{"targetHandle":"已有论坛成员账号或me","permissionRole":"member|official|moderator|admin","reason":"符合世界观的任命依据"}]');
     fields.push('"socialActions":[{"actorHandle":"角色账号","targetHandle":"目标账号或me","action":"follow|unfollow"}]');
     return `{"worldUpdates":{${fields.join(',')}}}`;
 }
@@ -899,13 +946,15 @@ export function buildLinkedWorldInstruction({ settings, data, onlyModuleId = '' 
     const moduleIds = getEnabledLinkedModuleIds(settings, onlyModuleId);
     const proactive = !onlyModuleId && settings?.social?.proactiveDms?.enabled && settings.social.proactiveDms.withForumRefresh;
     const npcReports = !onlyModuleId && settings?.modules?.moderation?.enabled && settings?.moderation?.npcReportsEnabled;
-    if (!moduleIds.length && !proactive && !npcReports) return '';
+    const permissionAssignments = !onlyModuleId && settings?.modules?.moderation?.enabled && settings?.moderation?.autoAssignPermissions;
+    if (!moduleIds.length && !proactive && !npcReports && !permissionAssignments) return '';
     const prompts = moduleIds.map(id => `【${getModuleDefinition(id)?.name || id}模块规则】\n${builtinPrompt(settings, id === 'tasks' ? 'task' : id)}`).join('\n\n');
     const current = buildWorldStateSummary(data, settings, npcReports && !moduleIds.includes('moderation') ? [...moduleIds, 'moderation'] : moduleIds);
     const dmInstruction = proactive ? `\n\n【主动私信】\n${builtinPrompt(settings, 'proactiveDirectMessage')}\n只允许以下已有人设且未拉黑的账号主动私信：${list(data?.npcs).filter(npc => (npc.profileGenerated || npc.systemRole) && !npc.blocked && (!settings.social.proactiveDms.requireFollow || npc.followsUser)).map(npc => `@${npc.handle}`).join('、') || '暂无可用账号'}。最多 ${integer(settings.social.proactiveDms.maxPerRun, 2, 0, 8)} 条。在 forum_data 根对象加入 "dmEvents":[{"targetHandle":"账号","content":"私信正文","reason":"主动联系动机"}]；没有自然动机时返回 []。` : '';
-    const reportInstruction = npcReports ? '\n\n【NPC 站内举报】\nNPC 可以根据自身立场举报已有帖子，但不得伪造账号或帖子 ID，也不能举报自己的帖子。只有确实有动机时才填写 reports；否则返回空数组。此步骤共用本轮论坛生成，不发起额外请求。' : '';
-    const shapeIds = npcReports ? [...moduleIds, '__npcReports'] : moduleIds;
-    return `${builtinPrompt(settings, 'orchestrator')}\n\n${narrativeSafetyInstruction(settings)}\n\n本轮联动模块：${moduleIds.length ? moduleIds.map(id => getModuleDefinition(id)?.name || id).join('、') : npcReports ? 'NPC 举报检查' : '仅主动私信'}。\n${prompts}\n\n${current}${shapeIds.length ? `\n\n在 forum_data 根对象内额外加入 worldUpdates。结构示例：${moduleOutputShape(shapeIds)}。只输出本轮真正发生的变化；没有变化的数组使用 []，不要覆盖未选模块。` : ''}${reportInstruction}${dmInstruction}`;
+    const reportInstruction = npcReports ? '\n\n【NPC 站内举报】\nNPC 可以根据自身立场举报已有帖子或评论，但不得伪造账号、帖子 ID 或评论 ID，也不能举报自己的内容。只有确实有动机时才填写 reports；否则返回空数组。此步骤共用本轮论坛生成，不发起额外请求。' : '';
+    const permissionInstruction = permissionAssignments ? `\n\n【论坛成员权限】\n可以依据成员已经表现出的身份、职责和世界观地位，在 permissionAssignments 中调整权限。现有权限角色只有：${list(settings.moderation.permissionLevels).map(level => `${level.id}（${level.name}）`).join('、')}。不要为了活跃气氛随意授予 moderator 或 admin；没有明确任命依据时返回空数组。此步骤与论坛生成共用一次请求。` : '';
+    const shapeIds = [...moduleIds, ...(npcReports ? ['__npcReports'] : []), ...(permissionAssignments ? ['__permissionAssignments'] : [])];
+    return `${builtinPrompt(settings, 'orchestrator')}\n\n${narrativeSafetyInstruction(settings)}\n\n本轮联动模块：${moduleIds.length ? moduleIds.map(id => getModuleDefinition(id)?.name || id).join('、') : [npcReports && 'NPC 举报检查', permissionAssignments && '成员权限检查', proactive && '主动私信'].filter(Boolean).join('、')}。\n${prompts}\n\n${current}${shapeIds.length ? `\n\n在 forum_data 根对象内额外加入 worldUpdates。结构示例：${moduleOutputShape(shapeIds)}。只输出本轮真正发生的变化；没有变化的数组使用 []，不要覆盖未选模块。` : ''}${reportInstruction}${permissionInstruction}${dmInstruction}`;
 }
 
 export function buildWorldStateSummary(data, settings, moduleIds = []) {
@@ -925,12 +974,12 @@ export function buildWorldStateSummary(data, settings, moduleIds = []) {
     if (ids.includes('health') && world.health.length) parts.push(`已有健康状态：${world.health.filter(item => item.status !== 'resolved').slice(-20).map(item => `${item.id}/${item.subject}/${item.name}/${item.status}`).join('；')}`);
     if (ids.includes('moderation')) {
         parts.push(`社区规则：\n${text(settings?.moderation?.communityRules, '未填写')}`);
-        if (settings?.moderation?.systemAdminEnabled) parts.push(`系统 AI 管理员：${text(settings.moderation.systemAdminName, '巡界者')}（可以审理举报，但仍服从自动化权限）。`);
+        if (settings?.moderation?.systemAdminEnabled) parts.push('AI 治理系统已开启：可以审理举报；驳回直接生效，破坏性操作服从自动化权限。');
         const staff = list(data?.npcs).filter(npc => roleCan(settings, npc, 'adjudicateReport'));
         parts.push(staff.length
             ? `可执行裁决的账号：${staff.map(npc => `@${npc.handle}（${npc.name}/${getPermissionLevel(settings, npc.permissionRole).name}）`).join('、')}`
             : '可执行裁决的账号：暂无。没有具备“审理举报”权限的角色时，只能建议驳回，不得伪造管理员。');
-        const posts = list(data?.posts).slice(-20).map(post => `[${post.id}] @${post.handle}：${post.content}`).join('\n');
+        const posts = list(data?.posts).filter(post => !post.moderation?.hidden).slice(-20).map(post => `[帖子 ${post.id}] @${post.handle}：${post.content}${list(post.comments).filter(comment => !comment.moderation?.hidden).slice(-8).map(comment => `\n  [评论 ${comment.id}] @${comment.handle}：${comment.content}`).join('')}`).join('\n');
         if (posts) parts.push(`可审查的近期帖子：\n${posts}`);
     }
     return parts.length ? `【当前模块状态】\n${parts.join('\n')}` : '【当前模块状态】暂无记录。';

@@ -3,6 +3,8 @@ import { DEFAULT_BUILTIN_PROMPTS, DEFAULT_SETTINGS, WORLD_MODULE_DEFINITIONS } f
 import {
     buildDirectMessageRequest,
     buildForumGenerationRequest,
+    buildForumPromptPresetExport,
+    buildModeratorProfilesRequest,
     buildNpcProfileRequest,
     buildRoleDirectMessageRequest,
     buildThreadReplyRequest,
@@ -10,10 +12,13 @@ import {
     createManualComment,
     createManualPost,
     extractMentions,
+    getActivePromptEntries,
     normalizeDirectMessage,
     normalizeGeneratedForum,
     normalizeNpcProfile,
+    normalizeModeratorProfiles,
     normalizeThreadReplies,
+    orderForumPromptItems,
     prunePosts,
     recoverGeneratedForum,
 } from './prompt.js';
@@ -424,6 +429,7 @@ const viewState = {
     mobileDmChat: false,
     messageMode: 'dm',
     worldCatalog: [],
+    promptSourceContext: null,
     worldLoading: false,
     searchQuery: '',
     autoRefreshTimer: 0,
@@ -718,7 +724,7 @@ function renderComments(post, forceOpen = false) {
     if (!forceOpen && !viewState.expandedComments.has(post.id)) return '';
     const comments = (Array.isArray(post.comments) ? post.comments : []).filter(comment => {
         const npc = npcForAuthor(comment);
-        return !npc?.muted && !npc?.blocked;
+        return !npc?.muted && !npc?.blocked && (!comment.moderation?.hidden || comment.moderation?.action === 'delete');
     });
     const target = viewState.replyTarget?.postId === post.id ? viewState.replyTarget : null;
     const snapshot = getChatSnapshot();
@@ -727,9 +733,11 @@ function renderComments(post, forceOpen = false) {
     const ids = new Set(comments.map(comment => comment.id));
     const renderBranch = (parentId = '', depth = 0) => comments
         .filter(comment => (comment.parentId && ids.has(comment.parentId) ? comment.parentId : '') === parentId)
-        .map(comment => `<div class="tf-comment ${depth ? 'is-nested' : ''}" style="--tf-comment-depth:${Math.min(depth, 3)}">
+        .map(comment => comment.moderation?.hidden && comment.moderation?.action === 'delete'
+            ? `<div class="tf-comment tf-comment-tombstone ${depth ? 'is-nested' : ''}" style="--tf-comment-depth:${Math.min(depth, 3)}"><span>${icon('shield')}</span><div><b>这条评论已被管理员删除</b><small>仅你可见 · 不可回复${comment.moderation.reason ? ` · ${escapeHtml(comment.moderation.reason)}` : ''}</small>${renderBranch(comment.id, depth + 1)}</div></div>`
+            : `<div class="tf-comment ${depth ? 'is-nested' : ''}" style="--tf-comment-depth:${Math.min(depth, 3)}">
             ${renderAuthorAvatar(comment)}
-            <div><p><b>${escapeHtml(comment.author)}</b>${comment.replyTo ? `<span> 回复 @${escapeHtml(comment.replyTo)}</span>` : ''} ${renderSocialText(comment.content)}</p>${renderCommentImage(comment)}<div class="tf-comment-actions"><button data-action="start-reply" data-post-id="${escapeHtml(post.id)}" data-comment-id="${escapeHtml(comment.id)}" data-reply-handle="${escapeHtml(comment.handle || '')}">回复</button><button class="${comment.likedByUser ? 'is-liked' : ''}" data-action="like-comment" data-post-id="${escapeHtml(post.id)}" data-comment-id="${escapeHtml(comment.id)}">${icon('heart')} ${numberLabel(comment.likes)}</button><button data-action="generate-comment-image" data-post-id="${escapeHtml(post.id)}" data-comment-id="${escapeHtml(comment.id)}" title="${comment.imageUrl || comment.imageKey ? '更换评论配图' : '添加评论配图'}">${viewState.imageBusy.has(`comment-${comment.id}`) ? '<span class="tf-spinner"></span>' : icon('image')}</button></div>${renderBranch(comment.id, depth + 1)}</div>
+            <div><p><b>${escapeHtml(comment.author)}</b>${comment.replyTo ? `<span> 回复 @${escapeHtml(comment.replyTo)}</span>` : ''} ${renderSocialText(comment.content)}</p>${comment.moderation?.warning ? `<div class="tf-moderation-warning">${icon('shield')} ${escapeHtml(comment.moderation.warning)}</div>` : ''}${renderCommentImage(comment)}<div class="tf-comment-actions"><button data-action="start-reply" data-post-id="${escapeHtml(post.id)}" data-comment-id="${escapeHtml(comment.id)}" data-reply-handle="${escapeHtml(comment.handle || '')}">回复</button><button class="${comment.likedByUser ? 'is-liked' : ''}" data-action="like-comment" data-post-id="${escapeHtml(post.id)}" data-comment-id="${escapeHtml(comment.id)}">${icon('heart')} ${numberLabel(comment.likes)}</button><button data-action="report-comment" data-post-id="${escapeHtml(post.id)}" data-comment-id="${escapeHtml(comment.id)}" title="举报评论">${icon('shield')}</button><button data-action="generate-comment-image" data-post-id="${escapeHtml(post.id)}" data-comment-id="${escapeHtml(comment.id)}" title="${comment.imageUrl || comment.imageKey ? '更换评论配图' : '添加评论配图'}">${viewState.imageBusy.has(`comment-${comment.id}`) ? '<span class="tf-spinner"></span>' : icon('image')}</button></div>${renderBranch(comment.id, depth + 1)}</div>
         </div>`).join('');
     return `<section class="tf-comments">
         ${comments.length ? renderBranch() : '<p class="tf-empty-mini">还没有评论</p>'}
@@ -754,6 +762,9 @@ function renderPostImageEditor(post) {
 }
 
 function renderPost(post, { detail = false } = {}) {
+    if (post.moderation?.hidden && post.moderation?.action === 'delete') {
+        return `<article class="tf-post tf-card tf-post-tombstone" data-post-id="${escapeHtml(post.id)}"><span>${icon('shield')}</span><div><small>社区管理记录 · ${formatTime(post.moderation.updatedAt || post.createdAt)}</small><h3>这篇帖子已被管理员删除</h3><p>原内容仅保留为本地管理记录，不可查看、回复、转发或注入正文。</p>${post.moderation.reason ? `<em>${escapeHtml(post.moderation.reason)}</em>` : ''}<b>此提示仅你可见；此前看过内容的角色仍可能保留模糊印象。</b></div></article>`;
+    }
     const injecting = Boolean(post.selectedForInjection);
     const imageBusy = viewState.imageBusy.has(post.id);
     const commentsCount = Array.isArray(post.comments) ? post.comments.filter(comment => {
@@ -830,10 +841,6 @@ function renderWorldPortal(data) {
     return `<nav class="tf-world-portal tf-card" aria-label="世界功能入口">${definitions.map(definition => `<button data-action="open-world-page" data-module-id="${escapeHtml(definition.id)}"><span>${definition.id === 'travel' ? renderPixelCompanion(data.world.companion.species, data.world.companion.status, true, data.world.companion) : icon(definition.icon)}</span><b>${escapeHtml(definition.name)}</b>${counts[definition.id] !== '' ? `<small>${escapeHtml(String(counts[definition.id]))}</small>` : ''}</button>`).join('')}</nav>`;
 }
 
-function renderWorldLayoutSwitcher(layout, settingsMode = false) {
-    return `<div class="tf-world-layout-switch ${settingsMode ? 'is-settings' : ''}" role="group" aria-label="世界首页布局"><button class="${layout === 'bento' ? 'is-active' : ''}" data-action="set-world-home-layout" data-world-layout="bento" aria-pressed="${layout === 'bento'}"><span>▦</span>${settingsMode ? '<b>陪伴卡片</b><small>旅伴主卡、天气与运势组件</small>' : '<b>卡片</b>'}</button><button class="${layout === 'window' ? 'is-active' : ''}" data-action="set-world-home-layout" data-world-layout="window" aria-pressed="${layout === 'window'}"><span>▣</span>${settingsMode ? '<b>景观窗景</b><small>完整场景、天气时间与应用轨</small>' : '<b>窗景</b>'}</button></div>`;
-}
-
 function renderWorldAppDock(cards, companion, className = '') {
     return `<nav class="tf-world-app-dock ${className}" aria-label="世界应用">${cards.map(([id, name, summary, state]) => `<button class="tf-service-card tf-world-app-icon is-${id}" data-action="open-world-page" data-module-id="${id}" title="${escapeHtml(summary)}"><span class="tf-service-icon">${id === 'travel' ? renderPixelCompanion(companion.species, companion.status, true, companion) : icon(getModuleDefinition(id)?.icon || 'sparkles')}</span><span><b>${escapeHtml(name)}</b><small>${escapeHtml(state)}</small></span><i aria-hidden="true"></i></button>`).join('')}</nav>`;
 }
@@ -864,7 +871,7 @@ function renderServicesHub(data) {
     const layout = settings.ui.worldHomeLayout === 'window' ? 'window' : 'bento';
     const now = new Date();
     const dateLabel = `${now.getFullYear()}年${String(now.getMonth() + 1).padStart(2, '0')}月${String(now.getDate()).padStart(2, '0')}日　${['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'][now.getDay()]}`;
-    const header = `<header class="tf-world-home-title"><div><small>WORLD HOME</small><h1>世界</h1><p class="tf-world-home-description">每个功能都在自己的 App 中运行；这里保留今天最重要的摘要与稳定入口。</p><p class="tf-world-home-date">${escapeHtml(dateLabel)}</p></div><div><span class="tf-world-local-state"><i></i>${localModules} 项本地运行</span>${renderWorldLayoutSwitcher(layout)}</div></header>`;
+    const header = `<header class="tf-world-home-title"><div><small>WORLD HOME</small><h1>世界</h1><p class="tf-world-home-description">每个功能都在自己的 App 中运行；这里保留今天最重要的摘要与稳定入口。</p><p class="tf-world-home-date">${escapeHtml(dateLabel)}</p></div><div><span class="tf-world-local-state"><i></i>${localModules} 项本地运行</span></div></header>`;
     const empty = `<section class="tf-card tf-empty tf-service-empty"><div class="tf-empty-icon">${icon('sparkles')}</div><h3>世界还没有开始运转</h3><p>可以从设置中心的“功能与联动”开启需要的模块。</p><button class="tf-primary-button" data-action="open-settings" data-section="modules">去设置</button></section>`;
     if (!cards.length) return `<section class="tf-services-page tf-world-hub is-layout-${layout}">${header}${empty}</section>`;
     if (layout === 'window') {
@@ -886,7 +893,7 @@ function getFeedPosts(data) {
         || data.npcs.find(npc => normalizeName(npc.name) && normalizeName(npc.name) === normalizeName(post.author));
     const visible = data.posts.filter(post => {
         const npc = roleForPost(post);
-        return !post.moderation?.hidden && !npc?.muted && !npc?.blocked && (!viewState.selectedTopic || (post.tags || []).some(tag => String(tag).toLocaleLowerCase() === viewState.selectedTopic.toLocaleLowerCase()));
+        return (!post.moderation?.hidden || post.moderation?.action === 'delete') && !npc?.muted && !npc?.blocked && (!viewState.selectedTopic || (post.tags || []).some(tag => String(tag).toLocaleLowerCase() === viewState.selectedTopic.toLocaleLowerCase()));
     });
     if (viewState.feedMode === 'following') return visible.filter(post => isMyHandle(post.handle) || data.npcs.some(npc => npc.followedByUser && roleMatchesPost(npc, post))).sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
     if (viewState.feedMode === 'latest') return visible.sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
@@ -1002,9 +1009,38 @@ function renderTaskInbox(data) {
     return `<section class="tf-task-inbox"><header><div><h2>委托</h2><p>角色发来的任务会像消息一样出现在这里。</p></div></header><div class="tf-task-inbox-list">${tasks.length ? tasks.map(task => `<article class="tf-card" data-world-item-id="${escapeHtml(task.id)}"><div><b>${escapeHtml(task.issuer)}</b><time>${formatTime(task.createdAt)}</time></div><h3>${escapeHtml(task.title)}</h3><p>${escapeHtml(task.description)}</p>${task.reward ? `<span>可能奖励：${escapeHtml(task.reward)}</span>` : ''}<footer>${task.status === 'offered' ? '<button data-action="set-task-status" data-status="accepted">接受</button><button data-action="set-task-status" data-status="abandoned">婉拒</button>' : task.status === 'accepted' ? '<button data-action="set-task-status" data-status="completed">完成</button><button data-action="set-task-status" data-status="failed">失败</button>' : `<em>${task.status === 'completed' ? '已完成' : task.status === 'failed' ? '已失败' : '已结束'}</em>`}</footer></article>`).join('') : '<div class="tf-card tf-empty"><div class="tf-empty-icon">'+icon('book')+'</div><h3>暂时没有委托</h3></div>'}</div></section>`;
 }
 
+function userCanManageReports() {
+    const settings = getSettings();
+    return roleCan(settings, { permissionRole: settings.profile.permissionRole || 'member' }, 'adjudicateReport');
+}
+
+function reportIsRelatedToUser(data, report) {
+    if (!report) return false;
+    if (report.source === 'user') return true;
+    const myHandle = String(getSettings().profile.handle || 'me').replace(/^@/, '').toLocaleLowerCase();
+    if (String(report.reporterHandle || '').replace(/^@/, '').toLocaleLowerCase() === myHandle) return true;
+    const post = data.posts.find(item => item.id === report.postId);
+    const comment = report.commentId ? post?.comments?.find(item => item.id === report.commentId) : null;
+    return isMyHandle((comment || post)?.handle);
+}
+
+function canSeeNotification(data, item) {
+    if (npcForId(item.actorNpcId)?.blocked) return false;
+    if (item.type !== 'moderation' && item.category !== 'moderation' && item.moduleId !== 'moderation') return true;
+    if (userCanManageReports()) return true;
+    const directReport = data.world.reports.find(report => report.id === item.itemId);
+    const proposal = data.world.proposals.find(entry => entry.id === item.itemId);
+    const proposalReport = proposal?.payload?.reportId ? data.world.reports.find(report => report.id === proposal.payload.reportId) : null;
+    return reportIsRelatedToUser(data, directReport || proposalReport);
+}
+
+function visibleNotifications(data) {
+    return data.notifications.filter(item => canSeeNotification(data, item));
+}
+
 function renderMessages(data) {
     prepareConversations(data);
-    const unread = data.notifications.filter(item => !item.read && !npcForId(item.actorNpcId)?.blocked).length;
+    const unread = visibleNotifications(data).filter(item => !item.read).length;
     const body = viewState.messageMode === 'notifications'
         ? renderNotifications(data)
         : viewState.messageMode === 'tasks'
@@ -1016,7 +1052,7 @@ function renderMessages(data) {
 function renderNotifications(data) {
     const filters = [['all', '全部'], ['social', '社交'], ['tasks', '委托'], ['companion', '旅伴'], ['health', '健康'], ['moderation', '管理']];
     const socialTypes = new Set(['reply', 'mention', 'like', 'follow', 'mutual']);
-    const items = [...data.notifications].filter(item => !npcForId(item.actorNpcId)?.blocked && (viewState.notificationFilter === 'all' || (viewState.notificationFilter === 'social' ? socialTypes.has(item.type) : item.category === viewState.notificationFilter || item.type === viewState.notificationFilter))).sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
+    const items = visibleNotifications(data).filter(item => viewState.notificationFilter === 'all' || (viewState.notificationFilter === 'social' ? socialTypes.has(item.type) : item.category === viewState.notificationFilter || item.type === viewState.notificationFilter)).sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
     const emptyLabels = { all: ['暂时没有通知', '新的社交和世界提醒会出现在这里。'], social: ['没有新的社交通知', '回复、关注和提及会集中在这里。'], tasks: ['没有委托提醒', '新委托与进度变化会出现在这里。'], companion: ['旅伴还没有来信', '外出后寄回的讯号会出现在这里。'], health: ['没有健康提醒', '身体事件和恢复进度会出现在这里。'], moderation: ['没有管理消息', '举报和裁决进度会出现在这里。'] };
     const empty = emptyLabels[viewState.notificationFilter] || emptyLabels.all;
     return `<section class="tf-notifications"><header><div><small>消息中心</small><h2>通知</h2><p>点击消息可直接进入对应帖子、私信或世界功能。</p></div><button class="tf-secondary-button" data-action="mark-all-notifications">全部已读</button></header><nav class="tf-notification-filters">${filters.map(([id, label]) => `<button class="${viewState.notificationFilter === id ? 'is-active' : ''}" data-action="notification-filter" data-filter="${id}">${label}</button>`).join('')}</nav><div class="tf-notification-list">${items.length ? items.map(item => {
@@ -1154,45 +1190,32 @@ function renderPublicNpcProfile(data, npc) {
 }
 
 function renderPrompts() {
-    const entries = [...getSettings().promptEntries].sort((left, right) => Number(right.order || 0) - Number(left.order || 0));
+    const settings = getSettings();
+    const items = getForumReadOrderItems(settings);
+    const queuedEntryIds = new Set(items.filter(item => item.entry).map(item => item.entry.id));
+    const inactiveEntries = settings.promptEntries.filter(entry => !queuedEntryIds.has(entry.id));
     const roleOptions = role => [['system', '系统'], ['user', '用户'], ['assistant', '助手']]
         .map(([value, label]) => `<option value="${value}" ${role === value ? 'selected' : ''}>${label}</option>`).join('');
-    return `<section class="tf-section-page tf-prompt-settings"><header><div><h2>论坛设定</h2><p>像酒馆预设一样排列消息；默认折叠，只显示条目名，可以拖动手柄改变注入顺序。</p></div><div><button class="tf-secondary-button" data-action="import-prompts">导入</button><button class="tf-secondary-button" data-action="export-prompts">导出</button><button class="tf-primary-button" data-action="add-prompt-entry">${icon('plus')}新增</button></div></header><div class="tf-prompt-order-note"><span>上方条目优先注入</span><small>拖动 ⠿ 排序；手机端可在展开后使用上移/下移</small></div><div class="tf-prompt-list">${entries.map((entry, index) => {
-        const open = viewState.openPromptEntries.has(entry.id);
-        return `<article class="tf-card tf-prompt-entry ${open ? 'is-open' : ''} ${entry.enabled ? '' : 'is-disabled'}" data-entry-id="${escapeHtml(entry.id)}"><header><span class="tf-prompt-drag-handle" data-prompt-drag-id="${escapeHtml(entry.id)}" title="拖动排序" aria-label="拖动${escapeHtml(entry.title)}排序">⠿</span><button class="tf-prompt-summary" data-action="toggle-prompt-editor" data-entry-id="${escapeHtml(entry.id)}" aria-expanded="${open}"><b>${escapeHtml(entry.title || '未命名设定')}</b>${icon('chevron')}</button></header><div class="tf-prompt-editor" ${open ? '' : 'hidden'}><div class="tf-prompt-editor-head"><label><span>条目名</span><input data-entry-field="title" value="${escapeHtml(entry.title)}"></label><label class="tf-prompt-role"><span>role</span><select data-entry-field="role">${roleOptions(entry.role)}</select></label><div>${renderSwitch({ checked: entry.enabled, action: 'toggle-prompt-entry', label: '启用' })}</div><button class="tf-icon-button" data-action="delete-prompt-entry" data-entry-id="${escapeHtml(entry.id)}" title="删除">${icon('trash')}</button></div><label class="tf-prompt-content-field"><span>设定内容</span><textarea data-entry-field="content" rows="7">${escapeHtml(entry.content)}</textarea></label><footer><label>触发词<input data-entry-field="keywords" value="${escapeHtml((entry.keywords || []).join(', '))}" placeholder="逗号分隔"></label><label>顺序权重<input type="number" data-entry-field="order" value="${Number(entry.order || 0)}"></label>${renderSwitch({ checked: entry.constant, action: 'toggle-prompt-constant', label: '常驻' })}<div class="tf-prompt-move-actions"><button class="tf-secondary-button" data-action="move-prompt-entry" data-entry-id="${escapeHtml(entry.id)}" data-direction="-1" ${index === 0 ? 'disabled' : ''}>上移</button><button class="tf-secondary-button" data-action="move-prompt-entry" data-entry-id="${escapeHtml(entry.id)}" data-direction="1" ${index === entries.length - 1 ? 'disabled' : ''}>下移</button></div></footer></div></article>`;
-    }).join('')}</div></section>`;
+    const renderMoveActions = (id, index, total) => `<div class="tf-prompt-move-actions"><button class="tf-secondary-button" data-action="move-read-order" data-read-order-id="${escapeHtml(id)}" data-direction="-1" ${index === 0 ? 'disabled' : ''}>上移</button><button class="tf-secondary-button" data-action="move-read-order" data-read-order-id="${escapeHtml(id)}" data-direction="1" ${index === total - 1 ? 'disabled' : ''}>下移</button></div>`;
+    const renderEntryEditor = (entry, index, total) => `<div class="tf-prompt-editor-head"><label><span>条目名</span><input data-entry-field="title" value="${escapeHtml(entry.title)}"></label><label class="tf-prompt-role"><span>角色</span><select data-entry-field="role">${roleOptions(entry.role)}</select></label><div>${renderSwitch({ checked: entry.enabled, action: 'toggle-prompt-entry', label: '启用' })}</div><button class="tf-icon-button" data-action="delete-prompt-entry" data-entry-id="${escapeHtml(entry.id)}" title="删除">${icon('trash')}</button></div><label class="tf-prompt-content-field"><span>设定内容</span><textarea data-entry-field="content" rows="7">${escapeHtml(entry.content)}</textarea></label><footer><label>触发词<input data-entry-field="keywords" value="${escapeHtml((entry.keywords || []).join(', '))}" placeholder="逗号分隔"></label>${renderSwitch({ checked: entry.constant, action: 'toggle-prompt-constant', label: '常驻' })}${index >= 0 ? renderMoveActions(`forum:${entry.id}`, index, total) : ''}</footer>`;
+    const renderQueueItem = (item, index) => {
+        const open = viewState.openPromptEntries.has(item.id);
+        const trigger = item.entry ? (item.entry.constant ? '常驻' : `触发：${(item.entry.keywords || []).join('、') || '未填写'}`) : item.note;
+        const detail = item.entry
+            ? renderEntryEditor(item.entry, index, items.length)
+            : `<div class="tf-prompt-source-detail"><div><b>${escapeHtml(item.type)} · ${escapeHtml(roleOptionsLabel(item.role))}</b><p>${escapeHtml(item.note)}</p>${item.preview ? `<blockquote>${escapeHtml(item.preview)}</blockquote>` : ''}</div><div class="tf-prompt-source-actions"><button class="tf-secondary-button" data-action="open-settings" data-section="${item.type === '内置' ? 'builtinPrompts' : 'sources'}">${item.type === '内置' ? '编辑内置内容' : '管理读取来源'}</button>${renderMoveActions(item.id, index, items.length)}</div></div>`;
+        return `<article class="tf-card tf-prompt-entry ${open ? 'is-open' : ''}" data-read-order-id="${escapeHtml(item.id)}" ${item.entry ? `data-entry-id="${escapeHtml(item.entry.id)}"` : ''}><header><span class="tf-prompt-drag-handle" draggable="true" data-read-order-drag-id="${escapeHtml(item.id)}" title="拖动改变发送顺序">⠿</span><b class="tf-prompt-sequence-number">${String(index + 1).padStart(2, '0')}</b><button class="tf-prompt-summary" data-action="toggle-prompt-editor" data-entry-id="${escapeHtml(item.id)}" aria-expanded="${open}"><span><small>${escapeHtml(item.type)} · ${escapeHtml(roleOptionsLabel(item.role))} · ${escapeHtml(trigger)}</small><b>${escapeHtml(item.title)}</b></span>${icon('chevron')}</button></header><div class="tf-prompt-editor" ${open ? '' : 'hidden'}>${detail}</div></article>`;
+    };
+    const renderInactiveEntry = entry => {
+        const open = viewState.openPromptEntries.has(`inactive:${entry.id}`);
+        const reason = entry.enabled ? '内容为空，不会发送' : '已停用，不会发送';
+        return `<article class="tf-card tf-prompt-entry is-disabled ${open ? 'is-open' : ''}" data-entry-id="${escapeHtml(entry.id)}"><header><span class="tf-prompt-drag-placeholder"></span><span class="tf-prompt-sequence-number">—</span><button class="tf-prompt-summary" data-action="toggle-prompt-editor" data-entry-id="inactive:${escapeHtml(entry.id)}" aria-expanded="${open}"><span><small>论坛设定 · ${escapeHtml(roleOptionsLabel(entry.role))} · ${reason}</small><b>${escapeHtml(entry.title || '未命名设定')}</b></span>${icon('chevron')}</button></header><div class="tf-prompt-editor" ${open ? '' : 'hidden'}>${renderEntryEditor(entry, -1, 0)}</div></article>`;
+    };
+    return `<section class="tf-section-page tf-prompt-settings"><header><div><h2>论坛设定</h2><p>这里是论坛唯一的提示词队列；从上到下就是实际发送给 AI 的 messages 顺序。</p></div><div><button class="tf-secondary-button" data-action="import-prompts">导入</button><button class="tf-secondary-button" data-action="export-prompts">导出</button><button class="tf-primary-button" data-action="add-prompt-entry">${icon('plus')}新增</button></div></header><div class="tf-prompt-order-note"><span>队列位置就是实际发送位置</span><small>只列出论坛当前允许读取的内容；拖动 ⠿ 排序，手机端可展开后上移或下移</small></div><div class="tf-prompt-list">${items.map(renderQueueItem).join('')}</div>${inactiveEntries.length ? `<details class="tf-prompt-inactive"><summary>未参与读取 · ${inactiveEntries.length} 条</summary><div class="tf-prompt-list">${inactiveEntries.map(renderInactiveEntry).join('')}</div></details>` : ''}</section>`;
 }
 
-function getOrderedPromptEntries() {
-    return [...getSettings().promptEntries].sort((left, right) => Number(right.order || 0) - Number(left.order || 0));
-}
-
-function savePromptEntryOrder(entries) {
-    entries.forEach((entry, index) => { entry.order = (entries.length - index) * 10; });
-    getSettings().promptEntries = entries;
-    saveSettings();
-}
-
-function movePromptEntry(entryId, targetId, placement = 'before') {
-    const entries = getOrderedPromptEntries();
-    const sourceIndex = entries.findIndex(entry => entry.id === entryId);
-    const targetIndex = entries.findIndex(entry => entry.id === targetId);
-    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return false;
-    const [entry] = entries.splice(sourceIndex, 1);
-    const adjustedTarget = entries.findIndex(item => item.id === targetId);
-    entries.splice(adjustedTarget + (placement === 'after' ? 1 : 0), 0, entry);
-    savePromptEntryOrder(entries);
-    return true;
-}
-
-function movePromptEntryByStep(entryId, direction) {
-    const entries = getOrderedPromptEntries();
-    const sourceIndex = entries.findIndex(entry => entry.id === entryId);
-    const targetIndex = sourceIndex + (Number(direction) < 0 ? -1 : 1);
-    if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= entries.length) return false;
-    [entries[sourceIndex], entries[targetIndex]] = [entries[targetIndex], entries[sourceIndex]];
-    savePromptEntryOrder(entries);
-    return true;
+function roleOptionsLabel(role) {
+    return ({ system: '系统', user: '用户', assistant: '助手' })[role] || '系统';
 }
 
 function renderBuiltinPrompts() {
@@ -1668,8 +1691,7 @@ function renderWorldFeaturePage(data, moduleId) {
 function renderWorldModules(data) {
     const settings = getSettings();
     const linked = WORLD_MODULE_DEFINITIONS.filter(definition => definition.id !== 'forum' && settings.modules[definition.id].enabled && settings.modules[definition.id].generationMode === 'linked');
-    const layout = settings.ui.worldHomeLayout === 'window' ? 'window' : 'bento';
-    return `<section class="tf-section-page tf-modules-page"><header><div><h2>世界功能</h2><p>这里决定功能是否存在、如何生成及是否允许正文读取；内容会出现在私信、通知、个人页和角色主页的自然位置。</p></div><button class="tf-primary-button" data-action="generate-posts" ${viewState.busy || !settings.modules.forum.enabled ? 'disabled' : ''}>${viewState.busy ? '<span class="tf-spinner"></span>' : icon('refresh')}刷新论坛</button></header><section class="tf-card tf-settings-card tf-world-home-layout-setting"><header><div><h3>世界首页样式</h3><p>两种样式共用同一份旅伴、天气、运势和背包数据；切换不会调用 API。</p></div><span>当前：${layout === 'window' ? '窗景模式' : '组件模式'}</span></header>${renderWorldLayoutSwitcher(layout, true)}</section><section class="tf-card tf-orchestrator-card"><header><div><h3>持续联动</h3><p>${linked.length ? `每次论坛刷新都会同时处理：${linked.map(item => item.name).join('、')}；合并为一次文本 API 调用。` : '当前没有其他功能参与论坛刷新。'}</p></div>${renderSwitch({ checked: settings.orchestration.enabled, action: 'toggle-orchestrator', label: '启用联动' })}</header><div class="tf-form-grid"><label><span>联动 API</span><select data-orchestration-field="apiProfileId">${renderModuleApiOptions(settings.orchestration.apiProfileId)}</select></label><label><span>联动总 RPM 上限</span><input type="number" min="0" max="600" data-orchestration-field="rpm" value="${Number(settings.orchestration.rpm || 0)}" placeholder="0=不限"></label><div>${renderSwitch({ checked: settings.orchestration.worldTimeEnabled, action: 'toggle-world-time', label: '提供世界时间' })}</div><label><span>世界时间（可留空自动）</span><input data-orchestration-field="worldTimeLabel" value="${escapeHtml(settings.orchestration.worldTimeLabel)}" placeholder="例如：雨季第三周的夜晚"></label></div></section><div class="tf-module-grid">${WORLD_MODULE_DEFINITIONS.map(renderModuleCard).join('')}</div></section>`;
+    return `<section class="tf-section-page tf-modules-page"><header><div><h2>世界功能</h2><p>这里决定功能是否存在、如何生成及是否允许正文读取；内容会出现在私信、通知、个人页和角色主页的自然位置。</p></div><button class="tf-primary-button" data-action="generate-posts" ${viewState.busy || !settings.modules.forum.enabled ? 'disabled' : ''}>${viewState.busy ? '<span class="tf-spinner"></span>' : icon('refresh')}刷新论坛</button></header><section class="tf-card tf-orchestrator-card"><header><div><h3>持续联动</h3><p>${linked.length ? `每次论坛刷新都会同时处理：${linked.map(item => item.name).join('、')}；合并为一次文本 API 调用。` : '当前没有其他功能参与论坛刷新。'}</p></div>${renderSwitch({ checked: settings.orchestration.enabled, action: 'toggle-orchestrator', label: '启用联动' })}</header><div class="tf-form-grid"><label><span>联动 API</span><select data-orchestration-field="apiProfileId">${renderModuleApiOptions(settings.orchestration.apiProfileId)}</select></label><label><span>联动总 RPM 上限</span><input type="number" min="0" max="600" data-orchestration-field="rpm" value="${Number(settings.orchestration.rpm || 0)}" placeholder="0=不限"></label><div>${renderSwitch({ checked: settings.orchestration.worldTimeEnabled, action: 'toggle-world-time', label: '提供世界时间' })}</div><label><span>世界时间（可留空自动）</span><input data-orchestration-field="worldTimeLabel" value="${escapeHtml(settings.orchestration.worldTimeLabel)}" placeholder="例如：雨季第三周的夜晚"></label></div></section><div class="tf-module-grid">${WORLD_MODULE_DEFINITIONS.map(renderModuleCard).join('')}</div></section>`;
 }
 
 function renderModeration(data, appMode = false) {
@@ -1679,10 +1701,19 @@ function renderModeration(data, appMode = false) {
     const pendingProposals = world.proposals.filter(proposal => proposal.moduleId === 'moderation' && proposal.status === 'pending');
     const roleOptions = selected => settings.moderation.permissionLevels.map(level => `<option value="${escapeHtml(level.id)}" ${selected === level.id ? 'selected' : ''}>${escapeHtml(level.name)} · 等级 ${Number(level.level)}</option>`).join('');
     const capabilityText = level => [['deletePost', '删帖'], ['adjudicateReport', '审理'], ['pinPost', '置顶'], ['issueTask', '发任务']].filter(([field]) => level?.[field]).map(([, label]) => label).join('、') || '普通成员权限';
-    const assignments = `<section class="tf-card tf-settings-card tf-permission-assignments"><header><div><h3>成员权限</h3><p>直接选择一个论坛角色，再赋予身份。权限不会因为角色重新生成人设而消失。</p></div><span>${data.npcs.length} 位成员</span></header><div>${data.npcs.length ? [...data.npcs].sort((a, b) => Number(b.systemRole) - Number(a.systemRole) || a.name.localeCompare(b.name, 'zh-CN')).map(npc => { const level = getPermissionLevel(settings, npc.permissionRole); return `<article data-npc-id="${escapeHtml(npc.id)}">${renderAvatar(npc.name, { avatarUrl: npc.avatarUrl, avatarKey: npc.avatarKey })}<div><b>${escapeHtml(npc.name)}${npc.systemRole ? '<small>当前 Char</small>' : ''}</b><span>@${escapeHtml(npc.handle)}</span><small>${escapeHtml(capabilityText(level))}</small></div><select data-npc-permission-role aria-label="赋予角色权限">${roleOptions(npc.permissionRole)}</select></article>`; }).join('') : '<p class="tf-empty-mini">还没有可以赋权的论坛角色</p>'}</div></section>`;
-    const systemAdmin = `<section class="tf-card tf-settings-card tf-system-admin-card ${settings.moderation.systemAdminEnabled ? 'is-enabled' : ''}"><header><span class="tf-system-admin-avatar">AI</span><div><h3>系统 AI 管理员 · ${escapeHtml(settings.moderation.systemAdminName)}</h3><p>只在审理举报时调用治理模块 API；默认关闭，且仍服从“由我确认 / 自动执行”的权限。</p></div>${renderSwitch({ checked: settings.moderation.systemAdminEnabled, action: 'toggle-system-ai-admin', label: '' })}</header><div class="tf-system-admin-options">${renderSwitch({ checked: settings.moderation.npcReportsEnabled, action: 'toggle-npc-reports', label: '允许 NPC 举报帖子' })}<small>NPC 举报复用论坛原本的一次生成，不额外调用 API；没有举报动机时不会创建记录。</small></div></section>`;
+    const userLevel = getPermissionLevel(settings, settings.profile.permissionRole);
+    const members = [
+        `<article class="is-user"><span class="tf-system-admin-avatar">我</span><div><b>${escapeHtml(getMyDisplayName())}<small>用户本人</small></b><span>@${escapeHtml(settings.profile.handle || 'me')}</span><small>${escapeHtml(capabilityText(userLevel))}</small></div><select data-user-permission-role aria-label="我的社区权限">${roleOptions(settings.profile.permissionRole)}</select></article>`,
+        ...[...data.npcs].sort((a, b) => Number(b.systemRole) - Number(a.systemRole) || a.name.localeCompare(b.name, 'zh-CN')).map(npc => { const level = getPermissionLevel(settings, npc.permissionRole); return `<article data-npc-id="${escapeHtml(npc.id)}">${renderAvatar(npc.name, { avatarUrl: npc.avatarUrl, avatarKey: npc.avatarKey })}<div><b>${escapeHtml(npc.name)}${npc.systemRole ? '<small>当前 Char</small>' : ''}</b><span>@${escapeHtml(npc.handle)}</span><small>${escapeHtml(capabilityText(level))}</small></div><select data-npc-permission-role aria-label="赋予角色权限">${roleOptions(npc.permissionRole)}</select></article>`; }),
+    ];
+    const assignments = `<section class="tf-card tf-settings-card tf-permission-assignments"><header><div><h3>成员权限</h3><p>AI 可在论坛生成时按世界观任命成员；你也可以在这里手动调整。</p></div><span>${data.npcs.length + 1} 位成员</span></header><div>${members.join('')}</div></section>`;
+    const admins = data.npcs.filter(npc => roleCan(settings, npc, 'adjudicateReport'));
+    const adminBusy = viewState.moduleBusy.has('moderator-profiles');
+    const adminProfiles = `<section class="tf-card tf-settings-card tf-admin-profiles"><header><div><h3>管理员角色</h3><p>管理员可以有多位；他们是论坛角色，各自拥有符合世界观的人设和管理风格。</p></div><div><button class="tf-secondary-button" data-action="add-manual-moderator">手动新增</button><button class="tf-primary-button" data-action="generate-moderator-profiles" ${adminBusy ? 'disabled' : ''}>${adminBusy ? '<span class="tf-spinner"></span>生成中' : `${icon('sparkles')}按世界观生成`}</button></div></header><div>${admins.length ? admins.map(npc => `<article data-npc-id="${escapeHtml(npc.id)}"><div>${renderAvatar(npc.name, { avatarUrl: npc.avatarUrl, avatarKey: npc.avatarKey })}<label><span>名称</span><input data-npc-field="name" value="${escapeHtml(npc.name)}"></label><label><span>账号</span><input data-npc-field="handle" value="${escapeHtml(npc.handle)}"></label><select data-npc-permission-role>${roleOptions(npc.permissionRole)}</select></div><label><span>管理员人设</span><textarea rows="5" data-npc-field="persona" placeholder="经历、性格、管理原则与说话方式">${escapeHtml(npc.persona || '')}</textarea></label></article>`).join('') : '<p class="tf-empty-mini">目前没有管理员角色。可以手动新增，也可以主动调用一次 API 按世界观生成。</p>'}</div></section>`;
+    const systemAdmin = `<section class="tf-card tf-settings-card tf-system-admin-card ${settings.moderation.systemAdminEnabled ? 'is-enabled' : ''}"><header><span class="tf-system-admin-avatar">AI</span><div><h3>AI 治理系统</h3><p>负责审理与权限建议，不代表唯一的管理员角色。驳回举报会直接生效，删除或警告仍遵守自动化权限。</p></div>${renderSwitch({ checked: settings.moderation.systemAdminEnabled, action: 'toggle-system-ai-admin', label: '' })}</header><div class="tf-system-admin-options">${renderSwitch({ checked: settings.moderation.npcReportsEnabled, action: 'toggle-npc-reports', label: '允许 NPC 举报帖子与评论' })}${renderSwitch({ checked: settings.moderation.autoAssignPermissions, action: 'toggle-auto-assign-permissions', label: '允许 AI 自动任命论坛成员' })}<small>举报与权限检查复用论坛原本的一次生成；只有主动审理或生成管理员人设才单独调用 API。</small></div></section>`;
     const heading = appMode ? systemAdmin : `<header><div><h2>社区治理</h2><p>社区规则、成员权限、举报与 AI 裁决都集中在这里。法条由你自行填写。</p></div></header>${systemAdmin}`;
-    return `<section class="tf-section-page tf-moderation-page">${heading}<section class="tf-card tf-settings-card"><header><div><h3>社区规则</h3><p>AI 管理员只按这里的规则判断，不会擅自引用现实法律。</p></div></header><textarea rows="8" data-moderation-rules>${escapeHtml(settings.moderation.communityRules)}</textarea></section>${assignments}<section class="tf-card tf-settings-card"><header><div><h3>权限层级</h3><p>角色获得某个身份后，只能使用该层级允许的操作。</p></div></header><div class="tf-permission-levels">${settings.moderation.permissionLevels.map(level => `<article data-permission-id="${escapeHtml(level.id)}"><label><span>名称</span><input data-permission-field="name" value="${escapeHtml(level.name)}"></label><label><span>等级</span><input type="number" data-permission-field="level" value="${Number(level.level)}"></label><div>${[['deletePost','删帖'],['adjudicateReport','审理举报'],['pinPost','置顶'],['issueTask','发布任务']].map(([field, label]) => `<label><input type="checkbox" data-permission-capability="${field}" ${level[field] ? 'checked' : ''}>${label}</label>`).join('')}</div></article>`).join('')}</div></section><section class="tf-card tf-settings-card"><header><div><h3>待处理举报</h3><p>用户举报不会立刻删帖；是否自动执行取决于模块的自动化权限。</p></div><span>${pendingReports.length}</span></header><div class="tf-report-list">${world.reports.length ? [...world.reports].reverse().map(report => { const post = data.posts.find(item => item.id === report.postId); return `<article data-report-id="${escapeHtml(report.id)}"><div><b>${escapeHtml(post ? `@${post.handle}：${post.content.slice(0, 80)}` : '原帖已不存在')}</b><p>${escapeHtml(report.reason)}</p><small>${escapeHtml(report.status)}${report.decision ? ` · ${escapeHtml(report.decision)}` : ''}</small></div><footer>${report.status === 'pending' ? `<button data-action="ai-review-report">AI 管理员审理</button><button data-action="dismiss-report">驳回</button><button class="tf-danger-text" data-action="manual-remove-report-post">隐藏帖子</button>` : ''}</footer></article>`; }).join('') : '<p class="tf-empty-mini">暂时没有举报</p>'}</div></section>${pendingProposals.length ? `<section class="tf-card tf-settings-card"><header><div><h3>等待确认的管理操作</h3><p>“先确认”模式下，AI 只提出建议，不会直接执行。</p></div></header><div class="tf-proposal-list">${pendingProposals.map(proposal => `<article data-proposal-id="${escapeHtml(proposal.id)}"><div><b>${escapeHtml(proposal.title)}</b><p>${escapeHtml(proposal.description)}</p></div><footer><button data-action="resolve-proposal" data-accepted="true">执行</button><button data-action="resolve-proposal" data-accepted="false">拒绝</button></footer></article>`).join('')}</div></section>` : ''}</section>`;
+    const reports = world.reports.length ? [...world.reports].reverse().map(report => { const post = data.posts.find(item => item.id === report.postId); const comment = report.commentId ? post?.comments?.find(item => item.id === report.commentId) : null; const target = comment || post; const label = comment ? '评论' : '帖子'; return `<article data-report-id="${escapeHtml(report.id)}"><div><b>${escapeHtml(target ? `${label} · @${target.handle}：${target.content.slice(0, 80)}` : '举报内容已不存在')}</b><p>${escapeHtml(report.reason)}</p><small>${escapeHtml(report.status)}${report.decision ? ` · ${escapeHtml(report.decision)}` : ''}</small></div><footer>${report.status === 'pending' ? `<button data-action="ai-review-report">AI 审理</button><button data-action="dismiss-report">驳回</button><button class="tf-danger-text" data-action="manual-remove-report-post">隐藏${label}</button>` : ''}</footer></article>`; }).join('') : '<p class="tf-empty-mini">暂时没有举报</p>';
+    return `<section class="tf-section-page tf-moderation-page">${heading}<section class="tf-card tf-settings-card"><header><div><h3>社区规则</h3><p>AI 治理只按这里的规则判断，不会擅自引用现实法律。</p></div></header><textarea rows="8" data-moderation-rules>${escapeHtml(settings.moderation.communityRules)}</textarea></section>${adminProfiles}${assignments}<section class="tf-card tf-settings-card"><header><div><h3>权限层级</h3><p>角色获得某个身份后，只能使用该层级允许的操作。</p></div></header><div class="tf-permission-levels">${settings.moderation.permissionLevels.map(level => `<article data-permission-id="${escapeHtml(level.id)}"><label><span>名称</span><input data-permission-field="name" value="${escapeHtml(level.name)}"></label><label><span>等级</span><input type="number" data-permission-field="level" value="${Number(level.level)}"></label><div>${[['deletePost','删帖'],['adjudicateReport','审理举报'],['pinPost','置顶'],['issueTask','发布任务']].map(([field, label]) => `<label><input type="checkbox" data-permission-capability="${field}" ${level[field] ? 'checked' : ''}>${label}</label>`).join('')}</div></article>`).join('')}</div></section><section class="tf-card tf-settings-card"><header><div><h3>举报记录</h3><p>AI 驳回会直接结案；隐藏、删除或警告仍按自动化权限处理。</p></div><span>${pendingReports.length}</span></header><div class="tf-report-list">${reports}</div></section>${pendingProposals.length ? `<section class="tf-card tf-settings-card"><header><div><h3>等待确认的破坏性操作</h3><p>“先确认”模式下，隐藏、删除或警告需要有管理权限的用户确认。</p></div></header><div class="tf-proposal-list">${pendingProposals.map(proposal => `<article data-proposal-id="${escapeHtml(proposal.id)}"><div><b>${escapeHtml(proposal.title)}</b><p>${escapeHtml(proposal.description)}</p></div><footer><button data-action="resolve-proposal" data-accepted="true">执行</button><button data-action="resolve-proposal" data-accepted="false">拒绝</button></footer></article>`).join('')}</div></section>` : ''}</section>`;
 }
 
 function renderApiParameterRows(profile) {
@@ -1762,55 +1793,69 @@ function renderSillyTavernPresetCatalog(settings) {
 
 function getForumReadOrderItems(settings = getSettings()) {
     const data = getForumData();
+    const sourceContext = viewState.promptSourceContext || {};
+    const visiblePosts = data.posts.filter(post => !post.moderation?.hidden);
+    const scanText = [
+        sourceContext.chat,
+        sourceContext.userPersona,
+        sourceContext.characterPersona,
+        ...(sourceContext.worldInfo || []).map(entry => entry.content),
+        ...(sourceContext.facts || []).map(entry => entry.content),
+        ...visiblePosts.slice(-6).map(post => post.content),
+    ].filter(Boolean).join('\n');
     const items = [
-        { id: 'builtin:forum-system', title: '论坛主提示词', type: '内置', role: 'system', defaultPosition: 100, note: '始终发送' },
+        { id: 'builtin:forum-system', title: '论坛主提示词', type: '内置', role: 'system', defaultPosition: 100, note: '始终发送；内容在“内置提示词”中编辑' },
     ];
-    if (settings.sources.sillyTavernPreset) {
-        getSillyTavernPresetCatalog().filter(entry => settings.sources.presetEntries[entry.id]).forEach((entry, index) => items.push({
+    (sourceContext.presetPrompts || []).forEach((entry, index) => items.push({
             id: `preset:${entry.id}`,
             title: entry.title,
             type: '酒馆预设',
             role: entry.role,
             defaultPosition: 200 + (Number.isFinite(Number(entry.order)) ? Number(entry.order) : index),
-            note: `沿用预设中的第 ${Number(entry.order ?? index) + 1} 个位置`,
+            note: '论坛只读取这里勾选的酒馆预设副本',
+            preview: entry.content.slice(0, 240),
         }));
-    }
-    settings.promptEntries.filter(entry => entry.enabled && String(entry.content || '').trim()).sort((left, right) => Number(right.order || 0) - Number(left.order || 0)).forEach((entry, index) => items.push({
+    getActivePromptEntries(settings.promptEntries, scanText).forEach((entry, index) => items.push({
         id: `forum:${entry.id}`,
         title: entry.title || '未命名论坛设定',
         type: '论坛设定',
         role: entry.role,
         defaultPosition: 300 + index,
         note: entry.constant ? '常驻' : `命中触发词后读取：${(entry.keywords || []).join('、') || '尚未填写'}`,
+        entry,
     }));
-    if (settings.sources.userPersona) items.push({ id: 'source:user-persona', title: 'User 人设', type: '角色资料', role: 'user', defaultPosition: 400, note: '仅有内容时发送' });
-    if (settings.sources.characterPersona) items.push({ id: 'source:character-persona', title: 'Char 人设', type: '角色资料', role: 'user', defaultPosition: 410, note: '仅有内容时发送' });
-    if (settings.sources.worldInfo) {
-        const boundaryEnabled = settings.informationBoundary.enabled !== false;
-        viewState.worldCatalog.filter(book => book.enabled).flatMap(book => book.entries.filter(entry => entry.selected && (!boundaryEnabled || (entry.boundary?.visibility || 'public') === 'public'))).forEach((entry, index) => items.push({
+    if (sourceContext.userPersona) items.push({ id: 'source:user-persona', title: 'User 人设', type: '角色资料', role: 'user', defaultPosition: 400, note: '本轮有内容，会实际发送' });
+    if (sourceContext.characterPersona) items.push({ id: 'source:character-persona', title: 'Char 人设', type: '角色资料', role: 'user', defaultPosition: 410, note: '本轮有内容，会实际发送' });
+    (sourceContext.worldInfo || []).forEach((entry, index) => items.push({
             id: `world:${entry.key}`,
             title: `${entry.book} / ${entry.title}`,
             type: '世界书',
             role: 'user',
             defaultPosition: 500 + (Number.isFinite(Number(entry.position)) ? Number(entry.position) : index),
             note: '已允许论坛读取',
+            preview: entry.content.slice(0, 240),
         }));
-    }
-    if (settings.sources.chat) items.push({ id: 'source:chat', title: '最近故事正文', type: '聊天', role: 'user', defaultPosition: 600, note: `最近 ${Number(settings.generation.contextMessages || 20)} 条` });
-    if (data.facts.some(fact => fact.publishable && (settings.informationBoundary.enabled === false || fact.visibility === 'public'))) items.push({ id: 'source:facts', title: '可公开事实', type: '论坛资料', role: 'user', defaultPosition: 650, note: '仅发送公开且允许发布的事实' });
-    if (data.npcs.some(npc => !npc.blocked)) items.push({ id: 'source:role-memories', title: '角色独立社交记忆', type: '论坛资料', role: 'user', defaultPosition: 660, note: '按角色信息边界读取' });
+    if (sourceContext.chat) items.push({ id: 'source:chat', title: '最近故事正文', type: '聊天', role: 'user', defaultPosition: 600, note: `最近 ${Number(settings.generation.contextMessages || 20)} 条` });
+    if ((sourceContext.facts || []).length) items.push({ id: 'source:facts', title: '可公开事实', type: '论坛资料', role: 'user', defaultPosition: 650, note: '仅发送公开且允许发布的事实' });
+    if ((sourceContext.roleMemories || []).length) items.push({ id: 'source:role-memories', title: '角色独立社交记忆', type: '论坛资料', role: 'user', defaultPosition: 660, note: '按角色信息边界读取' });
     if (data.npcs.some(npc => npc.blocked)) items.push({ id: 'source:excluded-roles', title: '不得出现的账号', type: '论坛资料', role: 'user', defaultPosition: 670, note: '已拉黑角色' });
-    if (data.posts.length) items.push({ id: 'source:existing-posts', title: '论坛已有讨论', type: '论坛资料', role: 'user', defaultPosition: 700, note: '最近 6 篇' });
-    if (settings.orchestration.enabled && WORLD_MODULE_DEFINITIONS.some(definition => definition.id !== 'forum' && settings.modules[definition.id]?.enabled && settings.modules[definition.id]?.generationMode === 'linked')) items.push({ id: 'source:linked-world', title: '联动世界模块', type: '世界功能', role: 'user', defaultPosition: 750, note: '仅在本轮联动时发送' });
-    items.push({ id: 'builtin:generation', title: '生成与输出格式', type: '内置', role: 'user', defaultPosition: 900, note: '始终发送' });
-    return items.map(item => {
-        const saved = Number(settings.sources.promptPositions[item.id]);
-        return { ...item, position: Number.isFinite(saved) ? saved : item.defaultPosition };
-    }).sort((left, right) => left.position - right.position || left.defaultPosition - right.defaultPosition || left.id.localeCompare(right.id));
+    if (visiblePosts.length) items.push({ id: 'source:existing-posts', title: '论坛已有讨论', type: '论坛资料', role: 'user', defaultPosition: 700, note: `最近 ${Math.min(6, visiblePosts.length)} 篇` });
+    if (buildLinkedWorldInstruction({ settings, data })) items.push({ id: 'source:linked-world', title: '联动世界模块', type: '世界功能', role: 'user', defaultPosition: 750, note: '本轮会随论坛请求一起发送' });
+    items.push({ id: 'builtin:generation', title: '生成与输出格式', type: '内置', role: 'user', defaultPosition: 900, note: '始终发送；包含论坛输出结构要求' });
+    return orderForumPromptItems(items, settings.sources.promptOrder);
 }
 
 function saveForumReadOrder(items) {
-    items.forEach((item, index) => { getSettings().sources.promptPositions[item.id] = (index + 1) * 10; });
+    const settings = getSettings();
+    const reorderedIds = items.map(item => item.id);
+    const visibleIds = new Set(reorderedIds);
+    let cursor = 0;
+    const merged = (settings.sources.promptOrder || []).map(id => visibleIds.has(id) ? reorderedIds[cursor++] : id);
+    while (cursor < reorderedIds.length) {
+        const generationIndex = merged.indexOf('builtin:generation');
+        merged.splice(generationIndex < 0 ? merged.length : generationIndex, 0, reorderedIds[cursor++]);
+    }
+    settings.sources.promptOrder = [...new Set(merged)];
     saveSettings();
 }
 
@@ -1836,12 +1881,6 @@ function moveForumReadOrderByStep(sourceId, direction) {
     return true;
 }
 
-function renderForumReadOrder(settings) {
-    const roleLabels = { system: '系统', user: '用户', assistant: '助手' };
-    const items = getForumReadOrderItems(settings);
-    return `<section class="tf-forum-read-order"><header><div><small>PROMPT ORDER</small><h4>论坛实际读取顺序</h4><p>这里只显示已允许论坛读取的项目；从上到下就是 messages 发送给 AI 的顺序。</p></div><span>${items.length} 个位置</span></header><div class="tf-forum-read-order-list">${items.map((item, index) => `<article class="tf-forum-read-order-entry" data-read-order-id="${escapeHtml(item.id)}"><span class="tf-forum-read-order-handle" draggable="true" data-read-order-drag-id="${escapeHtml(item.id)}" title="拖动改变发送顺序">⠿</span><b class="tf-forum-read-order-index">${String(index + 1).padStart(2, '0')}</b><div><small>${escapeHtml(item.type)} · ${escapeHtml(roleLabels[item.role] || item.role)}</small><strong>${escapeHtml(item.title)}</strong><em>${escapeHtml(item.note)}</em></div><label><span>位置</span><input type="number" data-read-order-position="${escapeHtml(item.id)}" value="${Number(item.position)}"></label><div class="tf-forum-read-order-actions"><button data-action="move-read-order" data-read-order-id="${escapeHtml(item.id)}" data-direction="-1" ${index === 0 ? 'disabled' : ''} aria-label="上移${escapeHtml(item.title)}">↑</button><button data-action="move-read-order" data-read-order-id="${escapeHtml(item.id)}" data-direction="1" ${index === items.length - 1 ? 'disabled' : ''} aria-label="下移${escapeHtml(item.title)}">↓</button></div></article>`).join('')}</div></section>`;
-}
-
 function renderSourcesSettings() {
     const settings = getSettings();
     const tokens = viewState.injectionTokens;
@@ -1854,7 +1893,7 @@ function renderSourcesSettings() {
     const sourceSection = `<section class="tf-card tf-settings-card">
         <header><div><h3>论坛生成素材 <span class="tf-direction-tag">正文 → 论坛</span></h3><p>决定生成论坛内容时能参考哪些酒馆资料；这里的开关不会把论坛内容注入主聊天。</p></div></header>
         <div class="tf-form-grid"><div>${renderSwitch({ checked: settings.sources.chat, action: 'toggle-source-chat', label: '把最近正文作为论坛生成素材' })}</div><div>${renderSwitch({ checked: settings.sources.userPersona, action: 'toggle-source-user', label: '读取 User 人设' })}</div><div>${renderSwitch({ checked: settings.sources.characterPersona, action: 'toggle-source-character', label: '读取 Char 人设' })}</div><div>${renderSwitch({ checked: settings.sources.worldInfo, action: 'toggle-source-world', label: '读取世界书' })}</div><div>${renderSwitch({ checked: settings.sources.sillyTavernPreset, action: 'toggle-source-preset', label: '读取酒馆当前预设' })}</div><div>${renderSwitch({ checked: settings.generation.autoRefreshOnMessage, action: 'toggle-auto-refresh', label: 'Char 新回复后自动刷新论坛' })}<small class="tf-setting-hint">收到新的 Char 正文后自动生成一轮动态；开场白不会触发。</small></div><label><span>最近消息数</span><input type="number" data-setting="generation.contextMessages" value="${Number(settings.generation.contextMessages)}" min="1" max="200"></label></div>
-        <div class="tf-generation-ranges"><div><b>每轮帖子数量</b><label>最少<input type="number" data-setting="generation.postsMin" value="${Number(settings.generation.postsMin)}" min="1" max="10"></label><label>最多<input type="number" data-setting="generation.postsMax" value="${Number(settings.generation.postsMax)}" min="1" max="10"></label></div><div><b>每篇初始评论</b><label>最少<input type="number" data-setting="generation.commentsMin" value="${Number(settings.generation.commentsMin)}" min="0" max="8"></label><label>最多<input type="number" data-setting="generation.commentsMax" value="${Number(settings.generation.commentsMax)}" min="0" max="8"></label></div><div><b>回帖后的 AI 跟帖</b><label>最少<input type="number" data-setting="generation.repliesMin" value="${Number(settings.generation.repliesMin)}" min="1" max="8"></label><label>最多<input type="number" data-setting="generation.repliesMax" value="${Number(settings.generation.repliesMax)}" min="1" max="8"></label></div></div>${renderForumReadOrder(settings)}
+        <div class="tf-generation-ranges"><div><b>每轮帖子数量</b><label>最少<input type="number" data-setting="generation.postsMin" value="${Number(settings.generation.postsMin)}" min="1" max="10"></label><label>最多<input type="number" data-setting="generation.postsMax" value="${Number(settings.generation.postsMax)}" min="1" max="10"></label></div><div><b>每篇初始评论</b><label>最少<input type="number" data-setting="generation.commentsMin" value="${Number(settings.generation.commentsMin)}" min="0" max="8"></label><label>最多<input type="number" data-setting="generation.commentsMax" value="${Number(settings.generation.commentsMax)}" min="0" max="8"></label></div><div><b>回帖后的 AI 跟帖</b><label>最少<input type="number" data-setting="generation.repliesMin" value="${Number(settings.generation.repliesMin)}" min="1" max="8"></label><label>最多<input type="number" data-setting="generation.repliesMax" value="${Number(settings.generation.repliesMax)}" min="1" max="8"></label></div></div><div class="tf-source-order-link"><span>${icon('list')}<b>发送顺序由“论坛设定”统一管理</b><small>这里仅决定哪些来源允许读取，不再保存另一套排序。</small></span><button class="tf-secondary-button" data-action="open-settings" data-section="prompts">管理发送顺序</button></div>
         <div class="tf-world-head"><b>酒馆预设逐条选择（只读副本）</b><small>这里的开关不会修改酒馆预设原条目</small></div>${renderSillyTavernPresetCatalog(settings)}
         <div class="tf-world-head"><b>世界书逐条选择</b><button class="tf-secondary-button" data-action="refresh-world-info">刷新</button></div>${renderWorldInfoCatalog(settings)}
     </section>`;
@@ -2001,7 +2040,7 @@ function renderMain(data) {
 
 function renderMainNav() {
     const tab = getSettings().ui.activeTab;
-    const unread = getForumData().notifications.filter(item => !item.read && !npcForId(item.actorNpcId)?.blocked).length;
+    const unread = visibleNotifications(getForumData()).filter(item => !item.read).length;
     return `<nav class="tf-main-nav"><button class="${tab === 'home' ? 'is-active' : ''}" data-action="switch-tab" data-tab="home">${icon('home')}<span>首页</span></button><button class="${tab === 'services' ? 'is-active' : ''}" data-action="switch-tab" data-tab="services">${icon('sparkles')}<span>世界</span></button><button class="${tab === 'messages' ? 'is-active' : ''}" data-action="switch-tab" data-tab="messages">${icon('message')}<span>消息</span>${unread ? `<i class="tf-nav-badge">${unread > 99 ? '99+' : unread}</i>` : ''}</button><button class="${tab === 'me' ? 'is-active' : ''}" data-action="switch-tab" data-tab="me">${icon('user')}<span>我</span></button></nav>`;
 }
 
@@ -2332,9 +2371,10 @@ function setMeSection(section) {
     getSettings().ui.meSection = section;
     viewState.selectedPostId = '';
     viewState.publicNpcId = '';
+    if (section === 'prompts') viewState.promptSourceContext = null;
     saveSettings();
     render();
-    if (['sources', 'boundaries'].includes(section) && !viewState.worldCatalog.length) void refreshWorldCatalog();
+    if (section === 'prompts' || (['sources', 'boundaries'].includes(section) && !viewState.worldCatalog.length)) void refreshWorldCatalog();
 }
 
 function findPost(postId) {
@@ -2366,7 +2406,10 @@ async function refreshWorldCatalog(showNotice = false) {
     viewState.worldLoading = true;
     render({ preserveScroll: true });
     try {
-        viewState.worldCatalog = await getWorldInfoCatalog();
+        [viewState.worldCatalog, viewState.promptSourceContext] = await Promise.all([
+            getWorldInfoCatalog(),
+            getGenerationSourceContext(),
+        ]);
         if (showNotice) notify('success', `已读取 ${viewState.worldCatalog.reduce((sum, book) => sum + book.entries.length, 0)} 条世界书条目`);
     } catch (error) {
         notify('error', `世界书读取失败：${error.message}`);
@@ -2394,6 +2437,7 @@ function addModuleNotification(data, type, content, options = {}) {
     const preferences = getSettings().notifications;
     if (preferences[type] === false) return null;
     const item = createNotification({ type, category: type, content, ...options });
+    if (!canSeeNotification(data, item)) return null;
     data.notifications.unshift(item);
     return item;
 }
@@ -2441,8 +2485,10 @@ function routeWorldUpdatesToApp(data, updates, before = {}) {
         routed.push('角色状态提醒');
     }
     if ((updates.moderationActions || []).length || (data.world.reports?.length || 0) > Number(before.reportCount || 0)) {
-        addModuleNotification(data, 'moderation', '社区管理有新的举报或裁决需要查看', { actorName: '社区管理', moduleId: 'moderation' });
-        routed.push('管理通知');
+        const actionReportId = (updates.moderationActions || []).find(action => action.reportId)?.reportId;
+        const newestReport = data.world.reports.slice(Number(before.reportCount || 0)).at(-1);
+        const reportId = actionReportId || newestReport?.id || '';
+        if (addModuleNotification(data, 'moderation', '社区管理有新的举报或裁决需要查看', { actorName: '社区管理', moduleId: 'moderation', itemId: reportId })) routed.push('管理通知');
     }
     return [...new Set(routed)];
 }
@@ -2512,12 +2558,12 @@ async function runGeneration({ automatic = false } = {}) {
                 setModuleDecision(data, 'fortune', 'local', localUpdates.fortune ? '已按世界日期生成本地运势，未调用 API' : '今日本地运势已存在，未重复生成', { generated: Boolean(localUpdates.fortune) });
             } else setModuleDecision(data, 'fortune', decision.code, decision.message);
         }
-        const npcReportCheck = settings.modules.moderation.enabled && settings.moderation.npcReportsEnabled;
+        const moderationBackgroundCheck = settings.modules.moderation.enabled && (settings.moderation.npcReportsEnabled || settings.moderation.autoAssignPermissions);
         const instructionSettings = settings.orchestration.enabled ? generationSettings : {
             ...generationSettings,
             modules: Object.fromEntries(Object.entries(generationSettings.modules || {}).map(([id, value]) => [id, { ...value, generationMode: 'independent', joinGeneration: false }])),
         };
-        const linkedWorldInstruction = settings.orchestration.enabled || npcReportCheck
+        const linkedWorldInstruction = settings.orchestration.enabled || moderationBackgroundCheck
             ? buildLinkedWorldInstruction({ settings: instructionSettings, data })
             : '';
         const request = buildForumGenerationRequest({ ...getChatSnapshot(), settings, existingPosts: data.posts, sourceContext: await getGenerationSourceContext(), excludedRoles: data.npcs.filter(npc => npc.blocked), linkedWorldInstruction });
@@ -2564,6 +2610,7 @@ async function runGeneration({ automatic = false } = {}) {
             safetyBlocked = filtered.blocked;
             const before = { reportCount: data.world.reports.length };
             worldApplied = applyWorldUpdates(data, filtered.updates, settings);
+            if (filtered.updates.permissionAssignments?.length) saveSettings();
             routed = routeWorldUpdatesToApp(data, filtered.updates, before);
             for (const moduleId of linkedIds) setModuleDecision(data, moduleId, 'generated', '已随论坛刷新联动生成，共用一次 API 请求', { generated: true });
             const proactiveNames = routeProactiveDirectMessages(data, normalizeProactiveDirectMessages(raw));
@@ -2682,8 +2729,12 @@ async function runWorldModuleGeneration(moduleId, { reportId = '', forceApi = fa
         if (reportId) {
             const report = data.world.reports.find(item => item.id === reportId);
             const post = report && data.posts.find(item => item.id === report.postId);
-            if (!report || !post) throw new Error('举报或原帖已不存在');
-            appendWorldRequestInstruction(request, `【本次必须审理的举报】\n你是系统 AI 管理员“${settings.moderation.systemAdminName || '巡界者'}”。举报原因：${report.reason}\n原帖ID：${post.id}\n作者：@${post.handle}\n正文：${post.content}\n请严格依据社区规则，只为这份举报返回一条 moderationActions；actorHandle 可以留空。`);
+            const comment = report?.commentId ? post?.comments?.find(item => item.id === report.commentId) : null;
+            if (!report || !post || (report.commentId && !comment)) throw new Error('举报内容已不存在');
+            const targetText = comment
+                ? `举报目标：评论\n评论ID：${comment.id}\n评论作者：@${comment.handle}\n评论正文：${comment.content}\n所属帖子：${post.id}`
+                : `举报目标：帖子\n原帖ID：${post.id}\n作者：@${post.handle}\n正文：${post.content}`;
+            appendWorldRequestInstruction(request, `【本次必须审理的举报】\n你是系统 AI 治理程序。举报原因：${report.reason}\n${targetText}\n请严格依据社区规则，只为这份举报返回一条 moderationActions；驳回举报属于非破坏性裁决，会直接生效。处理评论时必须填写 commentId。actorHandle 可以留空。`);
             report.status = 'reviewing';
         }
         config = getModuleApiConfig(moduleId);
@@ -2695,10 +2746,12 @@ async function runWorldModuleGeneration(moduleId, { reportId = '', forceApi = fa
             updates.fortune.local = false;
         }
         if (reportId) {
-            const action = updates.moderationActions?.find(item => item.postId === data.world.reports.find(report => report.id === reportId)?.postId);
+            const report = data.world.reports.find(item => item.id === reportId);
+            const action = updates.moderationActions?.find(item => item.postId === report?.postId && (!report?.commentId || !item.commentId || item.commentId === report.commentId));
             if (action) {
                 action.systemAdmin = true;
                 action.reportId = reportId;
+                action.commentId = report?.commentId || action.commentId || '';
             }
         }
         let preparedJourney = null;
@@ -2722,6 +2775,7 @@ async function runWorldModuleGeneration(moduleId, { reportId = '', forceApi = fa
         if (!Object.keys(updates).length) throw new Error(`${definition.name}模块没有返回可读取的数据`);
         const before = { reportCount: data.world.reports.length };
         const applied = applyWorldUpdates(data, updates, settings);
+        if (updates.permissionAssignments?.length) saveSettings();
         if (preparedJourney) {
             applied.push(`完整行程 ${preparedJourney.timing.messageCount} 则来信`);
             const conversation = ensureCompanionConversation(data);
@@ -2733,9 +2787,9 @@ async function runWorldModuleGeneration(moduleId, { reportId = '', forceApi = fa
         for (let index = 0; index < Number(filtered.acceptedSevere || 0); index += 1) data.world.auditLog.push({ id: createId('audit'), moduleId: 'severity', summary: '本轮允许了一项重大剧情事件', createdAt: Date.now() });
         if (reportId) {
             const report = data.world.reports.find(item => item.id === reportId);
-            const action = updates.moderationActions?.find(item => item.postId === report?.postId);
+            const action = updates.moderationActions?.find(item => item.postId === report?.postId && (item.commentId || '') === (report?.commentId || ''));
             if (report && action) {
-                report.status = settings.modules.moderation.automation === 'auto' ? (action.action === 'dismiss' ? 'dismissed' : 'actioned') : 'reviewing';
+                report.status = action.action === 'dismiss' ? 'dismissed' : settings.modules.moderation.automation === 'auto' ? 'actioned' : 'reviewing';
                 report.decision = action.reason;
                 report.action = action.action === 'dismiss' ? 'none' : action.action;
                 report.reviewerNpcId = 'system-ai-admin';
@@ -3176,6 +3230,7 @@ function handleSwitchAction(action, checked) {
         'toggle-fortune-api-draw': 'modules.fortune.allowApiDraw',
         'toggle-system-ai-admin': 'moderation.systemAdminEnabled',
         'toggle-npc-reports': 'moderation.npcReportsEnabled',
+        'toggle-auto-assign-permissions': 'moderation.autoAssignPermissions',
         'toggle-orchestrator': 'orchestration.enabled', 'toggle-combined-generation': 'orchestration.combinedGeneration',
         'toggle-world-time': 'orchestration.worldTimeEnabled',
         'toggle-floating-button': 'ui.floatingButton',
@@ -3226,13 +3281,6 @@ async function handleRootClick(event) {
     }
     if (action === 'switch-tab') return setActiveTab(target.dataset.tab);
     if (action === 'open-settings') return setMeSection(target.dataset.section || 'modules');
-    if (action === 'set-world-home-layout') {
-        const layout = target.dataset.worldLayout;
-        if (!['bento', 'window'].includes(layout)) return;
-        getSettings().ui.worldHomeLayout = layout;
-        saveSettings();
-        return render({ preserveScroll: true });
-    }
     if (action === 'open-world-page') {
         const moduleId = target.dataset.moduleId;
         if (!getSettings().modules[moduleId]?.enabled) return;
@@ -4006,13 +4054,74 @@ async function handleRootClick(event) {
         const reason = window.prompt('举报原因：', '')?.trim();
         if (!reason) return;
         const data = getForumData();
-        if (data.world.reports.some(report => report.postId === post.id && ['pending', 'reviewing'].includes(report.status))) return notify('warning', '这篇帖子已经在等待处理');
-        data.world.reports.push(createPostReport({ postId: post.id, reason, reporter: getMyDisplayName() }));
+        if (data.world.reports.some(report => report.postId === post.id && !report.commentId && ['pending', 'reviewing'].includes(report.status))) return notify('warning', '这篇帖子已经在等待处理');
+        data.world.reports.push(createPostReport({ postId: post.id, reason, reporter: getMyDisplayName(), reporterHandle: getSettings().profile.handle }));
         viewState.openPostMenuId = '';
         await saveForumData(data, true);
         notify('success', '举报已提交');
         if (getSettings().moderation.systemAdminEnabled && getSettings().modules.moderation.automation === 'auto') void runWorldModuleGeneration('moderation', { reportId: data.world.reports[data.world.reports.length - 1].id });
         return render();
+    }
+    if (action === 'report-comment' && post) {
+        if (!getSettings().modules.moderation.enabled) return notify('warning', '社区治理模块当前未开启');
+        const comment = (post.comments || []).find(item => item.id === target.dataset.commentId);
+        if (!comment || comment.moderation?.hidden) return notify('warning', '这条评论已经不可用');
+        const reason = window.prompt('举报评论的原因：', '')?.trim();
+        if (!reason) return;
+        const data = getForumData();
+        if (data.world.reports.some(report => report.postId === post.id && report.commentId === comment.id && ['pending', 'reviewing'].includes(report.status))) return notify('warning', '这条评论已经在等待处理');
+        const report = createPostReport({ postId: post.id, commentId: comment.id, reason, reporter: getMyDisplayName(), reporterHandle: getSettings().profile.handle });
+        data.world.reports.push(report);
+        await saveForumData(data, true);
+        notify('success', '评论举报已提交');
+        if (getSettings().moderation.systemAdminEnabled && getSettings().modules.moderation.automation === 'auto') void runWorldModuleGeneration('moderation', { reportId: report.id });
+        return render();
+    }
+    if (action === 'add-manual-moderator') {
+        const name = window.prompt('管理员显示名称：', '新管理员')?.trim();
+        if (!name) return;
+        const handle = window.prompt('管理员论坛账号：', `moderator_${Math.floor(Math.random() * 9000 + 1000)}`)?.trim();
+        if (!handle) return;
+        const data = getForumData();
+        const npc = createNpc({ name, handle, permissionRole: 'moderator' });
+        npc.profileGenerated = true;
+        npc.bio = '社区管理员';
+        data.npcs.push(npc);
+        await saveForumData(data, true);
+        return render({ preserveScroll: true });
+    }
+    if (action === 'generate-moderator-profiles') {
+        if (viewState.moduleBusy.has('moderator-profiles')) return;
+        if (!hasActiveChat()) return notify('warning', '请先打开一个角色聊天');
+        viewState.moduleBusy.add('moderator-profiles');
+        render({ preserveScroll: true });
+        try {
+            const settings = getSettings();
+            const request = buildModeratorProfilesRequest({ settings, sourceContext: await getGenerationSourceContext(), count: 2 });
+            const result = await generateForumTextResult(getModuleApiConfig('moderation'), request, { captureTrace: true });
+            const profiles = normalizeModeratorProfiles(result.text);
+            if (!profiles.length) throw new Error('没有读取到管理员人设');
+            const data = getForumData();
+            const usedHandles = new Set(data.npcs.map(npc => String(npc.handle || '').toLocaleLowerCase()));
+            for (const profile of profiles) {
+                let handle = profile.handle;
+                let suffix = 2;
+                while (usedHandles.has(handle.toLocaleLowerCase())) handle = `${profile.handle}_${suffix++}`;
+                usedHandles.add(handle.toLocaleLowerCase());
+                const npc = createNpc({ name: profile.name, handle, persona: profile.persona, permissionRole: profile.permissionRole });
+                npc.bio = profile.bio;
+                npc.profileGenerated = true;
+                data.npcs.push(npc);
+            }
+            await saveForumData(data, true);
+            notify('success', `已生成 ${profiles.length} 位管理员；后续不会自动重复生成`);
+        } catch (error) {
+            notify('error', `管理员人设生成失败：${error.message}`);
+        } finally {
+            viewState.moduleBusy.delete('moderator-profiles');
+            render({ preserveScroll: true });
+        }
+        return;
     }
     if (action === 'ai-review-report') {
         if (!getSettings().moderation.systemAdminEnabled) return notify('warning', '请先开启系统 AI 管理员');
@@ -4022,15 +4131,17 @@ async function handleRootClick(event) {
         const data = getForumData();
         const report = data.world.reports.find(item => item.id === target.closest('[data-report-id]')?.dataset.reportId);
         const reportedPost = report && data.posts.find(item => item.id === report.postId);
+        const reportedComment = report?.commentId ? reportedPost?.comments?.find(item => item.id === report.commentId) : null;
         if (!report) return;
         report.status = action === 'dismiss-report' ? 'dismissed' : 'actioned';
         report.action = action === 'dismiss-report' ? 'none' : 'hide';
-        report.decision = action === 'dismiss-report' ? '用户手动驳回' : '用户手动隐藏帖子';
+        report.decision = action === 'dismiss-report' ? '用户手动驳回' : `用户手动隐藏${reportedComment ? '评论' : '帖子'}`;
         report.updatedAt = Date.now();
         if (reportedPost && action === 'manual-remove-report-post') {
-            reportedPost.moderation = { hidden: true, action: 'hide', reason: report.reason, warning: '', actorNpcId: '', updatedAt: Date.now() };
+            const reportedTarget = reportedComment || reportedPost;
+            reportedTarget.moderation = { hidden: true, action: 'hide', reason: report.reason, warning: '', actorNpcId: '', updatedAt: Date.now() };
         }
-        addModuleNotification(data, 'moderation', action === 'dismiss-report' ? '一条举报已被驳回' : '举报处理完成，相关帖子已隐藏', { actorName: '社区管理', moduleId: 'moderation', itemId: report.id, postId: report.postId });
+        addModuleNotification(data, 'moderation', action === 'dismiss-report' ? '一条举报已被驳回' : `举报处理完成，相关${reportedComment ? '评论' : '帖子'}已隐藏`, { actorName: '社区管理', moduleId: 'moderation', itemId: report.id, postId: report.postId });
         await saveForumData(data, true);
         syncInjection();
         return render();
@@ -4210,24 +4321,24 @@ async function handleRootClick(event) {
         else viewState.openPromptEntries.add(entryId);
         return render({ preserveScroll: true });
     }
-    if (action === 'move-prompt-entry') {
-        if (movePromptEntryByStep(target.dataset.entryId, target.dataset.direction)) return render({ preserveScroll: true });
-        return;
-    }
     if (action === 'move-read-order') {
         if (moveForumReadOrderByStep(target.dataset.readOrderId, target.dataset.direction)) return render({ preserveScroll: true });
         return;
     }
     if (action === 'add-prompt-entry') {
         const entryId = createId('prompt');
-        const order = Math.max(0, ...getSettings().promptEntries.map(entry => Number(entry.order || 0))) + 10;
-        getSettings().promptEntries.unshift({ id: entryId, title: '新设定', enabled: true, constant: false, keywords: [], order, role: 'system', content: '' });
-        viewState.openPromptEntries.add(entryId);
+        const settings = getSettings();
+        settings.promptEntries.push({ id: entryId, title: '新设定', enabled: true, constant: false, keywords: [], role: 'system', content: '' });
+        const generationIndex = settings.sources.promptOrder.indexOf('builtin:generation');
+        settings.sources.promptOrder.splice(generationIndex < 0 ? settings.sources.promptOrder.length : generationIndex, 0, `forum:${entryId}`);
+        viewState.openPromptEntries.add(`inactive:${entryId}`);
         saveSettings();
         return render();
     }
-    if (action === 'delete-prompt-entry') { if (window.confirm('确定删除这条论坛设定吗？')) { viewState.openPromptEntries.delete(target.dataset.entryId); getSettings().promptEntries = getSettings().promptEntries.filter(entry => entry.id !== target.dataset.entryId); saveSettings(); render(); } return; }
-    if (action === 'export-prompts') return downloadJson('tavern-forum-prompts.json', { version: 1, promptEntries: getSettings().promptEntries });
+    if (action === 'delete-prompt-entry') { if (window.confirm('确定删除这条论坛设定吗？')) { const settings = getSettings(); viewState.openPromptEntries.delete(target.dataset.entryId); viewState.openPromptEntries.delete(`inactive:${target.dataset.entryId}`); settings.promptEntries = settings.promptEntries.filter(entry => entry.id !== target.dataset.entryId); settings.sources.promptOrder = settings.sources.promptOrder.filter(id => id !== `forum:${target.dataset.entryId}`); saveSettings(); render(); } return; }
+    if (action === 'export-prompts') {
+        return downloadJson('tavern-forum-prompts.json', buildForumPromptPresetExport(getSettings()));
+    }
     if (action === 'import-prompts') return getRoot().querySelector('#tf-import-prompts-file')?.click();
     if (action === 'export-forum') return downloadJson(`tavern-forum-${Date.now()}.json`, getForumData());
     if (action === 'import-forum') return getRoot().querySelector('#tf-import-forum-file')?.click();
@@ -4246,97 +4357,61 @@ async function handleRootClick(event) {
     if (action === 'clear-data') { if (window.confirm('这会清空微坛设置和当前聊天数据，且无法撤销。确定继续吗？')) { await clearAllData(); notify('success', '微坛数据已清空'); render(); } }
 }
 
-let draggedPromptEntryId = '';
 let draggedReadOrderId = '';
 let promptPointerDrag = null;
 
 function clearPromptDragState(root = getRoot()) {
-    root?.querySelectorAll('.tf-prompt-entry.is-dragging, .tf-prompt-entry.is-drop-before, .tf-prompt-entry.is-drop-after, .tf-forum-read-order-entry.is-dragging, .tf-forum-read-order-entry.is-drop-before, .tf-forum-read-order-entry.is-drop-after').forEach(entry => {
+    root?.querySelectorAll('.tf-prompt-entry.is-dragging, .tf-prompt-entry.is-drop-before, .tf-prompt-entry.is-drop-after').forEach(entry => {
         entry.classList.remove('is-dragging', 'is-drop-before', 'is-drop-after');
         delete entry.dataset.dropPlacement;
     });
 }
 
 function handleRootDragStart(event) {
-    const readHandle = event.target.closest('[data-read-order-drag-id]');
-    if (readHandle) {
-        draggedReadOrderId = readHandle.dataset.readOrderDragId || '';
-        if (!draggedReadOrderId) return;
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/plain', draggedReadOrderId);
-        readHandle.closest('.tf-forum-read-order-entry')?.classList.add('is-dragging');
-        return;
-    }
-    const handle = event.target.closest('[data-prompt-drag-id]');
+    const handle = event.target.closest('[data-read-order-drag-id]');
     if (!handle) return;
-    draggedPromptEntryId = handle.dataset.promptDragId || '';
-    if (!draggedPromptEntryId) return;
+    draggedReadOrderId = handle.dataset.readOrderDragId || '';
+    if (!draggedReadOrderId) return;
     event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', draggedPromptEntryId);
+    event.dataTransfer.setData('text/plain', draggedReadOrderId);
     handle.closest('.tf-prompt-entry')?.classList.add('is-dragging');
 }
 
 function handleRootDragOver(event) {
-    if (draggedReadOrderId) {
-        const entry = event.target.closest('.tf-forum-read-order-entry[data-read-order-id]');
-        if (!entry || entry.dataset.readOrderId === draggedReadOrderId) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = 'move';
-        const placement = event.clientY >= entry.getBoundingClientRect().top + entry.getBoundingClientRect().height / 2 ? 'after' : 'before';
-        clearPromptDragState();
-        getRoot()?.querySelector(`.tf-forum-read-order-entry[data-read-order-id="${CSS.escape(draggedReadOrderId)}"]`)?.classList.add('is-dragging');
-        entry.classList.add(placement === 'after' ? 'is-drop-after' : 'is-drop-before');
-        entry.dataset.dropPlacement = placement;
-        return;
-    }
-    if (!draggedPromptEntryId) return;
-    const entry = event.target.closest('.tf-prompt-entry[data-entry-id]');
-    if (!entry || entry.dataset.entryId === draggedPromptEntryId) return;
+    if (!draggedReadOrderId) return;
+    const entry = event.target.closest('.tf-prompt-entry[data-read-order-id]');
+    if (!entry || entry.dataset.readOrderId === draggedReadOrderId) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
     const placement = event.clientY >= entry.getBoundingClientRect().top + entry.getBoundingClientRect().height / 2 ? 'after' : 'before';
     clearPromptDragState();
-    getRoot()?.querySelector(`.tf-prompt-entry[data-entry-id="${CSS.escape(draggedPromptEntryId)}"]`)?.classList.add('is-dragging');
+    getRoot()?.querySelector(`.tf-prompt-entry[data-read-order-id="${CSS.escape(draggedReadOrderId)}"]`)?.classList.add('is-dragging');
     entry.classList.add(placement === 'after' ? 'is-drop-after' : 'is-drop-before');
     entry.dataset.dropPlacement = placement;
 }
 
 function handleRootDrop(event) {
-    if (draggedReadOrderId) {
-        const entry = event.target.closest('.tf-forum-read-order-entry[data-read-order-id]');
-        if (!entry || entry.dataset.readOrderId === draggedReadOrderId) return clearPromptDragState();
-        event.preventDefault();
-        const sourceId = draggedReadOrderId;
-        const placement = entry.dataset.dropPlacement || 'before';
-        draggedReadOrderId = '';
-        clearPromptDragState();
-        if (moveForumReadOrderItem(sourceId, entry.dataset.readOrderId, placement)) render({ preserveScroll: true });
-        return;
-    }
-    if (!draggedPromptEntryId) return;
-    const entry = event.target.closest('.tf-prompt-entry[data-entry-id]');
-    if (!entry || entry.dataset.entryId === draggedPromptEntryId) return clearPromptDragState();
+    if (!draggedReadOrderId) return;
+    const entry = event.target.closest('.tf-prompt-entry[data-read-order-id]');
+    if (!entry || entry.dataset.readOrderId === draggedReadOrderId) return clearPromptDragState();
     event.preventDefault();
-    const sourceId = draggedPromptEntryId;
+    const sourceId = draggedReadOrderId;
     const placement = entry.dataset.dropPlacement || 'before';
-    draggedPromptEntryId = '';
+    draggedReadOrderId = '';
     clearPromptDragState();
-    if (movePromptEntry(sourceId, entry.dataset.entryId, placement)) render({ preserveScroll: true });
+    if (moveForumReadOrderItem(sourceId, entry.dataset.readOrderId, placement)) render({ preserveScroll: true });
 }
 
 function handleRootDragEnd() {
-    draggedPromptEntryId = '';
     draggedReadOrderId = '';
     clearPromptDragState();
 }
 
 function handleRootPointerDown(event) {
-    const readHandle = event.target.closest('[data-read-order-drag-id]');
-    const handle = readHandle || event.target.closest('[data-prompt-drag-id]');
+    const handle = event.target.closest('[data-read-order-drag-id]');
     if (!handle || (event.button !== 0 && event.pointerType !== 'touch')) return;
     promptPointerDrag = {
-        id: readHandle ? handle.dataset.readOrderDragId : handle.dataset.promptDragId,
-        kind: readHandle ? 'read' : 'prompt',
+        id: handle.dataset.readOrderDragId,
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
@@ -4351,16 +4426,14 @@ function handleRootPointerMove(event) {
     if (!promptPointerDrag.moved && Math.hypot(event.clientX - promptPointerDrag.startX, event.clientY - promptPointerDrag.startY) < 7) return;
     promptPointerDrag.moved = true;
     event.preventDefault();
-    const selector = promptPointerDrag.kind === 'read' ? '.tf-forum-read-order-entry[data-read-order-id]' : '.tf-prompt-entry[data-entry-id]';
+    const selector = '.tf-prompt-entry[data-read-order-id]';
     const entry = document.elementFromPoint(event.clientX, event.clientY)?.closest(selector);
-    const entryId = promptPointerDrag.kind === 'read' ? entry?.dataset.readOrderId : entry?.dataset.entryId;
+    const entryId = entry?.dataset.readOrderId;
     if (!entry || entryId === promptPointerDrag.id) return;
     const box = entry.getBoundingClientRect();
     const placement = event.clientY >= box.top + box.height / 2 ? 'after' : 'before';
     clearPromptDragState();
-    const sourceSelector = promptPointerDrag.kind === 'read'
-        ? `.tf-forum-read-order-entry[data-read-order-id="${CSS.escape(promptPointerDrag.id)}"]`
-        : `.tf-prompt-entry[data-entry-id="${CSS.escape(promptPointerDrag.id)}"]`;
+    const sourceSelector = `.tf-prompt-entry[data-read-order-id="${CSS.escape(promptPointerDrag.id)}"]`;
     getRoot()?.querySelector(sourceSelector)?.classList.add('is-dragging');
     entry.classList.add(placement === 'after' ? 'is-drop-after' : 'is-drop-before');
     entry.dataset.dropPlacement = placement;
@@ -4371,14 +4444,12 @@ function handleRootPointerUp(event) {
     const drag = promptPointerDrag;
     promptPointerDrag = null;
     try { drag.handle.releasePointerCapture(event.pointerId); } catch { /* pointer capture is optional */ }
-    const selector = drag.kind === 'read' ? '.tf-forum-read-order-entry[data-read-order-id]' : '.tf-prompt-entry[data-entry-id]';
+    const selector = '.tf-prompt-entry[data-read-order-id]';
     const entry = document.elementFromPoint(event.clientX, event.clientY)?.closest(selector);
-    const entryId = drag.kind === 'read' ? entry?.dataset.readOrderId : entry?.dataset.entryId;
+    const entryId = entry?.dataset.readOrderId;
     const placement = entry?.dataset.dropPlacement || 'before';
     clearPromptDragState();
-    const moved = drag.kind === 'read'
-        ? moveForumReadOrderItem(drag.id, entryId, placement)
-        : movePromptEntry(drag.id, entryId, placement);
+    const moved = moveForumReadOrderItem(drag.id, entryId, placement);
     if (drag.moved && entry && entryId !== drag.id && moved) {
         render({ preserveScroll: true });
     }
@@ -4548,13 +4619,6 @@ function handleRootChange(event) {
     if (target.dataset.entryField) {
         handleRootInput(event);
         return;
-    }
-    if (target.dataset.readOrderPosition) {
-        const value = Number(target.value);
-        if (!Number.isFinite(value)) return;
-        getSettings().sources.promptPositions[target.dataset.readOrderPosition] = value;
-        saveSettings();
-        return render({ preserveScroll: true });
     }
     if (target.dataset.action?.startsWith('toggle-') && target.type === 'checkbox') {
         if (target.dataset.action === 'toggle-world-module' || target.dataset.action === 'toggle-module-linked' || target.dataset.action === 'toggle-module-injection') {
@@ -4732,6 +4796,11 @@ function handleRootChange(event) {
         const npc = getForumData().npcs.find(item => item.id === target.closest('[data-npc-id]')?.dataset.npcId);
         if (npc) { npc.permissionRole = target.value; npc.updatedAt = Date.now(); void saveForumData(getForumData(), true); render({ preserveScroll: true }); }
         return;
+    }
+    if (target.dataset.userPermissionRole !== undefined) {
+        getSettings().profile.permissionRole = target.value;
+        saveSettings();
+        return render({ preserveScroll: true });
     }
     if (target.dataset.profileImageUrl) {
         const kind = target.dataset.profileImageUrl;
@@ -4913,7 +4982,19 @@ function handleRootChange(event) {
             const payload = JSON.parse(text);
             const entries = Array.isArray(payload) ? payload : payload?.promptEntries;
             if (!Array.isArray(entries)) throw new Error('文件中没有 promptEntries');
-            getSettings().promptEntries.push(...entries.filter(entry => typeof entry?.content === 'string').map(entry => ({ id: createId('prompt'), title: String(entry.title || '导入设定'), enabled: entry.enabled !== false, constant: Boolean(entry.constant), keywords: Array.isArray(entry.keywords) ? entry.keywords.map(String) : [], order: Number(entry.order || 0), role: ['system', 'user', 'assistant'].includes(entry.role) ? entry.role : 'system', content: entry.content })));
+            const settings = getSettings();
+            const importedIdMap = new Map();
+            const importedEntries = entries.filter(entry => typeof entry?.content === 'string').map(entry => {
+                const id = createId('prompt');
+                importedIdMap.set(`forum:${String(entry.id || '')}`, `forum:${id}`);
+                return { id, title: String(entry.title || '导入设定'), enabled: entry.enabled !== false, constant: Boolean(entry.constant), keywords: Array.isArray(entry.keywords) ? entry.keywords.map(String) : [], role: ['system', 'user', 'assistant'].includes(entry.role) ? entry.role : 'system', content: entry.content };
+            });
+            const exportedOrder = Array.isArray(payload?.promptOrder) ? payload.promptOrder.map(String) : [];
+            const importedIds = exportedOrder.map(id => importedIdMap.get(id)).filter(Boolean);
+            for (const entry of importedEntries) if (!importedIds.includes(`forum:${entry.id}`)) importedIds.push(`forum:${entry.id}`);
+            settings.promptEntries.push(...importedEntries);
+            const generationIndex = settings.sources.promptOrder.indexOf('builtin:generation');
+            settings.sources.promptOrder.splice(generationIndex < 0 ? settings.sources.promptOrder.length : generationIndex, 0, ...importedIds);
             saveSettings(); render();
         }).catch(error => notify('error', `导入失败：${error.message}`));
     }
