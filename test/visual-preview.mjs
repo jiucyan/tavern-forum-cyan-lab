@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
@@ -30,7 +31,9 @@ await new Promise((resolveListen, rejectListen) => {
     server.listen(0, '127.0.0.1', resolveListen);
 });
 const url = `http://127.0.0.1:${server.address().port}/preview.html`;
-const executablePath = process.env.TAVERN_FORUM_BROWSER_PATH?.trim();
+const systemEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const executablePath = process.env.TAVERN_FORUM_BROWSER_PATH?.trim()
+    || (process.platform === 'win32' && existsSync(systemEdge) ? systemEdge : '');
 const browser = await chromium.launch({
     headless: true,
     ...(executablePath ? { executablePath } : {}),
@@ -84,6 +87,15 @@ try {
     await desktop.screenshot({ path: 'preview-role-profile.png' });
     await desktop.locator('.tf-topbar [data-tab="me"]').click();
     await desktop.screenshot({ path: 'preview-profile.png' });
+    const profileShellWidth = await desktop.locator('.tf-profile-page-shell').evaluate(node => node.getBoundingClientRect().width);
+    await desktop.locator('.tf-topbar [data-tab="messages"]').click();
+    await desktop.locator('[data-action="message-mode"][data-mode="notifications"]').click();
+    const messageShellWidth = await desktop.locator('.tf-message-shell').evaluate(node => node.getBoundingClientRect().width);
+    if (Math.abs(profileShellWidth - messageShellWidth) > 1) throw new Error(`profile and message layouts shift horizontally: ${profileShellWidth} vs ${messageShellWidth}`);
+    if (await desktop.locator('.tf-notifications').evaluate(node => node.getBoundingClientRect().width) !== messageShellWidth) throw new Error('notifications still apply a second nested width cap');
+    await desktop.screenshot({ path: 'preview-notifications.png' });
+    await desktop.locator('[data-action="message-mode"][data-mode="dm"]').click();
+    await desktop.locator('.tf-topbar [data-tab="me"]').click();
     await desktop.locator('[data-action="me-section"][data-section="memory"]').click();
     if (!await desktop.locator('.tf-memory-card').count()) throw new Error('standalone role memory page is missing');
     await desktop.screenshot({ path: 'preview-role-memory.png' });
@@ -231,7 +243,7 @@ try {
     await desktop.locator('[data-action="toggle-companion-profile"]').click();
     if (await desktop.locator('[data-action="choose-companion-species"]').count() !== 6) throw new Error('expected six built-in pixel companions');
     if (await desktop.locator('[data-action="choose-companion-device"]').count() !== 5) throw new Error('expected five device structures');
-    if (await desktop.locator('.tf-pet-appearance-controls input[type="color"]').count() !== 2) throw new Error('companion palette controls are missing');
+    if (await desktop.locator('.tf-pet-appearance-controls input[type="color"]').count() !== 3) throw new Error('companion body, accent and accessory palettes are incomplete');
     if (await desktop.locator('.tf-pet-appearance-controls select[data-companion-appearance-field="accessory"]').count() !== 1) throw new Error('companion accessory control is missing');
     if (await desktop.locator('[data-action="save-companion-appearance"]').count() !== 1) throw new Error('companion appearance has no explicit save action');
     const speciesBodyColors = await desktop.locator('[data-action="choose-companion-species"] .tf-pixel-body').evaluateAll(nodes => [...new Set(nodes.map(node => getComputedStyle(node).fill))]);
@@ -239,6 +251,7 @@ try {
     await desktop.locator('[data-action="choose-companion-species"][data-species-id="fox"]').click();
     await desktop.locator('[data-companion-appearance-field="bodyColor"]').fill('#2f6f9f');
     await desktop.locator('[data-companion-appearance-field="accentColor"]').fill('#f1b54a');
+    await desktop.locator('[data-companion-appearance-field="accessoryColor"]').fill('#cf6f91');
     await desktop.locator('[data-companion-appearance-field="accessory"]').selectOption('scarf');
     if (!await desktop.locator('.tf-pet-stage .tf-pixel-pet.is-accessory-scarf').count()) throw new Error('selected companion accessory did not appear on the device');
     if (await desktop.locator('[data-action="save-companion-appearance"]').isDisabled()) throw new Error('editing companion colors did not enable explicit saving');
@@ -246,14 +259,14 @@ try {
     if (colorsBeforeSave.bodyColor || colorsBeforeSave.accessory !== 'none') throw new Error('companion preview was persisted before the save button was pressed');
     await desktop.locator('[data-action="save-companion-appearance"]').click();
     const savedAppearance = await desktop.evaluate(() => ({ ...globalThis.SillyTavern.getContext().chatMetadata.tavern_forum_data.world.companion }));
-    if (savedAppearance.bodyColor !== '#2f6f9f' || savedAppearance.accentColor !== '#f1b54a' || savedAppearance.accessory !== 'scarf') throw new Error(`companion appearance did not persist: ${JSON.stringify(savedAppearance)}`);
+    if (savedAppearance.bodyColor !== '#2f6f9f' || savedAppearance.accentColor !== '#f1b54a' || savedAppearance.accessoryColor !== '#cf6f91' || savedAppearance.accessory !== 'scarf') throw new Error(`companion appearance did not persist: ${JSON.stringify(savedAppearance)}`);
     await desktop.locator('[data-action="back-world-home"]').click();
     await desktop.locator('.tf-service-card[data-module-id="travel"]').click();
     if (await desktop.locator('[data-companion-appearance-field="bodyColor"]').inputValue() !== '#2f6f9f') throw new Error('saved companion color disappeared after re-entering the app');
     if (await desktop.locator('[data-companion-appearance-field="accessory"]').inputValue() !== 'scarf') throw new Error('saved companion accessory disappeared after re-entering the app');
     const callsBeforePet = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
     await desktop.locator('[data-action="companion-care"][data-care="feed"]').last().click();
-    if (await desktop.locator('[data-action="companion-feed-food"]').count() !== 6) throw new Error('pet food selector did not expose six foods inside the device');
+    if (await desktop.locator('[data-action="companion-feed-food"]').count() !== 10) throw new Error('pet food selector did not expose all ten foods inside the device');
     await desktop.locator('[data-action="companion-feed-food"][data-food-id="berry"]').click();
     const callsAfterPet = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
     if (callsAfterPet !== callsBeforePet) throw new Error('local companion care unexpectedly called the API');

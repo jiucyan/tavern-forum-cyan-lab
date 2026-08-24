@@ -53,12 +53,25 @@ export function normalizeWorldState(value) {
         issuer: text(item?.issuer, '匿名委托人'),
         issuerNpcId: text(item?.issuerNpcId),
         issuerHandle: text(item?.issuerHandle).replace(/^@/, ''),
+        anonymous: Boolean(item?.anonymous),
         status: ['offered', 'accepted', 'completed', 'failed', 'abandoned'].includes(item?.status) ? item.status : 'offered',
         risk: ['low', 'medium', 'high', 'unknown'].includes(item?.risk) ? item.risk : 'unknown',
         reward: text(item?.reward),
         failure: text(item?.failure),
         scam: Boolean(item?.scam),
         secret: text(item?.secret),
+        objectiveType: ['item', 'action', 'delivery', 'investigation', 'other'].includes(item?.objectiveType) ? item.objectiveType : 'other',
+        objectiveTarget: text(item?.objectiveTarget, item?.title),
+        objectiveQuantity: integer(item?.objectiveQuantity, 1, 1, 999),
+        completionCriteria: text(item?.completionCriteria, item?.description),
+        acceptedAt: Math.max(0, Number(item?.acceptedAt || 0)),
+        acceptedMessageIndex: Math.max(0, Number(item?.acceptedMessageIndex || 0)),
+        verificationStatus: ['unverified', 'checking', 'eligible', 'rejected', 'verified'].includes(item?.verificationStatus) ? item.verificationStatus : 'unverified',
+        verificationMethod: ['local', 'api', 'manual'].includes(item?.verificationMethod) ? item.verificationMethod : '',
+        verificationReason: text(item?.verificationReason),
+        evidenceMessageIndex: Number.isInteger(Number(item?.evidenceMessageIndex)) ? Number(item.evidenceMessageIndex) : -1,
+        evidenceExcerpt: text(item?.evidenceExcerpt),
+        verifiedAt: Math.max(0, Number(item?.verifiedAt || 0)),
         createdAt: now(item?.createdAt),
         updatedAt: now(item?.updatedAt || item?.createdAt),
     })).slice(-200);
@@ -94,11 +107,14 @@ export function normalizeWorldState(value) {
         satiety: integer(companion.satiety, 75, 0, 100),
         happiness: integer(companion.happiness, 70, 0, 100),
         luckyDirection: text(companion.luckyDirection),
-        lastAction: ['feed', 'pet', 'play', 'rest', 'depart', 'signal', 'return', 'weather'].includes(companion.lastAction) ? companion.lastAction : '',
+        lastAction: ['feed', 'pet', 'play', 'rest', 'brush', 'dance', 'train', 'hide', 'talk', 'dress', 'depart', 'signal', 'return', 'weather'].includes(companion.lastAction) ? companion.lastAction : '',
         deviceSkin: ['classic', 'pocket', 'crystal', 'arcane', 'terminal'].includes(companion.deviceSkin) ? companion.deviceSkin : 'classic',
         bodyColor: color(companion.bodyColor),
         accentColor: color(companion.accentColor),
-        accessory: ['none', 'scarf', 'satchel', 'flower', 'charm'].includes(companion.accessory) ? companion.accessory : 'none',
+        accessory: ['none', 'scarf', 'satchel', 'flower', 'charm', 'ribbon', 'glasses', 'crown', 'leaf', 'headphones', 'cape', 'bell'].includes(companion.accessory) ? companion.accessory : 'none',
+        accessoryColor: color(companion.accessoryColor),
+        autoAccessory: Boolean(companion.autoAccessory),
+        habitat: ['meadow', 'pond', 'bedroom', 'forest', 'snowfield', 'city', 'space', 'arcade'].includes(companion.habitat) ? companion.habitat : 'meadow',
         weather: ['auto', 'sunny', 'cloudy', 'rain', 'wind', 'snow'].includes(companion.weather) ? companion.weather : 'auto',
         timeOfDay: ['auto', 'dawn', 'day', 'dusk', 'night'].includes(companion.timeOfDay) ? companion.timeOfDay : 'auto',
         lastInteractionAt: Math.max(0, Number(companion.lastInteractionAt || 0)),
@@ -386,7 +402,7 @@ export function setModuleDecision(data, moduleId, code, message, { generated = f
     return data.world.moduleRuntime[moduleId];
 }
 
-export function evaluateModuleGeneration(settings, data, moduleId, { automatic = false, random = Math.random, date = new Date() } = {}) {
+export function evaluateModuleGeneration(settings, data, moduleId, { automatic = false, applyProbability = automatic, random = Math.random, date = new Date() } = {}) {
     const module = settings?.modules?.[moduleId];
     if (!module?.enabled) return { allowed: false, code: 'disabled', message: '模块已关闭' };
     if (automatic && settings?.automation?.quietHours?.behavior === 'postpone' && isQuietHours(settings, date)) {
@@ -400,7 +416,7 @@ export function evaluateModuleGeneration(settings, data, moduleId, { automatic =
     }
     const probability = Math.min(100, Math.max(0, Number(module.probability ?? 100)));
     const roll = Math.floor(random() * 100) + 1;
-    if (automatic && roll > probability) return { allowed: false, code: 'probability', message: `本轮概率未触发（${roll} > ${probability}）`, roll, probability };
+    if (applyProbability && roll > probability) return { allowed: false, code: 'probability', message: `本轮概率未触发（${roll} > ${probability}）`, roll, probability };
     return { allowed: true, code: 'ready', message: module.generationMode === 'local' ? '使用本地随机，不调用 API' : module.generationMode === 'linked' ? '参与本轮持续联动' : '允许独立生成', roll, probability };
 }
 
@@ -468,6 +484,69 @@ export function createLocalHealthEvent({ subject = '我', subjectNpcId = '', pro
         symptoms: event.symptoms, storyEffect: event.storyEffect, provider: text(provider), providerNpcId: text(providerNpcId),
         careNote: event.careNote, specialty: event.specialty, progress: 15, local: true,
         createdAt: Date.now(), updatedAt: Date.now(),
+    };
+}
+
+function chatMessageText(message) {
+    return text(message?.mes || message?.content || message?.message);
+}
+
+function compactEvidenceText(value) {
+    return String(value || '').toLocaleLowerCase().replace(/[《》「」『』“”‘’\s，。！？、：；,.!?;:()（）【】\[\]]/g, '');
+}
+
+export function findLocalTaskEvidence(task, chat = []) {
+    const messages = list(chat);
+    const start = Math.min(messages.length, Math.max(0, Number(task?.acceptedMessageIndex || 0)));
+    const target = text(task?.objectiveTarget, task?.title);
+    const criteria = text(task?.completionCriteria, task?.description);
+    const normalizedTarget = compactEvidenceText(target);
+    const targetParts = [...new Set(String(target || '').replace(/[《》「」『』“”‘’（）()【】\[\]]/g, ' ').split(/[\s·:：,，、/]+/).map(compactEvidenceText).filter(part => part.length >= 2))];
+    const acquisition = /获得|得到|拿到|买到|购得|收到|收下|捡到|拾到|找到|寻得|带回|交给|交付|提交|归还|拥有|放进(?:了)?(?:背包|行囊)|收入囊中|完成|解决|查明|调查出|抵达|到达|护送|救出|击败|说服|取回|回收/;
+    for (let index = start; index < messages.length; index += 1) {
+        const content = chatMessageText(messages[index]);
+        if (!content || !acquisition.test(content)) continue;
+        const normalized = compactEvidenceText(content);
+        const targetMatched = normalizedTarget.length >= 2 && normalized.includes(normalizedTarget);
+        const partialMatched = targetParts.length && targetParts.filter(part => normalized.includes(part)).length >= Math.min(2, targetParts.length);
+        const criteriaParts = String(criteria || '').split(/[，。；、\s]+/).map(compactEvidenceText).filter(part => part.length >= 4);
+        const criteriaMatched = criteriaParts.some(part => normalized.includes(part));
+        if (!targetMatched && !partialMatched && !criteriaMatched) continue;
+        return {
+            eligible: true,
+            reason: `在接受任务后的正文中发现了与“${target}”相符的完成记录。`,
+            messageIndex: index,
+            excerpt: content.slice(0, 360),
+        };
+    }
+    return {
+        eligible: false,
+        reason: `尚未在接受任务后的正文中发现取得或完成“${target}”的有效记录。`,
+        messageIndex: -1,
+        excerpt: '',
+    };
+}
+
+export function buildTaskVerificationRequest({ task, chat = [], names = {} } = {}) {
+    const messages = list(chat);
+    const start = Math.min(messages.length, Math.max(0, Number(task?.acceptedMessageIndex || 0)));
+    const evidence = messages.slice(start).map((message, offset) => {
+        const speaker = message?.is_user ? text(names.user, 'User') : text(message?.name, text(names.character, 'Char'));
+        return `[正文消息 ${start + offset}] ${speaker}：${chatMessageText(message)}`;
+    }).filter(line => !line.endsWith('：')).join('\n');
+    const system = '你是严格的虚构任务验收器。只能依据任务接受后的正文证据判断，不得因为用户点击提交就判定完成，不得把任务说明本身视为证据。';
+    const user = `【待验收任务】\n名称：${text(task?.title)}\n类型：${text(task?.objectiveType, 'other')}\n目标：${text(task?.objectiveTarget, task?.title)} ×${integer(task?.objectiveQuantity, 1, 1, 999)}\n完成条件：${text(task?.completionCriteria, task?.description)}\n\n【接受任务后的正文】\n${evidence || '没有新的正文。'}\n\n只返回 JSON：{"completed":false,"reason":"判断依据","evidenceMessageIndex":-1,"evidenceExcerpt":"直接引用或概述证据"}。只有正文明确表现目标已经取得、行动已经完成或物品已经交付时，completed 才能为 true。`;
+    return { system, user, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] };
+}
+
+export function normalizeTaskVerification(value) {
+    const parsed = typeof value === 'string' ? parseJsonResponse(value) : value;
+    const source = parsed?.taskVerification || parsed?.verification || parsed;
+    return {
+        completed: source?.completed === true,
+        reason: text(source?.reason, source?.completed ? '验收接口确认任务已完成。' : '验收接口未发现充分的完成证据。'),
+        evidenceMessageIndex: Number.isInteger(Number(source?.evidenceMessageIndex)) ? Number(source.evidenceMessageIndex) : -1,
+        evidenceExcerpt: text(source?.evidenceExcerpt).slice(0, 500),
     };
 }
 
@@ -920,7 +999,7 @@ export function buildWorldModuleInjection(data, settings, onlyModuleId = '') {
 
 function moduleOutputShape(moduleIds) {
     const fields = [];
-    if (moduleIds.includes('tasks')) fields.push('"tasks":[{"title":"任务名","description":"内容","issuer":"发布者","issuerHandle":"必须是已有角色账号","risk":"low|medium|high|unknown","reward":"奖励","failure":"失败影响","scam":false,"secret":"幕后真相"}]');
+    if (moduleIds.includes('tasks')) fields.push('"tasks":[{"title":"任务名","description":"内容","issuer":"实名发布者或匿名委托人","issuerHandle":"实名时填写已有角色或组织账号，匿名时留空","anonymous":false,"objectiveType":"item|action|delivery|investigation|other","objectiveTarget":"正文中需要取得的物品或完成的目标","objectiveQuantity":1,"completionCriteria":"可由后续正文验证的明确条件","risk":"low|medium|high|unknown","reward":"奖励","failure":"失败影响","scam":false,"secret":"幕后真相"}]');
     if (moduleIds.includes('fortune')) fields.push('"fortune":{"date":"世界内日期","label":"运势名","score":0,"summary":"概述","effects":["轻微影响"]}');
     if (moduleIds.includes('travel')) fields.push('"travel":{"companion":{"name":"旅伴名","species":"宠物种类","status":"away","mood":"出发心情","destination":"目的地","message":"出发留言","bond":0},"journeys":[{"traveler":"旅伴名","destination":"地点","status":"away","departureMessage":"出发留言","messages":[{"content":"途中消息","mood":"当时心情","progress":0.25}],"returnMessage":"返家留言","notes":"完整旅途摘要","souvenir":"返家后才揭晓的小物件","souvenirDescription":"物品描述","souvenirEffect":"轻微用途"}]}');
     if (moduleIds.includes('inventory')) fields.push('"inventory":[{"name":"物品","description":"描述","quantity":1,"effect":"剧情作用","source":"来源"}]');
@@ -945,8 +1024,10 @@ function narrativeSafetyInstruction(settings) {
 export function buildLinkedWorldInstruction({ settings, data, onlyModuleId = '' }) {
     const moduleIds = getEnabledLinkedModuleIds(settings, onlyModuleId);
     const proactive = !onlyModuleId && settings?.social?.proactiveDms?.enabled && settings.social.proactiveDms.withForumRefresh;
-    const npcReports = !onlyModuleId && settings?.modules?.moderation?.enabled && settings?.moderation?.npcReportsEnabled;
-    const permissionAssignments = !onlyModuleId && settings?.modules?.moderation?.enabled && settings?.moderation?.autoAssignPermissions;
+    // 治理功能与其他联动模块一样先经过本轮概率判定。仅仅打开联动不代表每次刷新都触发。
+    const moderationTriggered = moduleIds.includes('moderation');
+    const npcReports = !onlyModuleId && moderationTriggered && settings?.moderation?.npcReportsEnabled;
+    const permissionAssignments = !onlyModuleId && moderationTriggered && settings?.moderation?.autoAssignPermissions;
     if (!moduleIds.length && !proactive && !npcReports && !permissionAssignments) return '';
     const prompts = moduleIds.map(id => `【${getModuleDefinition(id)?.name || id}模块规则】\n${builtinPrompt(settings, id === 'tasks' ? 'task' : id)}`).join('\n\n');
     const current = buildWorldStateSummary(data, settings, npcReports && !moduleIds.includes('moderation') ? [...moduleIds, 'moderation'] : moduleIds);

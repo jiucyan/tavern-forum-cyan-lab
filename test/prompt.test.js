@@ -307,22 +307,30 @@ test('prompt preset export contains only custom forum prompts and never copied S
     assert.doesNotMatch(JSON.stringify(payload), /preset:main|user-persona|world:city|绝不能导出/);
 });
 
-test('custom API parameters support types and nested paths without overriding messages', () => {
+test('custom API body exclusions omit selected standard fields and ignore legacy extras', () => {
     const body = buildTextRequestBody({
         model: 'example',
         temperature: 0.7,
         maxTokens: 1000,
+        excludedBodyParameters: ['temperature', 'response_format'],
         extraParameters: [
             { key: 'top_p', value: '0.8', type: 'number', enabled: true },
-            { key: 'thinking.enabled', value: 'true', type: 'boolean', enabled: true },
-            { key: 'metadata', value: '{"source":"forum"}', type: 'json', enabled: true },
         ],
-    }, { messages: [{ role: 'system', content: 's' }, { role: 'user', content: 'u' }] });
-    assert.equal(body.top_p, 0.8);
-    assert.deepEqual(body.thinking, { enabled: true });
-    assert.deepEqual(body.metadata, { source: 'forum' });
+    }, {
+        messages: [{ role: 'system', content: 's' }, { role: 'user', content: 'u' }],
+        jsonSchema: { name: 'forum', schema: { type: 'object' } },
+    });
+    assert.equal(body.model, 'example');
+    assert.equal(body.max_tokens, 1000);
+    assert.equal(body.temperature, undefined);
+    assert.equal(body.response_format, undefined);
+    assert.equal(body.top_p, undefined);
     assert.deepEqual(body.messages.map(message => message.role), ['system', 'user']);
-    assert.throws(() => buildTextRequestBody({ model: 'x', extraParameters: [{ key: 'messages', value: '[]', type: 'json' }] }, { user: 'u' }), /不能覆盖/);
+
+    const modelExcluded = buildTextRequestBody({ model: 'example', excludedBodyParameters: ['model', 'max_tokens'] }, { user: 'u' });
+    assert.equal(modelExcluded.model, undefined);
+    assert.equal(modelExcluded.max_tokens, undefined);
+    assert.equal(modelExcluded.messages[1].content, 'u');
 });
 
 test('forum output is repaired locally without another model request', () => {

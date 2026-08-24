@@ -898,9 +898,12 @@ export function buildThreadReplyRequest({ post, userComment, npcs = [], sourceCo
         sourceContext.characterPersona && `Char 人设：\n${sourceContext.characterPersona}`,
         ...(sourceContext.worldInfo || []).map(entry => `世界书《${entry.book}/${entry.title}》：\n${entry.content}`),
     ].filter(Boolean).join('\n\n');
+    const continuationReason = userComment
+        ? `【最新用户回帖】\n@${safeString(userComment.handle, 'me')}（${safeString(userComment.author, '我')}）：${safeString(userComment.content)}\n\n让角色自然回应这条用户回帖。`
+        : '【生成方式】\n用户没有发布新回帖。请让其他论坛角色仅依据当前主帖和已有楼层继续讨论；不得生成、改写或冒充 User 的发言。';
     return {
-        system: `${builtinPrompt(settings, 'threadReply')}\n根据帖子上下文，让论坛角色对用户的最新回帖作出自然回应。优先复用已有角色，也可以在必要时出现新的网友。只输出 JSON。`,
-        user: `【帖子楼层】\n${thread}\n\n【最新用户回帖】\n@${safeString(userComment?.handle, 'me')}（${safeString(userComment?.author, '我')}）：${safeString(userComment?.content)}\n\n【已有角色人设库】\n${npcLibrary}\n\n${sourceSummary ? `【可读取的酒馆资料】\n${sourceSummary}\n\n` : ''}请生成 ${count} 条后续 AI 回帖。评论需要配图时可填写 imagePrompt，且 imagePrompt 必须只用简体中文，禁止英文；可以给出自然的初始 likes，省略时插件会补值。只输出：{"replies":[{"author":"角色昵称","handle":"账号","content":"回复内容","replyTo":"被回复者账号","imagePrompt":"可选中文画面描述","likes":3}]}`,
+        system: `${builtinPrompt(settings, 'threadReply')}\n根据帖子上下文，让论坛里的其他角色自然继续讨论。优先复用已有角色，也可以在必要时出现新的网友。不得代替用户发言。只输出 JSON。`,
+        user: `【帖子楼层】\n${thread}\n\n${continuationReason}\n\n【已有角色人设库】\n${npcLibrary}\n\n${sourceSummary ? `【可读取的酒馆资料】\n${sourceSummary}\n\n` : ''}请生成 ${count} 条后续 AI 回帖。评论需要配图时可填写 imagePrompt，且 imagePrompt 必须只用简体中文，禁止英文；可以给出自然的初始 likes，省略时插件会补值。只输出：{"replies":[{"author":"角色昵称","handle":"账号","content":"回复内容","replyTo":"被回复者账号","imagePrompt":"可选中文画面描述","likes":3}]}`,
         jsonSchema: THREAD_REPLIES_JSON_SCHEMA,
     };
 }

@@ -50,6 +50,15 @@ test('API profiles switch freely and source switches include selected lore entri
     assert.equal(store.getSettings().generation.autoRefreshOnMessage, false);
     assert.equal(store.getSettings().notifications.reply, true);
     assert.equal(store.getSettings().profile.handle, 'me');
+    assert.equal(store.getSettings().orchestration.enabled, true);
+    for (const moduleId of ['moderation', 'tasks', 'health']) {
+        assert.equal(store.getSettings().modules[moduleId].enabled, true);
+        assert.equal(store.getSettings().modules[moduleId].generationMode, 'linked');
+        assert.equal(store.getSettings().modules[moduleId].automation, 'auto');
+        assert.equal('rpm' in store.getSettings().modules[moduleId], false);
+    }
+    assert.equal(store.getSettings().modules.tasks.verificationApiEnabled, false);
+    assert.equal('extraParameters' in store.getApiConfig('text'), false);
     store.setActiveApiProfile('default-api-profile');
     store.updateApiConfig('text', 'endpoint', 'https://one.example/v1');
     assert.equal(store.getApiConfig('image').enabled, false);

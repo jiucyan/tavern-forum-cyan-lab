@@ -184,6 +184,40 @@ export function ensureNpcConversation(data, npc) {
     return conversation;
 }
 
+export function ensureTaskIssuerConversation(data, task) {
+    if (!data || !task) return { npc: null, conversation: null };
+    data.npcs = Array.isArray(data.npcs) ? data.npcs : [];
+    const handle = handleKey(task.issuerHandle);
+    let npc = !task.anonymous && task.issuerNpcId ? data.npcs.find(item => item.id === task.issuerNpcId) : null;
+    if (!npc && !task.anonymous && handle) npc = data.npcs.find(item => handleKey(item.handle) === handle);
+    if (!npc && !task.anonymous && text(task.issuer)) npc = data.npcs.find(item => text(item.name).toLocaleLowerCase() === text(task.issuer).toLocaleLowerCase());
+    if (!npc) {
+        const anonymous = Boolean(task.anonymous);
+        const fallbackHandle = anonymous
+            ? `masked_${seedNumber(task.id).toString(36)}`
+            : handle || `request_${seedNumber(task.issuer || task.id).toString(36)}`;
+        npc = createNpc({
+            name: anonymous ? '匿名委托人' : text(task.issuer, '委托联络人'),
+            handle: fallbackHandle,
+            persona: anonymous
+                ? '身份被隐藏的临时委托联络人。只讨论与当前委托有关的内容，不泄露真实身份。'
+                : `负责发布和跟进“${text(task.title, '当前委托')}”的委托联络人。`,
+        });
+        npc.profileGenerated = true;
+        npc.dmAccess = 'allowed';
+        npc.taskContact = true;
+        npc.temporaryContact = anonymous;
+        npc.bio = anonymous ? '身份已隐藏 · 仅用于委托联络' : '委托与悬赏联络账号';
+        data.npcs.push(npc);
+    }
+    task.issuerNpcId = npc.id;
+    task.issuerHandle = npc.handle;
+    if (task.anonymous) task.issuer = '匿名委托人';
+    const conversation = ensureNpcConversation(data, npc);
+    conversation.taskContact = true;
+    return { npc, conversation };
+}
+
 export function ensureCharacterRole(data, snapshot = {}) {
     data.npcs = Array.isArray(data.npcs) ? data.npcs : [];
     const targetId = text(snapshot.characterId, text(snapshot.characterName, 'current-character'));

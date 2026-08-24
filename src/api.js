@@ -1,17 +1,5 @@
 import { extractAssistantReasoning, extractAssistantText } from './prompt.js';
 
-const lastRequestAt = new Map();
-
-async function respectRateLimit(config) {
-    const rpm = Math.min(600, Math.max(0, Number(config?.rpm || 0)));
-    if (!rpm) return;
-    const key = `${config?.profileId || config?.provider || 'default'}:${config?.moduleId || 'shared'}`;
-    const interval = Math.ceil(60000 / rpm);
-    const wait = Math.max(0, interval - (Date.now() - Number(lastRequestAt.get(key) || 0)));
-    if (wait) await new Promise(resolve => setTimeout(resolve, wait));
-    lastRequestAt.set(key, Date.now());
-}
-
 function cleanEndpoint(value) {
     return String(value || '').trim().replace(/\/+$/, '');
 }
@@ -109,52 +97,19 @@ function requestMessages(request) {
     ];
 }
 
-function parseParameterValue(parameter) {
-    const value = String(parameter?.value ?? '').trim();
-    if (parameter?.type === 'number') {
-        const number = Number(value);
-        if (!Number.isFinite(number)) throw new Error(`API 参数“${parameter.key}”需要填写有效数字`);
-        return number;
-    }
-    if (parameter?.type === 'boolean') {
-        if (!['true', 'false'].includes(value.toLocaleLowerCase())) throw new Error(`API 参数“${parameter.key}”只能填写 true 或 false`);
-        return value.toLocaleLowerCase() === 'true';
-    }
-    if (parameter?.type === 'json') {
-        try { return JSON.parse(value); } catch { throw new Error(`API 参数“${parameter.key}”不是有效 JSON`); }
-    }
-    return String(parameter?.value ?? '');
-}
-
-function setParameterPath(target, path, value) {
-    const parts = String(path || '').split('.').map(part => part.trim()).filter(Boolean);
-    if (!parts.length) return;
-    if (['model', 'messages', 'stream'].includes(parts[0])) throw new Error(`API 参数“${parts[0]}”由插件管理，不能覆盖`);
-    let cursor = target;
-    for (const part of parts.slice(0, -1)) {
-        if (!cursor[part] || typeof cursor[part] !== 'object' || Array.isArray(cursor[part])) cursor[part] = {};
-        cursor = cursor[part];
-    }
-    cursor[parts[parts.length - 1]] = value;
-}
-
 export function buildTextRequestBody(config, request) {
+    const excluded = new Set(Array.isArray(config?.excludedBodyParameters) ? config.excludedBodyParameters : []);
     const body = {
-        model: String(config?.model || '').trim(),
+        ...(!excluded.has('model') ? { model: String(config?.model || '').trim() } : {}),
         messages: requestMessages(request),
-        temperature: Number(config?.temperature ?? 0.9),
-        max_tokens: Number(config?.maxTokens ?? 8192),
-        ...(request?.jsonSchema ? { response_format: buildResponseFormat(request.jsonSchema) } : {}),
+        ...(!excluded.has('temperature') ? { temperature: Number(config?.temperature ?? 0.9) } : {}),
+        ...(!excluded.has('max_tokens') ? { max_tokens: Number(config?.maxTokens ?? 8192) } : {}),
+        ...(request?.jsonSchema && !excluded.has('response_format') ? { response_format: buildResponseFormat(request.jsonSchema) } : {}),
     };
-    for (const parameter of config?.extraParameters || []) {
-        if (parameter?.enabled === false || !String(parameter?.key || '').trim()) continue;
-        setParameterPath(body, parameter.key, parseParameterValue(parameter));
-    }
     return body;
 }
 
 export async function generateForumTextResult(config, request, { captureTrace = false } = {}) {
-    await respectRateLimit(config);
     if (config?.provider === 'sillytavern') {
         const context = globalThis.SillyTavern?.getContext?.();
         const generateRaw = context?.generateRaw;
@@ -179,7 +134,7 @@ export async function generateForumTextResult(config, request, { captureTrace = 
         return { text: String(text).trim(), reasoning: '' };
     }
     const model = String(config?.model || '').trim();
-    if (!model) throw new Error('请先填写文本模型名称');
+    if (!model && !(config?.excludedBodyParameters || []).includes('model')) throw new Error('请先填写文本模型名称');
     const endpoint = resolveEndpoint(config.endpoint, 'text');
     const body = buildTextRequestBody(config, request);
     const payload = await fetchJson(endpoint, {

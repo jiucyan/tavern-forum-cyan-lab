@@ -56,15 +56,10 @@ function normalizeProfile(profile, index = 0) {
     profile.reserved = Boolean(isSillyTavern);
     profile.text = mergeDefaults(profile.text && typeof profile.text === 'object' ? profile.text : {}, template.text);
     profile.text.provider = isSillyTavern ? 'sillytavern' : 'custom';
-    profile.text.extraParameters = Array.isArray(profile.text.extraParameters)
-        ? profile.text.extraParameters.filter(item => item && typeof item === 'object').map(item => ({
-            id: String(item.id || createId('api-param')),
-            key: String(item.key || '').trim(),
-            value: String(item.value ?? ''),
-            type: ['string', 'number', 'boolean', 'json'].includes(item.type) ? item.type : 'string',
-            enabled: item.enabled !== false,
-        }))
+    profile.text.excludedBodyParameters = Array.isArray(profile.text.excludedBodyParameters)
+        ? [...new Set(profile.text.excludedBodyParameters.map(String).filter(item => ['model', 'temperature', 'max_tokens', 'response_format'].includes(item)))]
         : [];
+    delete profile.text.extraParameters;
     const image = profile.image && typeof profile.image === 'object' ? profile.image : {};
     const hadImageEnabledSwitch = hasOwn(image, 'enabled');
     profile.image = mergeDefaults(image, template.image);
@@ -124,8 +119,8 @@ function migrateSettings(settings) {
         settings.modules[definition.id].joinGeneration = settings.modules[definition.id].generationMode === 'linked';
         settings.modules[definition.id].automation = ['suggest', 'confirm', 'auto'].includes(settings.modules[definition.id].automation)
             ? settings.modules[definition.id].automation
-            : 'confirm';
-        settings.modules[definition.id].rpm = Math.min(600, Math.max(0, Number(settings.modules[definition.id].rpm || 0)));
+            : 'auto';
+        delete settings.modules[definition.id].rpm;
         settings.modules[definition.id].probability = Math.min(100, Math.max(0, Number(settings.modules[definition.id].probability ?? 35)));
         settings.modules[definition.id].cooldownMinutes = Math.min(43200, Math.max(0, Number(settings.modules[definition.id].cooldownMinutes || 0)));
         if (definition.id === 'travel') {
@@ -139,9 +134,23 @@ function migrateSettings(settings) {
             settings.modules[definition.id].travelMessageMinMinutes = Math.min(14400, Math.max(0.25, Number(settings.modules[definition.id].travelMessageMinMinutes || 15)));
             settings.modules[definition.id].travelMessageMaxMinutes = Math.min(14400, Math.max(settings.modules[definition.id].travelMessageMinMinutes, Number(settings.modules[definition.id].travelMessageMaxMinutes || 35)));
         }
+        if (definition.id === 'tasks') {
+            settings.modules.tasks.verificationApiEnabled = Boolean(settings.modules.tasks.verificationApiEnabled);
+            settings.modules.tasks.verificationApiProfileId = String(settings.modules.tasks.verificationApiProfileId || 'inherit');
+        }
+    }
+    delete settings.orchestration.rpm;
+    if (!settings.linkedWorldDefaultsMigrated) {
+        settings.orchestration.enabled = true;
+        for (const module of Object.values(settings.modules)) module.automation = 'auto';
+        for (const id of ['moderation', 'tasks', 'health']) {
+            settings.modules[id].enabled = true;
+            settings.modules[id].generationMode = 'linked';
+            settings.modules[id].joinGeneration = true;
+        }
+        settings.linkedWorldDefaultsMigrated = true;
     }
     settings.orchestration.apiProfileId = String(settings.orchestration.apiProfileId || 'inherit');
-    settings.orchestration.rpm = Math.min(600, Math.max(0, Number(settings.orchestration.rpm || 0)));
     settings.social.directMessagePolicy = ['open', 'following', 'chance'].includes(settings.social.directMessagePolicy)
         ? settings.social.directMessagePolicy
         : 'chance';
@@ -151,6 +160,7 @@ function migrateSettings(settings) {
     settings.social.proactiveDms.withAutomaticRefresh = settings.social.proactiveDms.withAutomaticRefresh !== false;
     settings.social.proactiveDms.requireFollow = settings.social.proactiveDms.requireFollow !== false;
     settings.social.proactiveDms.maxPerRun = Math.min(8, Math.max(0, Number(settings.social.proactiveDms.maxPerRun || 0)));
+    settings.social.proactiveDms.probability = Math.min(100, Math.max(0, Number(settings.social.proactiveDms.probability ?? 35)));
     settings.automation.quietHours.behavior = ['postpone', 'mute'].includes(settings.automation.quietHours.behavior)
         ? settings.automation.quietHours.behavior
         : 'postpone';
@@ -229,6 +239,9 @@ function migrateSettings(settings) {
     }
     for (const module of Object.values(settings.modules)) {
         if (module.apiProfileId !== 'inherit' && !settings.apiProfiles.some(profile => profile.id === module.apiProfileId)) module.apiProfileId = 'inherit';
+    }
+    if (settings.modules.tasks.verificationApiProfileId !== 'inherit' && !settings.apiProfiles.some(profile => profile.id === settings.modules.tasks.verificationApiProfileId)) {
+        settings.modules.tasks.verificationApiProfileId = 'inherit';
     }
     if (settings.orchestration.apiProfileId !== 'inherit' && !settings.apiProfiles.some(profile => profile.id === settings.orchestration.apiProfileId)) {
         settings.orchestration.apiProfileId = 'inherit';
@@ -416,9 +429,15 @@ export function getModuleApiConfig(moduleId, kind = 'text', { orchestrated = fal
         : settings.modules?.[moduleId]?.apiProfileId;
     const profileId = selectedId && selectedId !== 'inherit' ? selectedId : settings.activeApiProfileId;
     const config = getApiConfigForProfile(profileId, kind);
-    if (kind !== 'image') config.rpm = Number(orchestrated ? settings.orchestration.rpm : settings.modules?.[moduleId]?.rpm || 0);
     config.moduleId = moduleId;
     return config;
+}
+
+export function getTaskVerificationApiConfig() {
+    const settings = getSettings();
+    const selectedId = settings.modules?.tasks?.verificationApiProfileId;
+    const profileId = selectedId && selectedId !== 'inherit' ? selectedId : settings.activeApiProfileId;
+    return { ...getApiConfigForProfile(profileId, 'text'), moduleId: 'task-verification' };
 }
 
 export function updateApiConfig(kind, field, value) {

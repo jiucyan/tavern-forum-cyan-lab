@@ -15,6 +15,9 @@ import {
     classifyInventoryItem,
     evaluateModuleGeneration,
     filterWorldUpdatesBySafety,
+    findLocalTaskEvidence,
+    buildTaskVerificationRequest,
+    normalizeTaskVerification,
     normalizeProactiveDirectMessages,
     normalizeWorldUpdates,
     prepareCompanionJourney,
@@ -100,6 +103,32 @@ test('local health events create an interactive fictional care record without an
     assert.ok(item.careNote);
 });
 
+test('task completion accepts only evidence written after the task was accepted', () => {
+    const task = {
+        title: '寻找绝版画册《英伦植物志》',
+        objectiveTarget: '绝版画册 英伦植物志',
+        completionCriteria: '在正文中明确取得这本画册',
+        acceptedMessageIndex: 2,
+    };
+    const chat = [
+        { mes: '我早就买到了绝版画册《英伦植物志》。' },
+        { mes: '委托人希望寻找那本画册。' },
+        { mes: '我们继续在旧书店翻找，但还没有结果。' },
+    ];
+    assert.equal(findLocalTaskEvidence(task, chat).eligible, false);
+    chat.push({ mes: '店主从暗柜里取出《英伦植物志》，我付钱后终于拿到了这本绝版画册。' });
+    const local = findLocalTaskEvidence(task, chat);
+    assert.equal(local.eligible, true);
+    assert.equal(local.messageIndex, 3);
+
+    const request = buildTaskVerificationRequest({ task, chat, names: { user: '小洛', character: '林' } });
+    assert.doesNotMatch(request.user, /早就买到了/);
+    assert.match(request.user, /店主从暗柜/);
+    const verified = normalizeTaskVerification('{"completed":true,"reason":"正文明确取得目标","evidenceMessageIndex":3,"evidenceExcerpt":"终于拿到了"}');
+    assert.equal(verified.completed, true);
+    assert.equal(verified.evidenceMessageIndex, 3);
+});
+
 test('one API journey plan is scheduled and settled entirely by the local clock', () => {
     const config = settings();
     config.modules.travel.enabled = true;
@@ -174,6 +203,7 @@ test('module probability and quiet hours are evaluated locally', () => {
     config.modules.tasks.enabled = true;
     config.modules.tasks.probability = 0;
     assert.equal(evaluateModuleGeneration(config, data, 'tasks', { automatic: true, random: () => 0.5 }).code, 'probability');
+    assert.equal(evaluateModuleGeneration(config, data, 'tasks', { automatic: false, applyProbability: true, random: () => 0.5 }).code, 'probability');
     config.automation.quietHours.enabled = true;
     config.automation.quietHours.start = '00:00';
     config.automation.quietHours.end = '23:59';

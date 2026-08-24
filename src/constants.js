@@ -26,7 +26,7 @@ export const DEFAULT_BUILTIN_PROMPTS = Object.freeze({
     proactiveDirectMessage: '在确有自然动机时，让已建立人设的角色主动给 User 发一条私信。不得为了刷存在感强行联系；遵守关注关系、拉黑、静音、秘密与角色知识边界。',
     roleDirectMessage: '你正在模拟两位角色之间的私密消息。只有对话双方知道消息内容，第三个角色和公共论坛均不可读取。',
     moderation: '你是该社区的内容管理角色。依据用户自行填写的社区规则和权限层级审理举报，只处理帖子是否违反规则，不评价现实法律。给出简短、可执行且符合世界观的结论。',
-    task: '生成符合当前世界观、可推动剧情但不强迫主线的任务。发布者可以可靠、可疑或欺诈；奖励和失败后果必须与设定相符。',
+    task: '生成符合当前世界观、可推动剧情但不强迫主线的任务。实名发布者与匿名委托随机出现；实名发布者优先使用已有角色账号，也允许符合世界观的组织账号。任务必须给出可由后续正文验证的结构化目标、明确完成条件、合理奖励与失败影响。发布者可以可靠、可疑或欺诈。',
     fortune: '生成当天的世界内运势与可落实的轻微影响。好运或倒霉只能改变概率和事件倾向，不能强行改写已确定事实。',
     travel: '你负责一个“旅行青蛙”式的旅伴系统。旅伴是长期存在、会自主外出和归来的宠物，而不是普通角色旅行记录。根据当前世界观更新旅伴的心情、去向、随身物品和短讯，并生成一段旅途见闻；归来时可以带回符合设定的小物件，但不要破坏世界平衡。',
     health: '生成适合当前世界观的身体状态、症状或康复变化。只服务于虚构剧情，不输出面向现实用户的医疗诊断。',
@@ -37,25 +37,28 @@ export const DEFAULT_BUILTIN_PROMPTS = Object.freeze({
 
 export const WORLD_MODULE_DEFINITIONS = Object.freeze([
     { id: 'forum', name: '论坛', icon: 'message', description: '帖子、评论、话题与社交互动', defaultEnabled: true },
-    { id: 'moderation', name: '社区治理', icon: 'shield', description: '官号权限、举报、删帖与裁决', defaultEnabled: false },
-    { id: 'tasks', name: '任务', icon: 'book', description: '委托、神秘人、骗局、成功与失败', defaultEnabled: false },
+    { id: 'moderation', name: '社区治理', icon: 'shield', description: '官号权限、举报、删帖与裁决', defaultEnabled: true },
+    { id: 'tasks', name: '任务', icon: 'book', description: '委托、神秘人、骗局、成功与失败', defaultEnabled: true },
     { id: 'fortune', name: '运势', icon: 'sparkles', description: '每日倾向与剧情概率影响', defaultEnabled: false },
     { id: 'travel', name: '旅伴', icon: 'repost', description: '会自主外出、寄回见闻并带回小物件的宠物', defaultEnabled: false },
     { id: 'inventory', name: '背包', icon: 'database', description: '物品、奖励、消耗与剧情效果', defaultEnabled: false },
-    { id: 'health', name: '健康与医疗', icon: 'heart', description: '虚构角色的日常身体事件、就医与恢复', defaultEnabled: false },
+    { id: 'health', name: '健康与医疗', icon: 'heart', description: '虚构角色的日常身体事件、就医与恢复', defaultEnabled: true },
 ]);
 
 const DEFAULT_MODULE_SETTINGS = Object.fromEntries(WORLD_MODULE_DEFINITIONS.map(module => [module.id, {
     enabled: module.defaultEnabled,
     injectIntoChat: false,
     allowApiDraw: false,
-    generationMode: module.id === 'forum' ? 'linked' : module.id === 'fortune' ? 'local' : 'independent',
-    joinGeneration: module.id === 'forum',
+    generationMode: ['forum', 'moderation', 'tasks', 'health'].includes(module.id) ? 'linked' : module.id === 'fortune' ? 'local' : 'independent',
+    joinGeneration: ['forum', 'moderation', 'tasks', 'health'].includes(module.id),
     apiProfileId: 'inherit',
-    rpm: 0,
     probability: module.id === 'fortune' ? 100 : 35,
     cooldownMinutes: module.id === 'forum' ? 0 : 60,
-    automation: module.id === 'forum' ? 'auto' : 'confirm',
+    automation: 'auto',
+    ...(module.id === 'tasks' ? {
+        verificationApiEnabled: false,
+        verificationApiProfileId: 'inherit',
+    } : {}),
     ...(module.id === 'travel' ? {
         travelDurationPreset: 'normal',
         travelMinMinutes: 60,
@@ -79,7 +82,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
                 model: '',
                 temperature: 0.9,
                 maxTokens: 8192,
-                extraParameters: [],
+                excludedBodyParameters: [],
             },
             image: {
                 enabled: false,
@@ -101,7 +104,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
                 model: '',
                 temperature: 0.9,
                 maxTokens: 8192,
-                extraParameters: [],
+                excludedBodyParameters: [],
             },
             image: {
                 enabled: false,
@@ -121,7 +124,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
         model: '',
         temperature: 0.9,
         maxTokens: 8192,
-        extraParameters: [],
+        excludedBodyParameters: [],
     },
     imageApi: {
         enabled: false,
@@ -252,6 +255,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
             withAutomaticRefresh: true,
             requireFollow: true,
             maxPerRun: 2,
+            probability: 35,
         },
     },
     automation: {
@@ -298,7 +302,6 @@ export const DEFAULT_SETTINGS = Object.freeze({
         apiProfileId: 'inherit',
         worldTimeEnabled: true,
         worldTimeLabel: '',
-        rpm: 0,
     },
     moderation: {
         systemAdminEnabled: false,
@@ -354,6 +357,9 @@ export const EMPTY_FORUM_DATA = Object.freeze({
             bodyColor: '',
             accentColor: '',
             accessory: 'none',
+            accessoryColor: '',
+            autoAccessory: false,
+            habitat: 'meadow',
             weather: 'auto',
             timeOfDay: 'auto',
             lastInteractionAt: 0,
