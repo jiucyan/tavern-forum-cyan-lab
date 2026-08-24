@@ -157,6 +157,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
         worldInfoEntries: {},
         sillyTavernPreset: false,
         presetEntries: {},
+        promptPositions: {},
     },
     injection: {
         enabled: false,

@@ -239,6 +239,40 @@ test('forum prompt preserves preset and plugin message roles', () => {
     assert.match(request.user, /1～3 条/);
 });
 
+test('forum prompt positions are the exact API message order and include only readable sources', () => {
+    const request = buildForumGenerationRequest({
+        settings: {
+            generation: { postsMin: 1, postsMax: 1, commentsMin: 0, commentsMax: 0 },
+            sources: { promptPositions: {
+                'preset:preset-user': 10,
+                'source:character-persona': 20,
+                'forum:forum-tone': 30,
+                'builtin:forum-system': 40,
+                'builtin:generation': 50,
+            } },
+            promptEntries: [{ id: 'forum-tone', enabled: true, constant: true, title: '论坛语气', role: 'assistant', content: '保持自然', order: 1 }],
+        },
+        sourceContext: {
+            chat: '',
+            userPersona: '',
+            characterPersona: '角色资料',
+            presetPrompts: [{ id: 'preset-user', title: '用户预设', role: 'user', content: '预设正文', order: 8 }],
+            worldInfo: [],
+        },
+    });
+    assert.deepEqual(request.promptSequence.map(item => item.id), [
+        'preset:preset-user',
+        'source:character-persona',
+        'forum:forum-tone',
+        'builtin:forum-system',
+        'builtin:generation',
+    ]);
+    assert.deepEqual(request.messages.map(message => message.role), ['user', 'user', 'assistant', 'system', 'user']);
+    assert.match(request.messages[0].content, /预设正文/);
+    assert.match(request.messages[1].content, /角色资料/);
+    assert.doesNotMatch(request.messages.map(message => message.content).join('\n'), /User 人设|最近的故事正文|世界书条目/);
+});
+
 test('custom API parameters support types and nested paths without overriding messages', () => {
     const body = buildTextRequestBody({
         model: 'example',
@@ -315,7 +349,12 @@ test('generation request includes only explicitly supplied source context', () =
     assert.match(request.user, /正文内容/);
     assert.match(request.user, /角色人设/);
     assert.match(request.user, /车站设定/);
-    assert.match(request.user, /User 人设】\n未选择读取/);
+    assert.doesNotMatch(request.user, /User 人设/);
+    assert.deepEqual(request.promptSequence.filter(item => item.source !== 'builtin').map(item => item.id), [
+        'source:character-persona',
+        'world:城市:1',
+        'source:chat',
+    ]);
 });
 
 test('thread replies and NPC profiles are normalized', () => {

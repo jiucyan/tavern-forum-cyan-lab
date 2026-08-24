@@ -4998,6 +4998,103 @@ button.tf-avatar {
     font-size: 12px;
 }
 
+#tavern-forum-root .tf-forum-read-order {
+    margin: 18px 0;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--tf-card) 90%, var(--tf-primary) 10%);
+    border: 1px solid var(--tf-line);
+    border-radius: 18px;
+}
+
+#tavern-forum-root .tf-forum-read-order > header {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--tf-line);
+}
+
+#tavern-forum-root .tf-forum-read-order > header small,
+#tavern-forum-root .tf-forum-read-order-entry small {
+    color: var(--tf-primary);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .12em;
+}
+
+#tavern-forum-root .tf-forum-read-order > header h4 { margin: 3px 0 2px; font-size: 17px; }
+#tavern-forum-root .tf-forum-read-order > header p,
+#tavern-forum-root .tf-forum-read-order > header > span { color: var(--tf-muted); font-size: 11px; }
+#tavern-forum-root .tf-forum-read-order-list { display: grid; }
+
+#tavern-forum-root .tf-forum-read-order-entry {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto 34px minmax(0, 1fr) 88px auto;
+    gap: 10px;
+    align-items: center;
+    min-height: 66px;
+    padding: 9px 14px;
+    background: var(--tf-card);
+    border-bottom: 1px solid var(--tf-line);
+    transition: opacity .16s ease, transform .16s ease, box-shadow .16s ease;
+}
+
+#tavern-forum-root .tf-forum-read-order-entry:last-child { border-bottom: 0; }
+#tavern-forum-root .tf-forum-read-order-entry.is-dragging { z-index: 2; opacity: .46; }
+#tavern-forum-root .tf-forum-read-order-entry.is-drop-before { box-shadow: inset 0 3px 0 var(--tf-primary); }
+#tavern-forum-root .tf-forum-read-order-entry.is-drop-after { box-shadow: inset 0 -3px 0 var(--tf-primary); }
+
+#tavern-forum-root .tf-forum-read-order-handle {
+    padding: 8px 4px;
+    color: var(--tf-muted);
+    font-size: 18px;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+#tavern-forum-root .tf-forum-read-order-handle:active { cursor: grabbing; }
+#tavern-forum-root .tf-forum-read-order-index { color: var(--tf-muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+
+#tavern-forum-root .tf-forum-read-order-entry > div:nth-of-type(1) {
+    display: grid;
+    min-width: 0;
+}
+
+#tavern-forum-root .tf-forum-read-order-entry strong,
+#tavern-forum-root .tf-forum-read-order-entry em {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#tavern-forum-root .tf-forum-read-order-entry strong { font-size: 13px; }
+#tavern-forum-root .tf-forum-read-order-entry em { color: var(--tf-muted); font-size: 10px; font-style: normal; }
+
+#tavern-forum-root .tf-forum-read-order-entry > label {
+    display: grid;
+    gap: 2px;
+    color: var(--tf-muted);
+    font-size: 9px;
+}
+
+#tavern-forum-root .tf-forum-read-order-entry > label input { width: 82px; min-height: 32px; padding: 5px 7px; }
+#tavern-forum-root .tf-forum-read-order-actions { display: flex; gap: 4px; }
+
+#tavern-forum-root .tf-forum-read-order-actions button {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    place-items: center;
+    border: 1px solid var(--tf-line);
+    border-radius: 9px;
+    color: var(--tf-text);
+    background: var(--tf-card);
+}
+
 .tf-preset-catalog {
     max-height: 360px;
     overflow: auto;
@@ -5130,6 +5227,30 @@ button.tf-avatar {
 
     .tf-generation-ranges {
         grid-template-columns: 1fr;
+    }
+
+    #tavern-forum-root .tf-forum-read-order > header { padding: 14px; }
+
+    #tavern-forum-root .tf-forum-read-order-entry {
+        grid-template-columns: auto 28px minmax(0, 1fr) auto;
+        gap: 7px;
+        padding: 8px 10px;
+    }
+
+    #tavern-forum-root .tf-forum-read-order-entry > label {
+        grid-column: 3;
+        grid-row: 2;
+        grid-template-columns: auto 74px;
+        align-items: center;
+        justify-content: start;
+    }
+
+    #tavern-forum-root .tf-forum-read-order-entry > label input { width: 74px; }
+
+    #tavern-forum-root .tf-forum-read-order-actions {
+        grid-column: 4;
+        grid-row: 1 / span 2;
+        flex-direction: column;
     }
 
     .tf-api-parameter {

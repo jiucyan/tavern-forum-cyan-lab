@@ -99,6 +99,7 @@ test('API profiles switch freely and source switches include selected lore entri
     const sourcesWithPreset = await store.getGenerationSourceContext();
     assert.equal(sourcesWithPreset.presetPrompts.length, 1);
     assert.match(sourcesWithPreset.presetPrompts[0].content, /角色\s+所在的城市/);
+    assert.equal(sourcesWithPreset.presetPrompts[0].order, 0);
     assert.equal(context.chatCompletionSettings.prompts[0].content, '故事发生在 {{char}} 所在的城市。');
 
     const role = store.getForumData().npcs[0] || { id: 'role-a' };

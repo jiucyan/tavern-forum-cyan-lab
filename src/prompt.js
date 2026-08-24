@@ -261,6 +261,23 @@ export function getActivePromptEntries(entries, scanText) {
         .sort((a, b) => safeInteger(b.order, 0, -99999) - safeInteger(a.order, 0, -99999));
 }
 
+export function orderForumPromptItems(items, positions = {}) {
+    if (!Array.isArray(items)) return [];
+    return items
+        .filter(item => item && safeString(item.content))
+        .map((item, index) => {
+            const saved = Number(positions?.[item.id]);
+            const fallback = Number(item.defaultPosition);
+            return {
+                ...item,
+                position: Number.isFinite(saved) ? saved : (Number.isFinite(fallback) ? fallback : (index + 1) * 10),
+            };
+        })
+        .sort((left, right) => left.position - right.position
+            || Number(left.defaultPosition || 0) - Number(right.defaultPosition || 0)
+            || safeString(left.id).localeCompare(safeString(right.id)));
+}
+
 export function buildForumGenerationRequest({
     chat = [],
     names = {},
@@ -297,36 +314,57 @@ export function buildForumGenerationRequest({
         : '';
 
     const baseSystem = builtinPrompt(settings, 'forumSystem');
-    const sourceSections = [
-        context ? `【最近的故事正文】\n${context}` : '【最近的故事正文】\n未选择读取。',
-        userPersona ? `【User 人设】\n${userPersona}` : '【User 人设】\n未选择读取。',
-        characterPersona ? `【Char 人设】\n${characterPersona}` : '【Char 人设】\n未选择读取。',
-        worldInfo.length ? `【用户选中的世界书条目】\n${worldInfo.map(entry => `《${safeString(entry.book)} / ${safeString(entry.title, `UID ${entry.uid}`)}》\n${safeString(entry.content)}`).join('\n\n')}` : '【世界书条目】\n未选择读取。',
-        facts.length ? `【可用于公开发帖的事实】\n${facts.map(fact => `- ${safeString(fact.content)}`).join('\n')}` : '',
-        roleMemories.length ? `【角色的独立社交记忆】\n${roleMemories.map(formatMemory).join('\n\n')}\n每个角色只能使用其“确定知道”的信息，必须避开其“明确不知道”的信息。私信秘密不得公开。` : '',
-        excludedRoles.length ? `【不得出现的账号】\n${excludedRoles.map(role => `@${safeString(role.handle)}（${safeString(role.name)}）`).join('、')}\n这些账号已被用户拉黑，不得让他们发帖、评论、转发或参与互动。` : '',
-        recentPosts ? `【论坛已有讨论】\n${recentPosts}` : '【论坛已有讨论】\n暂无。',
-    ].filter(Boolean);
-    const user = `请生成 ${count} 条新的论坛帖子。每篇帖子生成 ${commentLower}～${commentUpper} 条自然的初始评论；评论数量应有差异，不要每篇完全相同。${builtinPrompt(settings, 'forumGeneration')} 所有 imagePrompt 必须只用简体中文描述画面，禁止输出英文配图提示词。少量新帖子可以由角色转发或引用“论坛已有讨论”中的旧帖：此时把 repostOf 填成旧帖方括号里的准确帖子ID，并把 quoteText 填成旧帖作者与正文的简短快照；原创帖不要填写这两个字段。${socialInstruction ? `\n${socialInstruction}` : ''}\n\n${sourceSections.join('\n\n')}${linkedWorldInstruction ? `\n\n【联动模块】\n${safeString(linkedWorldInstruction)}` : ''}\n\n请把最终帖子数据放进 <forum_data> 与 </forum_data> 标记，标记内使用紧凑 JSON。根对象可包含 topic、posts、worldUpdates 和 dmEvents；每篇帖子必须有 author、handle、content，可选 imagePrompt，并可包含 tags、likes、reposts、repostOf、quoteText、storyRelevance、comments；每条评论必须有 author、handle、content，也可有 imagePrompt；确实适合投票的帖子才增加 poll（question 与 2～4 个 options）。数值字段拿不准时可以省略，插件会补充彼此不同的自然初始值。最小数据格式：<forum_data>{"posts":[{"author":"昵称","handle":"账号","content":"正文"}]}</forum_data>。如果接口自然产生分析、思维过程或说明，可以完整保留在标记之外；插件只读取 forum_data，且不要在标记内写注释、解释或字符串拼接符。`;
+    const generationInstruction = `请生成 ${count} 条新的论坛帖子。每篇帖子生成 ${commentLower}～${commentUpper} 条自然的初始评论；评论数量应有差异，不要每篇完全相同。${builtinPrompt(settings, 'forumGeneration')} 所有 imagePrompt 必须只用简体中文描述画面，禁止输出英文配图提示词。少量新帖子可以由角色转发或引用“论坛已有讨论”中的旧帖：此时把 repostOf 填成旧帖方括号里的准确帖子ID，并把 quoteText 填成旧帖作者与正文的简短快照；原创帖不要填写这两个字段。${socialInstruction ? `\n${socialInstruction}` : ''}\n\n请把最终帖子数据放进 <forum_data> 与 </forum_data> 标记，标记内使用紧凑 JSON。根对象可包含 topic、posts、worldUpdates 和 dmEvents；每篇帖子必须有 author、handle、content，可选 imagePrompt，并可包含 tags、likes、reposts、repostOf、quoteText、storyRelevance、comments；每条评论必须有 author、handle、content，也可有 imagePrompt；确实适合投票的帖子才增加 poll（question 与 2～4 个 options）。数值字段拿不准时可以省略，插件会补充彼此不同的自然初始值。最小数据格式：<forum_data>{"posts":[{"author":"昵称","handle":"账号","content":"正文"}]}</forum_data>。如果接口自然产生分析、思维过程或说明，可以完整保留在标记之外；插件只读取 forum_data，且不要在标记内写注释、解释或字符串拼接符。`;
     const normalizeRole = role => ['system', 'user', 'assistant'].includes(role) ? role : 'system';
-    const contextualMessages = [
-        ...presetPrompts.map(entry => ({
+    const promptItems = [
+        { id: 'builtin:forum-system', title: '论坛主提示词', source: 'builtin', role: 'system', content: baseSystem, defaultPosition: 100 },
+        ...presetPrompts.map((entry, index) => ({
+            id: `preset:${safeString(entry.id, index)}`,
+            title: `酒馆预设 · ${safeString(entry.title, '未命名条目')}`,
+            source: 'preset',
             role: normalizeRole(entry.role),
             content: `【酒馆预设 · ${safeString(entry.title, '未命名条目')}】\n${safeString(entry.content)}`,
+            defaultPosition: 200 + (Number.isFinite(Number(entry.order)) ? Number(entry.order) : index),
         })),
-        ...activeEntries.map(entry => ({
+        ...activeEntries.map((entry, index) => ({
+            id: `forum:${safeString(entry.id, entry.title || index)}`,
+            title: `论坛设定 · ${safeString(entry.title, '未命名设定')}`,
+            source: 'forum',
             role: normalizeRole(entry.role),
             content: `【论坛设定 · ${safeString(entry.title, '未命名设定')}】\n${safeString(entry.content)}`,
+            defaultPosition: 300 + index,
         })),
-    ].filter(message => safeString(message.content));
-    const messages = [
-        { role: 'system', content: baseSystem },
-        ...contextualMessages,
-        { role: 'user', content: user },
+        context && { id: 'source:chat', title: '最近故事正文', source: 'chat', role: 'user', content: `【最近的故事正文】\n${context}`, defaultPosition: 600 },
+        userPersona && { id: 'source:user-persona', title: 'User 人设', source: 'persona', role: 'user', content: `【User 人设】\n${userPersona}`, defaultPosition: 400 },
+        characterPersona && { id: 'source:character-persona', title: 'Char 人设', source: 'persona', role: 'user', content: `【Char 人设】\n${characterPersona}`, defaultPosition: 410 },
+        ...worldInfo.map((entry, index) => ({
+            id: `world:${safeString(entry.key, `${entry.book}:${entry.uid}`)}`,
+            title: `世界书 · ${safeString(entry.book)} / ${safeString(entry.title, `UID ${entry.uid}`)}`,
+            source: 'world',
+            role: 'user',
+            content: `【世界书条目 · ${safeString(entry.book)} / ${safeString(entry.title, `UID ${entry.uid}`)}】\n${safeString(entry.content)}`,
+            defaultPosition: 500 + (Number.isFinite(Number(entry.position)) ? Number(entry.position) : index),
+        })),
+        facts.length && { id: 'source:facts', title: '可公开事实', source: 'forum-data', role: 'user', content: `【可用于公开发帖的事实】\n${facts.map(fact => `- ${safeString(fact.content)}`).join('\n')}`, defaultPosition: 650 },
+        roleMemories.length && { id: 'source:role-memories', title: '角色独立社交记忆', source: 'forum-data', role: 'user', content: `【角色的独立社交记忆】\n${roleMemories.map(formatMemory).join('\n\n')}\n每个角色只能使用其“确定知道”的信息，必须避开其“明确不知道”的信息。私信秘密不得公开。`, defaultPosition: 660 },
+        excludedRoles.length && { id: 'source:excluded-roles', title: '不得出现的账号', source: 'forum-data', role: 'user', content: `【不得出现的账号】\n${excludedRoles.map(role => `@${safeString(role.handle)}（${safeString(role.name)}）`).join('、')}\n这些账号已被用户拉黑，不得让他们发帖、评论、转发或参与互动。`, defaultPosition: 670 },
+        recentPosts && { id: 'source:existing-posts', title: '论坛已有讨论', source: 'forum-data', role: 'user', content: `【论坛已有讨论】\n${recentPosts}`, defaultPosition: 700 },
+        linkedWorldInstruction && { id: 'source:linked-world', title: '联动世界模块', source: 'world-module', role: 'user', content: `【联动模块】\n${safeString(linkedWorldInstruction)}`, defaultPosition: 750 },
+        { id: 'builtin:generation', title: '生成与输出格式', source: 'builtin', role: 'user', content: generationInstruction, defaultPosition: 900 },
     ];
+    const sequence = orderForumPromptItems(promptItems, settings?.sources?.promptPositions);
+    const messages = sequence.map(({ role, content }) => ({ role: normalizeRole(role), content }));
     const system = messages.filter(message => message.role === 'system').map(message => message.content).join('\n\n');
+    const user = messages.filter(message => message.role === 'user').map(message => message.content).join('\n\n');
 
-    return { system, user, messages, activeEntries, presetPrompts };
+    return {
+        system,
+        user,
+        messages,
+        activeEntries,
+        presetPrompts,
+        promptSequence: sequence.map(({ id, title, role, source, position }) => ({ id, title, role, source, position })),
+    };
 }
 
 function unwrapContent(content) {

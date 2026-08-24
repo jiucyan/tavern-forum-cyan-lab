@@ -36,8 +36,27 @@ const browser = await chromium.launch({
     ...(executablePath ? { executablePath } : {}),
 });
 
+function enableScreenshotRetry(page) {
+    const capture = page.screenshot.bind(page);
+    Object.defineProperty(page, 'screenshot', {
+        configurable: true,
+        value: async options => {
+            let lastError;
+            for (let attempt = 0; attempt < 4; attempt += 1) {
+                try { return await capture(options); } catch (error) {
+                    lastError = error;
+                    if (!/UNKNOWN|EBUSY|EPERM/i.test(String(error?.code || error?.message || ''))) throw error;
+                    await new Promise(resolveWait => setTimeout(resolveWait, 120 * (attempt + 1)));
+                }
+            }
+            throw lastError;
+        },
+    });
+}
+
 try {
     const desktop = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+    enableScreenshotRetry(desktop);
     await desktop.goto(url, { waitUntil: 'networkidle' });
     await desktop.locator('.tf-app').evaluate(node => { node.dataset.renderSentinel = 'stable-desktop'; });
     await desktop.locator('.tf-topbar [data-tab="services"]').click();
@@ -75,8 +94,21 @@ try {
     await desktop.locator('[data-action="toggle-source-preset"]').check({ force: true });
     if (!await desktop.locator('[data-action="toggle-source-preset"]').isChecked()) throw new Error('preset source switch did not persist');
     if (!await desktop.evaluate(() => globalThis.SillyTavern.getContext().extensionSettings.tavern_forum.sources.sillyTavernPreset)) throw new Error('preset source setting did not persist');
+    const firstPresetEntry = desktop.locator('[data-preset-entry]').first();
+    const selectedPresetId = await firstPresetEntry.getAttribute('data-preset-entry');
+    if (await firstPresetEntry.count() && !await firstPresetEntry.isChecked()) await firstPresetEntry.check({ force: true });
+    const visibleReadOrderIds = await desktop.locator('.tf-forum-read-order-entry').evaluateAll(entries => entries.map(entry => entry.dataset.readOrderId));
+    if (selectedPresetId && !visibleReadOrderIds.includes(`preset:${selectedPresetId}`)) throw new Error('selected preset entry did not appear in the actual API order');
     if (!await desktop.locator('[data-action="toggle-world-book"]').count()) throw new Error('world book master switch is missing');
     if (!await desktop.locator('.tf-world-bound-badge').count()) throw new Error('character-bound world book was not recognized');
+    if (await desktop.locator('.tf-forum-read-order-entry').count() < 4) throw new Error('actual forum read order does not list enabled sources');
+    if (await desktop.locator('.tf-forum-read-order-entry').filter({ hasText: '未选择读取' }).count()) throw new Error('disabled or empty placeholders leaked into the actual read order');
+    const firstReadOrderId = await desktop.locator('.tf-forum-read-order-entry').first().getAttribute('data-read-order-id');
+    await desktop.locator('.tf-forum-read-order-entry').first().locator('[data-action="move-read-order"][data-direction="1"]').click();
+    const movedReadOrderId = await desktop.locator('.tf-forum-read-order-entry').nth(1).getAttribute('data-read-order-id');
+    if (!firstReadOrderId || movedReadOrderId !== firstReadOrderId) throw new Error('forum source order controls did not persist the API message position');
+    const storedPromptPositions = await desktop.evaluate(() => globalThis.SillyTavern.getContext().extensionSettings.tavern_forum.sources.promptPositions);
+    if (!Number.isFinite(Number(storedPromptPositions[firstReadOrderId]))) throw new Error('forum source position was not saved');
     await desktop.screenshot({ path: 'preview-sources.png' });
 
     await desktop.locator('[data-action="me-section"][data-section="appearance"]').click();
@@ -353,6 +385,7 @@ try {
     if (!Number.isFinite(savedFabPosition?.x) || !Number.isFinite(savedFabPosition?.y)) throw new Error('floating launcher position was not saved');
 
     const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+    enableScreenshotRetry(mobile);
     await mobile.goto(url, { waitUntil: 'networkidle' });
     await mobile.addStyleTag({ content: 'html { height: 0 !important; transform: translateZ(0); } body { position: fixed; inset: 0; height: 100dvh; }' });
     if (!await mobile.locator('#tavern-forum-root').isVisible()) throw new Error('mobile forum did not open from the floating launcher');
@@ -423,6 +456,10 @@ try {
     await mobile.waitForTimeout(80);
     const settingsNavScrollAfter = await mobile.locator('.tf-settings-page .tf-me-nav').evaluate(node => node.scrollLeft);
     if (settingsNavScrollBefore > 20 && Math.abs(settingsNavScrollAfter - settingsNavScrollBefore) > 8) throw new Error(`switching settings reset horizontal navigation from ${settingsNavScrollBefore} to ${settingsNavScrollAfter}`);
+    const mobileReadOrderWidth = await mobile.locator('.tf-forum-read-order').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
+    if (mobileReadOrderWidth.scroll > mobileReadOrderWidth.client + 2) throw new Error(`mobile forum read order overflowed horizontally (${mobileReadOrderWidth.scroll} > ${mobileReadOrderWidth.client})`);
+    await mobile.locator('.tf-forum-read-order').scrollIntoViewIfNeeded();
+    await mobile.screenshot({ path: 'preview-sources-order-mobile.png' });
     await mobile.screenshot({ path: 'preview-settings-mobile.png' });
     await mobile.locator('[data-action="me-section"][data-section="api"]').evaluate(node => node.click());
     await mobile.locator('[data-action="select-api-profile"]').selectOption('default-api-profile');

@@ -241,6 +241,11 @@ function migrateSettings(settings) {
     settings.sources.presetEntries = settings.sources.presetEntries && typeof settings.sources.presetEntries === 'object'
         ? settings.sources.presetEntries
         : {};
+    settings.sources.promptPositions = settings.sources.promptPositions && typeof settings.sources.promptPositions === 'object'
+        ? Object.fromEntries(Object.entries(settings.sources.promptPositions)
+            .filter(([, value]) => Number.isFinite(Number(value)))
+            .map(([id, value]) => [String(id), Number(value)]))
+        : {};
     settings.informationBoundary.worldInfoEntries = settings.informationBoundary.worldInfoEntries
         && typeof settings.informationBoundary.worldInfoEntries === 'object'
         ? settings.informationBoundary.worldInfoEntries
@@ -544,6 +549,7 @@ export async function getWorldInfoCatalog() {
                 title: String(entry.comment || (Array.isArray(entry.key) ? entry.key.join(', ') : '') || `UID ${entry.uid ?? recordKey}`),
                 content: String(entry.content || ''),
                 keywords: Array.isArray(entry.key) ? entry.key.map(String) : [],
+                position: Number(entry.order ?? entry.position ?? entry.uid ?? recordKey ?? 0),
                 disabledInSillyTavern: Boolean(entry.disable),
                 selected: explicitlySelected ? Boolean(settings.sources.worldInfoEntries[key]) : !entry.disable,
                 boundary: settings.informationBoundary.worldInfoEntries[key] || {
@@ -619,7 +625,7 @@ export async function getGenerationSourceContext({ includeRestricted = false } =
         const catalog = await getWorldInfoCatalog();
         worldInfo = catalog.filter(book => book.enabled).flatMap(book => book.entries)
             .filter(entry => entry.selected && entry.content)
-            .map(({ book, uid, title, content, key, boundary }) => ({ book, uid, title, content, key, boundary }));
+            .map(({ book, uid, title, content, key, boundary, position }) => ({ book, uid, title, content, key, boundary, position }));
     }
     let presetPrompts = [];
     if (sources.sillyTavernPreset) {
@@ -629,6 +635,7 @@ export async function getGenerationSourceContext({ includeRestricted = false } =
                 id: entry.id,
                 title: entry.title,
                 role: entry.role,
+                order: entry.order,
                 content: typeof context.substituteParams === 'function'
                     ? String(context.substituteParams(entry.content) || '').trim()
                     : entry.content,

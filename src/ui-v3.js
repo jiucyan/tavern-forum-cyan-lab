@@ -1760,6 +1760,88 @@ function renderSillyTavernPresetCatalog(settings) {
     return `${masterNotice}<div class="tf-preset-catalog">${entries.map(entry => `<label class="tf-world-entry"><input type="checkbox" data-preset-entry="${escapeHtml(entry.id)}" ${settings.sources.presetEntries[entry.id] ? 'checked' : ''}><span><b>${escapeHtml(entry.title)}</b><small>${roleLabel[entry.role] || entry.role}${entry.disabledInSillyTavern ? ' · 酒馆中已禁用' : ' · 酒馆中已启用'} · ${escapeHtml(entry.content.slice(0, 120))}</small></span></label>`).join('')}</div>`;
 }
 
+function getForumReadOrderItems(settings = getSettings()) {
+    const data = getForumData();
+    const items = [
+        { id: 'builtin:forum-system', title: '论坛主提示词', type: '内置', role: 'system', defaultPosition: 100, note: '始终发送' },
+    ];
+    if (settings.sources.sillyTavernPreset) {
+        getSillyTavernPresetCatalog().filter(entry => settings.sources.presetEntries[entry.id]).forEach((entry, index) => items.push({
+            id: `preset:${entry.id}`,
+            title: entry.title,
+            type: '酒馆预设',
+            role: entry.role,
+            defaultPosition: 200 + (Number.isFinite(Number(entry.order)) ? Number(entry.order) : index),
+            note: `沿用预设中的第 ${Number(entry.order ?? index) + 1} 个位置`,
+        }));
+    }
+    settings.promptEntries.filter(entry => entry.enabled && String(entry.content || '').trim()).sort((left, right) => Number(right.order || 0) - Number(left.order || 0)).forEach((entry, index) => items.push({
+        id: `forum:${entry.id}`,
+        title: entry.title || '未命名论坛设定',
+        type: '论坛设定',
+        role: entry.role,
+        defaultPosition: 300 + index,
+        note: entry.constant ? '常驻' : `命中触发词后读取：${(entry.keywords || []).join('、') || '尚未填写'}`,
+    }));
+    if (settings.sources.userPersona) items.push({ id: 'source:user-persona', title: 'User 人设', type: '角色资料', role: 'user', defaultPosition: 400, note: '仅有内容时发送' });
+    if (settings.sources.characterPersona) items.push({ id: 'source:character-persona', title: 'Char 人设', type: '角色资料', role: 'user', defaultPosition: 410, note: '仅有内容时发送' });
+    if (settings.sources.worldInfo) {
+        const boundaryEnabled = settings.informationBoundary.enabled !== false;
+        viewState.worldCatalog.filter(book => book.enabled).flatMap(book => book.entries.filter(entry => entry.selected && (!boundaryEnabled || (entry.boundary?.visibility || 'public') === 'public'))).forEach((entry, index) => items.push({
+            id: `world:${entry.key}`,
+            title: `${entry.book} / ${entry.title}`,
+            type: '世界书',
+            role: 'user',
+            defaultPosition: 500 + (Number.isFinite(Number(entry.position)) ? Number(entry.position) : index),
+            note: '已允许论坛读取',
+        }));
+    }
+    if (settings.sources.chat) items.push({ id: 'source:chat', title: '最近故事正文', type: '聊天', role: 'user', defaultPosition: 600, note: `最近 ${Number(settings.generation.contextMessages || 20)} 条` });
+    if (data.facts.some(fact => fact.publishable && (settings.informationBoundary.enabled === false || fact.visibility === 'public'))) items.push({ id: 'source:facts', title: '可公开事实', type: '论坛资料', role: 'user', defaultPosition: 650, note: '仅发送公开且允许发布的事实' });
+    if (data.npcs.some(npc => !npc.blocked)) items.push({ id: 'source:role-memories', title: '角色独立社交记忆', type: '论坛资料', role: 'user', defaultPosition: 660, note: '按角色信息边界读取' });
+    if (data.npcs.some(npc => npc.blocked)) items.push({ id: 'source:excluded-roles', title: '不得出现的账号', type: '论坛资料', role: 'user', defaultPosition: 670, note: '已拉黑角色' });
+    if (data.posts.length) items.push({ id: 'source:existing-posts', title: '论坛已有讨论', type: '论坛资料', role: 'user', defaultPosition: 700, note: '最近 6 篇' });
+    if (settings.orchestration.enabled && WORLD_MODULE_DEFINITIONS.some(definition => definition.id !== 'forum' && settings.modules[definition.id]?.enabled && settings.modules[definition.id]?.generationMode === 'linked')) items.push({ id: 'source:linked-world', title: '联动世界模块', type: '世界功能', role: 'user', defaultPosition: 750, note: '仅在本轮联动时发送' });
+    items.push({ id: 'builtin:generation', title: '生成与输出格式', type: '内置', role: 'user', defaultPosition: 900, note: '始终发送' });
+    return items.map(item => {
+        const saved = Number(settings.sources.promptPositions[item.id]);
+        return { ...item, position: Number.isFinite(saved) ? saved : item.defaultPosition };
+    }).sort((left, right) => left.position - right.position || left.defaultPosition - right.defaultPosition || left.id.localeCompare(right.id));
+}
+
+function saveForumReadOrder(items) {
+    items.forEach((item, index) => { getSettings().sources.promptPositions[item.id] = (index + 1) * 10; });
+    saveSettings();
+}
+
+function moveForumReadOrderItem(sourceId, targetId, placement = 'before') {
+    const items = getForumReadOrderItems();
+    const sourceIndex = items.findIndex(item => item.id === sourceId);
+    const targetIndex = items.findIndex(item => item.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return false;
+    const [item] = items.splice(sourceIndex, 1);
+    const adjustedTarget = items.findIndex(entry => entry.id === targetId);
+    items.splice(adjustedTarget + (placement === 'after' ? 1 : 0), 0, item);
+    saveForumReadOrder(items);
+    return true;
+}
+
+function moveForumReadOrderByStep(sourceId, direction) {
+    const items = getForumReadOrderItems();
+    const sourceIndex = items.findIndex(item => item.id === sourceId);
+    const targetIndex = sourceIndex + (Number(direction) < 0 ? -1 : 1);
+    if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= items.length) return false;
+    [items[sourceIndex], items[targetIndex]] = [items[targetIndex], items[sourceIndex]];
+    saveForumReadOrder(items);
+    return true;
+}
+
+function renderForumReadOrder(settings) {
+    const roleLabels = { system: '系统', user: '用户', assistant: '助手' };
+    const items = getForumReadOrderItems(settings);
+    return `<section class="tf-forum-read-order"><header><div><small>PROMPT ORDER</small><h4>论坛实际读取顺序</h4><p>这里只显示已允许论坛读取的项目；从上到下就是 messages 发送给 AI 的顺序。</p></div><span>${items.length} 个位置</span></header><div class="tf-forum-read-order-list">${items.map((item, index) => `<article class="tf-forum-read-order-entry" data-read-order-id="${escapeHtml(item.id)}"><span class="tf-forum-read-order-handle" draggable="true" data-read-order-drag-id="${escapeHtml(item.id)}" title="拖动改变发送顺序">⠿</span><b class="tf-forum-read-order-index">${String(index + 1).padStart(2, '0')}</b><div><small>${escapeHtml(item.type)} · ${escapeHtml(roleLabels[item.role] || item.role)}</small><strong>${escapeHtml(item.title)}</strong><em>${escapeHtml(item.note)}</em></div><label><span>位置</span><input type="number" data-read-order-position="${escapeHtml(item.id)}" value="${Number(item.position)}"></label><div class="tf-forum-read-order-actions"><button data-action="move-read-order" data-read-order-id="${escapeHtml(item.id)}" data-direction="-1" ${index === 0 ? 'disabled' : ''} aria-label="上移${escapeHtml(item.title)}">↑</button><button data-action="move-read-order" data-read-order-id="${escapeHtml(item.id)}" data-direction="1" ${index === items.length - 1 ? 'disabled' : ''} aria-label="下移${escapeHtml(item.title)}">↓</button></div></article>`).join('')}</div></section>`;
+}
+
 function renderSourcesSettings() {
     const settings = getSettings();
     const tokens = viewState.injectionTokens;
@@ -1772,7 +1854,7 @@ function renderSourcesSettings() {
     const sourceSection = `<section class="tf-card tf-settings-card">
         <header><div><h3>论坛生成素材 <span class="tf-direction-tag">正文 → 论坛</span></h3><p>决定生成论坛内容时能参考哪些酒馆资料；这里的开关不会把论坛内容注入主聊天。</p></div></header>
         <div class="tf-form-grid"><div>${renderSwitch({ checked: settings.sources.chat, action: 'toggle-source-chat', label: '把最近正文作为论坛生成素材' })}</div><div>${renderSwitch({ checked: settings.sources.userPersona, action: 'toggle-source-user', label: '读取 User 人设' })}</div><div>${renderSwitch({ checked: settings.sources.characterPersona, action: 'toggle-source-character', label: '读取 Char 人设' })}</div><div>${renderSwitch({ checked: settings.sources.worldInfo, action: 'toggle-source-world', label: '读取世界书' })}</div><div>${renderSwitch({ checked: settings.sources.sillyTavernPreset, action: 'toggle-source-preset', label: '读取酒馆当前预设' })}</div><div>${renderSwitch({ checked: settings.generation.autoRefreshOnMessage, action: 'toggle-auto-refresh', label: 'Char 新回复后自动刷新论坛' })}<small class="tf-setting-hint">收到新的 Char 正文后自动生成一轮动态；开场白不会触发。</small></div><label><span>最近消息数</span><input type="number" data-setting="generation.contextMessages" value="${Number(settings.generation.contextMessages)}" min="1" max="200"></label></div>
-        <div class="tf-generation-ranges"><div><b>每轮帖子数量</b><label>最少<input type="number" data-setting="generation.postsMin" value="${Number(settings.generation.postsMin)}" min="1" max="10"></label><label>最多<input type="number" data-setting="generation.postsMax" value="${Number(settings.generation.postsMax)}" min="1" max="10"></label></div><div><b>每篇初始评论</b><label>最少<input type="number" data-setting="generation.commentsMin" value="${Number(settings.generation.commentsMin)}" min="0" max="8"></label><label>最多<input type="number" data-setting="generation.commentsMax" value="${Number(settings.generation.commentsMax)}" min="0" max="8"></label></div><div><b>回帖后的 AI 跟帖</b><label>最少<input type="number" data-setting="generation.repliesMin" value="${Number(settings.generation.repliesMin)}" min="1" max="8"></label><label>最多<input type="number" data-setting="generation.repliesMax" value="${Number(settings.generation.repliesMax)}" min="1" max="8"></label></div></div>
+        <div class="tf-generation-ranges"><div><b>每轮帖子数量</b><label>最少<input type="number" data-setting="generation.postsMin" value="${Number(settings.generation.postsMin)}" min="1" max="10"></label><label>最多<input type="number" data-setting="generation.postsMax" value="${Number(settings.generation.postsMax)}" min="1" max="10"></label></div><div><b>每篇初始评论</b><label>最少<input type="number" data-setting="generation.commentsMin" value="${Number(settings.generation.commentsMin)}" min="0" max="8"></label><label>最多<input type="number" data-setting="generation.commentsMax" value="${Number(settings.generation.commentsMax)}" min="0" max="8"></label></div><div><b>回帖后的 AI 跟帖</b><label>最少<input type="number" data-setting="generation.repliesMin" value="${Number(settings.generation.repliesMin)}" min="1" max="8"></label><label>最多<input type="number" data-setting="generation.repliesMax" value="${Number(settings.generation.repliesMax)}" min="1" max="8"></label></div></div>${renderForumReadOrder(settings)}
         <div class="tf-world-head"><b>酒馆预设逐条选择（只读副本）</b><small>这里的开关不会修改酒馆预设原条目</small></div>${renderSillyTavernPresetCatalog(settings)}
         <div class="tf-world-head"><b>世界书逐条选择</b><button class="tf-secondary-button" data-action="refresh-world-info">刷新</button></div>${renderWorldInfoCatalog(settings)}
     </section>`;
@@ -4132,6 +4214,10 @@ async function handleRootClick(event) {
         if (movePromptEntryByStep(target.dataset.entryId, target.dataset.direction)) return render({ preserveScroll: true });
         return;
     }
+    if (action === 'move-read-order') {
+        if (moveForumReadOrderByStep(target.dataset.readOrderId, target.dataset.direction)) return render({ preserveScroll: true });
+        return;
+    }
     if (action === 'add-prompt-entry') {
         const entryId = createId('prompt');
         const order = Math.max(0, ...getSettings().promptEntries.map(entry => Number(entry.order || 0))) + 10;
@@ -4161,16 +4247,26 @@ async function handleRootClick(event) {
 }
 
 let draggedPromptEntryId = '';
+let draggedReadOrderId = '';
 let promptPointerDrag = null;
 
 function clearPromptDragState(root = getRoot()) {
-    root?.querySelectorAll('.tf-prompt-entry.is-dragging, .tf-prompt-entry.is-drop-before, .tf-prompt-entry.is-drop-after').forEach(entry => {
+    root?.querySelectorAll('.tf-prompt-entry.is-dragging, .tf-prompt-entry.is-drop-before, .tf-prompt-entry.is-drop-after, .tf-forum-read-order-entry.is-dragging, .tf-forum-read-order-entry.is-drop-before, .tf-forum-read-order-entry.is-drop-after').forEach(entry => {
         entry.classList.remove('is-dragging', 'is-drop-before', 'is-drop-after');
         delete entry.dataset.dropPlacement;
     });
 }
 
 function handleRootDragStart(event) {
+    const readHandle = event.target.closest('[data-read-order-drag-id]');
+    if (readHandle) {
+        draggedReadOrderId = readHandle.dataset.readOrderDragId || '';
+        if (!draggedReadOrderId) return;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', draggedReadOrderId);
+        readHandle.closest('.tf-forum-read-order-entry')?.classList.add('is-dragging');
+        return;
+    }
     const handle = event.target.closest('[data-prompt-drag-id]');
     if (!handle) return;
     draggedPromptEntryId = handle.dataset.promptDragId || '';
@@ -4181,6 +4277,18 @@ function handleRootDragStart(event) {
 }
 
 function handleRootDragOver(event) {
+    if (draggedReadOrderId) {
+        const entry = event.target.closest('.tf-forum-read-order-entry[data-read-order-id]');
+        if (!entry || entry.dataset.readOrderId === draggedReadOrderId) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        const placement = event.clientY >= entry.getBoundingClientRect().top + entry.getBoundingClientRect().height / 2 ? 'after' : 'before';
+        clearPromptDragState();
+        getRoot()?.querySelector(`.tf-forum-read-order-entry[data-read-order-id="${CSS.escape(draggedReadOrderId)}"]`)?.classList.add('is-dragging');
+        entry.classList.add(placement === 'after' ? 'is-drop-after' : 'is-drop-before');
+        entry.dataset.dropPlacement = placement;
+        return;
+    }
     if (!draggedPromptEntryId) return;
     const entry = event.target.closest('.tf-prompt-entry[data-entry-id]');
     if (!entry || entry.dataset.entryId === draggedPromptEntryId) return;
@@ -4194,6 +4302,17 @@ function handleRootDragOver(event) {
 }
 
 function handleRootDrop(event) {
+    if (draggedReadOrderId) {
+        const entry = event.target.closest('.tf-forum-read-order-entry[data-read-order-id]');
+        if (!entry || entry.dataset.readOrderId === draggedReadOrderId) return clearPromptDragState();
+        event.preventDefault();
+        const sourceId = draggedReadOrderId;
+        const placement = entry.dataset.dropPlacement || 'before';
+        draggedReadOrderId = '';
+        clearPromptDragState();
+        if (moveForumReadOrderItem(sourceId, entry.dataset.readOrderId, placement)) render({ preserveScroll: true });
+        return;
+    }
     if (!draggedPromptEntryId) return;
     const entry = event.target.closest('.tf-prompt-entry[data-entry-id]');
     if (!entry || entry.dataset.entryId === draggedPromptEntryId) return clearPromptDragState();
@@ -4207,14 +4326,17 @@ function handleRootDrop(event) {
 
 function handleRootDragEnd() {
     draggedPromptEntryId = '';
+    draggedReadOrderId = '';
     clearPromptDragState();
 }
 
 function handleRootPointerDown(event) {
-    const handle = event.target.closest('[data-prompt-drag-id]');
+    const readHandle = event.target.closest('[data-read-order-drag-id]');
+    const handle = readHandle || event.target.closest('[data-prompt-drag-id]');
     if (!handle || (event.button !== 0 && event.pointerType !== 'touch')) return;
     promptPointerDrag = {
-        id: handle.dataset.promptDragId,
+        id: readHandle ? handle.dataset.readOrderDragId : handle.dataset.promptDragId,
+        kind: readHandle ? 'read' : 'prompt',
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
@@ -4229,12 +4351,17 @@ function handleRootPointerMove(event) {
     if (!promptPointerDrag.moved && Math.hypot(event.clientX - promptPointerDrag.startX, event.clientY - promptPointerDrag.startY) < 7) return;
     promptPointerDrag.moved = true;
     event.preventDefault();
-    const entry = document.elementFromPoint(event.clientX, event.clientY)?.closest('.tf-prompt-entry[data-entry-id]');
-    if (!entry || entry.dataset.entryId === promptPointerDrag.id) return;
+    const selector = promptPointerDrag.kind === 'read' ? '.tf-forum-read-order-entry[data-read-order-id]' : '.tf-prompt-entry[data-entry-id]';
+    const entry = document.elementFromPoint(event.clientX, event.clientY)?.closest(selector);
+    const entryId = promptPointerDrag.kind === 'read' ? entry?.dataset.readOrderId : entry?.dataset.entryId;
+    if (!entry || entryId === promptPointerDrag.id) return;
     const box = entry.getBoundingClientRect();
     const placement = event.clientY >= box.top + box.height / 2 ? 'after' : 'before';
     clearPromptDragState();
-    getRoot()?.querySelector(`.tf-prompt-entry[data-entry-id="${CSS.escape(promptPointerDrag.id)}"]`)?.classList.add('is-dragging');
+    const sourceSelector = promptPointerDrag.kind === 'read'
+        ? `.tf-forum-read-order-entry[data-read-order-id="${CSS.escape(promptPointerDrag.id)}"]`
+        : `.tf-prompt-entry[data-entry-id="${CSS.escape(promptPointerDrag.id)}"]`;
+    getRoot()?.querySelector(sourceSelector)?.classList.add('is-dragging');
     entry.classList.add(placement === 'after' ? 'is-drop-after' : 'is-drop-before');
     entry.dataset.dropPlacement = placement;
 }
@@ -4244,10 +4371,15 @@ function handleRootPointerUp(event) {
     const drag = promptPointerDrag;
     promptPointerDrag = null;
     try { drag.handle.releasePointerCapture(event.pointerId); } catch { /* pointer capture is optional */ }
-    const entry = document.elementFromPoint(event.clientX, event.clientY)?.closest('.tf-prompt-entry[data-entry-id]');
+    const selector = drag.kind === 'read' ? '.tf-forum-read-order-entry[data-read-order-id]' : '.tf-prompt-entry[data-entry-id]';
+    const entry = document.elementFromPoint(event.clientX, event.clientY)?.closest(selector);
+    const entryId = drag.kind === 'read' ? entry?.dataset.readOrderId : entry?.dataset.entryId;
     const placement = entry?.dataset.dropPlacement || 'before';
     clearPromptDragState();
-    if (drag.moved && entry && entry.dataset.entryId !== drag.id && movePromptEntry(drag.id, entry.dataset.entryId, placement)) {
+    const moved = drag.kind === 'read'
+        ? moveForumReadOrderItem(drag.id, entryId, placement)
+        : movePromptEntry(drag.id, entryId, placement);
+    if (drag.moved && entry && entryId !== drag.id && moved) {
         render({ preserveScroll: true });
     }
 }
@@ -4416,6 +4548,13 @@ function handleRootChange(event) {
     if (target.dataset.entryField) {
         handleRootInput(event);
         return;
+    }
+    if (target.dataset.readOrderPosition) {
+        const value = Number(target.value);
+        if (!Number.isFinite(value)) return;
+        getSettings().sources.promptPositions[target.dataset.readOrderPosition] = value;
+        saveSettings();
+        return render({ preserveScroll: true });
     }
     if (target.dataset.action?.startsWith('toggle-') && target.type === 'checkbox') {
         if (target.dataset.action === 'toggle-world-module' || target.dataset.action === 'toggle-module-linked' || target.dataset.action === 'toggle-module-injection') {
@@ -4636,9 +4775,9 @@ function handleRootChange(event) {
             if (entry) entry.selected = target.checked;
         }
         saveSettings();
-        return;
+        return render({ preserveScroll: true });
     }
-    if (target.dataset.presetEntry) { getSettings().sources.presetEntries[target.dataset.presetEntry] = target.checked; saveSettings(); return; }
+    if (target.dataset.presetEntry) { getSettings().sources.presetEntries[target.dataset.presetEntry] = target.checked; saveSettings(); return render({ preserveScroll: true }); }
     if (target.dataset.factVisibility !== undefined) {
         const fact = getForumData().facts.find(item => item.id === target.closest('[data-fact-id]')?.dataset.factId);
         if (fact) { fact.visibility = target.value; fact.updatedAt = Date.now(); void saveForumData(getForumData(), true); render(); }
