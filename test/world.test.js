@@ -5,12 +5,14 @@ import { DEFAULT_SETTINGS } from '../src/constants.js';
 import { createNpc, normalizeForumDataShape } from '../src/forum.js';
 import {
     applyModerationProposal,
+    applyInventoryItemUse,
     applyWorldUpdates,
     buildLinkedWorldInstruction,
     buildWorldModuleInjection,
     createLocalFortune,
     createLocalHealthEvent,
     createPostReport,
+    classifyInventoryItem,
     evaluateModuleGeneration,
     filterWorldUpdatesBySafety,
     normalizeProactiveDirectMessages,
@@ -89,6 +91,31 @@ test('local health events create an interactive fictional care record without an
     assert.equal(item.stage, 'noticed');
     assert.ok(item.symptoms);
     assert.ok(item.careNote);
+});
+
+test('inventory food and medical supplies close local companion and health loops', () => {
+    const health = createLocalHealthEvent({ subject: '林舟', seed: 'inventory-care' });
+    const data = normalizeForumDataShape({ world: {
+        companion: { name: '团子', satiety: 40, happiness: 50 },
+        health: [health],
+        inventory: [
+            { id: 'food-1', name: '森林莓果', quantity: 2, description: '可以吃的小零食' },
+            { id: 'medical-1', name: '旅行绷带', quantity: 1, effect: '用于轻微扭伤的照护' },
+        ],
+    } });
+    assert.equal(classifyInventoryItem(data.world.inventory[0]), 'companion');
+    assert.equal(classifyInventoryItem(data.world.inventory[1]), 'medical');
+    const food = applyInventoryItemUse(data, 'food-1');
+    assert.equal(food.applied, true);
+    assert.equal(food.kind, 'companion');
+    assert.equal(data.world.inventory.find(item => item.id === 'food-1').quantity, 1);
+    assert.ok(data.world.companion.satiety > 40);
+    const medical = applyInventoryItemUse(data, 'medical-1');
+    assert.equal(medical.applied, true);
+    assert.equal(medical.kind, 'medical');
+    assert.equal(data.world.health[0].status, 'recovering');
+    assert.equal(data.world.inventory.find(item => item.id === 'medical-1').consumed, true);
+    assert.match(data.world.health[0].careNote, /旅行绷带/);
 });
 
 test('module probability and quiet hours are evaluated locally', () => {

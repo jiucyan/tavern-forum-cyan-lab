@@ -298,6 +298,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
         floatingButtonPosition: { x: null, y: null },
         activeTab: 'home',
         meSection: 'overview',
+        worldHomeLayout: 'bento',
     },
 });
 

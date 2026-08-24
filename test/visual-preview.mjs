@@ -1,6 +1,28 @@
 import { chromium } from 'playwright';
+import { readFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { extname, resolve, sep } from 'node:path';
 
-const url = 'http://127.0.0.1:4173/preview.html';
+const contentTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml' };
+const previewRoot = resolve(process.cwd());
+const server = createServer(async (request, response) => {
+    try {
+        const pathname = decodeURIComponent(new URL(request.url || '/', 'http://127.0.0.1').pathname);
+        const file = resolve(previewRoot, pathname.replace(/^\/+/, '') || 'preview.html');
+        if (file !== previewRoot && !file.startsWith(`${previewRoot}${sep}`)) throw new Error('outside preview root');
+        const body = await readFile(file);
+        response.writeHead(200, { 'Content-Type': contentTypes[extname(file).toLocaleLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+        response.end(body);
+    } catch {
+        response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        response.end('Not found');
+    }
+});
+await new Promise((resolveListen, rejectListen) => {
+    server.once('error', rejectListen);
+    server.listen(0, '127.0.0.1', resolveListen);
+});
+const url = `http://127.0.0.1:${server.address().port}/preview.html`;
 const executablePath = process.env.TAVERN_FORUM_BROWSER_PATH?.trim();
 const browser = await chromium.launch({
     headless: true,
@@ -10,6 +32,14 @@ const browser = await chromium.launch({
 try {
     const desktop = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
     await desktop.goto(url, { waitUntil: 'networkidle' });
+    await desktop.locator('.tf-app').evaluate(node => { node.dataset.renderSentinel = 'stable-desktop'; });
+    await desktop.locator('.tf-topbar [data-tab="services"]').click();
+    if (!await desktop.getByRole('heading', { name: '世界', exact: true }).count()) throw new Error('stable world hub entry is missing');
+    if (!await desktop.locator('.tf-world-home-title').count()) throw new Error('world hub does not expose its stable home header');
+    if (await desktop.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-desktop') throw new Error('switching tabs replaced the full app shell and may flash on mobile');
+    await desktop.screenshot({ path: 'preview-world.png' });
+    await desktop.locator('.tf-topbar .tf-main-nav [data-tab="home"]').click();
+    if (await desktop.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-desktop') throw new Error('returning home replaced the full app shell');
     const visibleTextImages = await desktop.locator('.tf-feed-list .tf-text-image').count();
     if (visibleTextImages !== 1) throw new Error(`expected only intentional post images to display, found ${visibleTextImages}`);
     if (!/[\u3400-\u9fff]/u.test(await desktop.locator('.tf-text-image p').first().innerText())) throw new Error('text image description is not Chinese');
@@ -49,6 +79,27 @@ try {
     if (!await desktop.locator('.tf-custom-css').inputValue().then(value => value.includes('微坛标准 CSS 美化模板'))) throw new Error('built-in CSS template was not loaded');
     await desktop.screenshot({ path: 'preview-appearance.png' });
 
+    await desktop.locator('[data-action="me-section"][data-section="prompts"]').click();
+    if (!await desktop.locator('.tf-prompt-entry').count()) throw new Error('forum prompt preset list is missing');
+    if (await desktop.locator('.tf-prompt-editor:visible').count()) throw new Error('forum prompt entries should be collapsed by default');
+    await desktop.locator('[data-action="toggle-prompt-editor"]').first().click();
+    if (!await desktop.locator('.tf-prompt-editor:visible').count()) throw new Error('collapsed forum prompt entry did not open');
+    await desktop.locator('[data-action="add-prompt-entry"]').click();
+    while (await desktop.locator('.tf-prompt-entry.is-open').count()) await desktop.locator('.tf-prompt-entry.is-open [data-action="toggle-prompt-editor"]').first().click();
+    const promptEntriesBeforeDrag = await desktop.locator('.tf-prompt-entry').evaluateAll(entries => entries.map(entry => entry.dataset.entryId));
+    if (promptEntriesBeforeDrag.length < 2) throw new Error('forum prompt list did not add a reorderable entry');
+    const promptDropTarget = desktop.locator('.tf-prompt-entry').last();
+    const promptDragBox = await desktop.locator('.tf-prompt-drag-handle').first().boundingBox();
+    const promptDropBox = await promptDropTarget.boundingBox();
+    if (!promptDragBox || !promptDropBox) throw new Error('forum prompt drag geometry is unavailable');
+    await desktop.mouse.move(promptDragBox.x + promptDragBox.width / 2, promptDragBox.y + promptDragBox.height / 2);
+    await desktop.mouse.down();
+    await desktop.mouse.move(promptDropBox.x + 24, promptDropBox.y + promptDropBox.height - 8, { steps: 8 });
+    await desktop.mouse.up();
+    const promptEntriesAfterDrag = await desktop.locator('.tf-prompt-entry').evaluateAll(entries => entries.map(entry => entry.dataset.entryId));
+    if (promptEntriesAfterDrag[0] === promptEntriesBeforeDrag[0]) throw new Error(`dragging a forum prompt did not persist its new order: ${JSON.stringify({ promptEntriesBeforeDrag, promptEntriesAfterDrag })}`);
+    await desktop.screenshot({ path: 'preview-prompts-v2.png' });
+
     await desktop.locator('[data-action="me-section"][data-section="modules"]').click();
     if (await desktop.locator('[data-action="test-module-probability"]').count()) throw new Error('obsolete 100-run probability test should not be rendered');
     if (await desktop.locator('[data-action="toggle-module-injection"][data-module-id="forum"]').count()) throw new Error('forum injection switch should only exist on the main-chat injection page');
@@ -72,6 +123,7 @@ try {
     await desktop.screenshot({ path: 'preview-injection.png' });
     await desktop.locator('[data-action="me-section"][data-section="modules"]').click();
     await desktop.screenshot({ path: 'preview-settings-v3.png' });
+    if (await desktop.locator('.tf-world-layout-switch.is-settings [data-action="set-world-home-layout"]').count() !== 2) throw new Error('settings center is missing the two world home layouts');
     const travelToggle = desktop.locator('[data-action="toggle-world-module"][data-module-id="travel"]');
     if (!await travelToggle.isChecked()) await travelToggle.check({ force: true });
     const fortuneToggle = desktop.locator('[data-action="toggle-world-module"][data-module-id="fortune"]');
@@ -81,7 +133,33 @@ try {
     const inventoryToggle = desktop.locator('[data-action="toggle-world-module"][data-module-id="inventory"]');
     if (!await inventoryToggle.isChecked()) await inventoryToggle.check({ force: true });
     if (await desktop.locator('[data-action="toggle-fortune-api-draw"]').isChecked()) throw new Error('AI fortune draw must be disabled by default');
-    await desktop.locator('[data-action="open-module-context"][data-module-id="travel"]').click();
+    await desktop.locator('.tf-topbar [data-tab="services"]').click();
+    if (await desktop.locator('.tf-service-card').count() < 4) throw new Error('enabled world modules are missing from the world hub');
+    if (!await desktop.locator('.tf-world-hub.is-layout-bento .tf-world-bento').count()) throw new Error('default world home is missing its companion bento layout');
+    if (!await desktop.locator('.tf-world-app-dock.is-bento-dock').count()) throw new Error('bento world home is missing its compact app dock');
+    await desktop.screenshot({ path: 'preview-world.png' });
+    await desktop.locator('.tf-service-card[data-action="open-world-page"][data-module-id="inventory"]').click();
+    if (!await desktop.locator('.tf-inventory-app .tf-inventory-hero').count()) throw new Error('inventory did not render its standalone app shell');
+    if (await desktop.locator('.tf-inventory-empty .tf-empty-pockets > span').count() !== 3) throw new Error('empty inventory did not render its three compact storage slots');
+    await desktop.screenshot({ path: 'preview-inventory-empty-v2.png' });
+    await desktop.locator('[data-action="back-world-home"]').click();
+    const callsBeforeLayoutSwitch = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
+    await desktop.locator('[data-action="set-world-home-layout"][data-world-layout="window"]').click();
+    if (!await desktop.locator('.tf-world-hub.is-layout-window .tf-world-window-scene').count()) throw new Error('world window layout did not render');
+    if (!await desktop.locator('.tf-world-window-scene .tf-window-companion').count()) throw new Error('world window lost its companion overlay');
+    if (await desktop.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-desktop') throw new Error('desktop layout switch replaced the app shell');
+    const windowSceneBackground = await desktop.locator('.tf-window-scene-image').evaluate(node => getComputedStyle(node).backgroundImage);
+    if (!/world-window-base\.png/.test(windowSceneBackground)) throw new Error(`world window did not load its bundled local scene: ${windowSceneBackground}`);
+    if (await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls) !== callsBeforeLayoutSwitch) throw new Error('switching world home layout unexpectedly called the API');
+    await desktop.screenshot({ path: 'preview-world-window.png' });
+    await desktop.locator('.tf-window-fortune').click();
+    if (!await desktop.locator('.tf-fortune-ritual, .tf-fortune-reveal, .tf-fortune-app').count()) throw new Error('window fortune overlay opened the wrong world app');
+    await desktop.locator('[data-action="back-world-home"]').click();
+    if (!await desktop.locator('.tf-world-hub.is-layout-window').count()) throw new Error('returning from a window overlay lost the selected layout');
+    await desktop.locator('[data-action="set-world-home-layout"][data-world-layout="bento"]').click();
+    if (!await desktop.locator('.tf-world-hub.is-layout-bento').count()) throw new Error('world home did not switch back to bento');
+    if (await desktop.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-desktop') throw new Error('returning to the card layout replaced the app shell');
+    await desktop.locator('.tf-service-card[data-action="open-world-page"][data-module-id="travel"]').click();
     if (await desktop.locator('.tf-pet-screen-menu').count() !== 1) throw new Error('in-device care menu is missing');
     if (await desktop.locator('.tf-companion-status [data-action="companion-care"]').count()) throw new Error('care actions should not be duplicated beside the device');
     if (await desktop.locator('[data-companion-field="avatarUrl"]').count()) throw new Error('companion avatar URL field should stay hidden');
@@ -117,24 +195,58 @@ try {
     if (!/背包/.test(await desktop.locator('.tf-pet-message').innerText())) throw new Error('companion return did not confirm souvenir inventory settlement');
 
     await desktop.locator('[data-action="back-world-home"]').click();
-    await desktop.locator('[data-action="open-world-page"][data-module-id="inventory"]').click();
-    if (!/返程/.test(await desktop.locator('.tf-world-board-page').innerText())) throw new Error('returned companion souvenir is missing from inventory');
+    await desktop.locator('.tf-service-card[data-action="open-world-page"][data-module-id="inventory"]').click();
+    if (!/返程/.test(await desktop.locator('.tf-inventory-app').innerText())) throw new Error('returned companion souvenir is missing from inventory');
+    if (!await desktop.locator('.tf-inventory-grid .tf-inventory-item').count()) throw new Error('inventory did not render returned items in its item grid');
+    if (!await desktop.locator('.tf-inventory-detail').count()) throw new Error('inventory did not render the selected item detail');
+    const callsBeforeInventory = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
+    await desktop.locator('[data-action="set-inventory-filter"][data-filter="story"]').click();
+    if (!await desktop.locator('.tf-inventory-filters [data-filter="story"].is-active').count()) throw new Error('inventory category selection did not persist');
+    if (await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls) !== callsBeforeInventory) throw new Error('local inventory filtering unexpectedly called the API');
+    await desktop.screenshot({ path: 'preview-inventory-v2.png' });
     await desktop.locator('[data-action="back-world-home"]').click();
-    await desktop.locator('[data-action="open-world-page"][data-module-id="fortune"]').click();
+    await desktop.locator('.tf-service-card[data-action="open-world-page"][data-module-id="fortune"]').click();
     if (await desktop.locator('[data-action="revoke-local-fortune"]').count()) await desktop.locator('[data-action="revoke-local-fortune"]').click();
+    if (!await desktop.locator('.tf-fortune-ritual .tf-fortune-deck').count()) throw new Error('fortune module is missing its independent ritual draw stage');
+    if (await desktop.locator('.tf-fortune-ai-action').count()) throw new Error('disabled AI fortune should not leak API controls into the ritual');
+    await desktop.screenshot({ path: 'preview-fortune-draw-v3.png' });
     const callsBeforeFortune = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
     await desktop.locator('[data-action="draw-local-fortune"]').first().click();
+    if (!await desktop.locator('.tf-fortune-reveal.is-revealing').count()) throw new Error('fortune card did not enter its reveal animation state');
+    if (await desktop.locator('.tf-fortune-impact article').count() !== 3) throw new Error('fortune result does not explain its cross-module effects');
+    await desktop.waitForTimeout(1150);
+    await desktop.screenshot({ path: 'preview-fortune-v3.png' });
     if (!await desktop.locator('[data-action="revoke-local-fortune"]').count()) throw new Error('fortune revoke action is missing');
     await desktop.locator('[data-action="revoke-local-fortune"]').click();
     if (!await desktop.locator('[data-action="draw-local-fortune"]').count()) throw new Error('fortune did not return to the local draw state after revoke');
     if (await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls) !== callsBeforeFortune) throw new Error('local fortune draw or revoke unexpectedly called the API');
 
+    await desktop.locator('.tf-settings-entry').click();
+    const aiFortuneToggle = desktop.locator('[data-action="toggle-fortune-api-draw"]');
+    if (!await aiFortuneToggle.isChecked()) await aiFortuneToggle.check({ force: true });
+    await desktop.locator('[data-action="open-module-context"][data-module-id="fortune"]').click();
+    const callsBeforeAiFortune = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
+    await desktop.locator('[data-action="toggle-ai-fortune-mode"]').click();
+    if (!await desktop.locator('.tf-fortune-ritual.is-ai-mode [data-action="draw-api-fortune"]').count()) throw new Error('AI fortune did not keep the physical card selection ritual');
+    if (await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls) !== callsBeforeAiFortune) throw new Error('arming AI fortune called the API before the user chose a card');
+    await desktop.locator('[data-action="draw-api-fortune"][data-choice="middle"]').click();
+    await desktop.waitForFunction(before => globalThis.SillyTavern.getContext().generateCalls === before + 1, callsBeforeAiFortune);
+    await desktop.locator('.tf-fortune-reveal.is-revealing.is-choice-middle').waitFor();
+    if (await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls) !== callsBeforeAiFortune + 1) throw new Error('AI fortune used more than one API call');
+    await desktop.waitForTimeout(1150);
+    await desktop.screenshot({ path: 'preview-fortune-ai-v4.png' });
+    await desktop.locator('[data-action="revoke-local-fortune"]').click();
+
     await desktop.locator('[data-action="back-world-home"]').click();
-    await desktop.locator('[data-action="open-world-page"][data-module-id="health"]').click();
+    await desktop.locator('.tf-service-card[data-action="open-world-page"][data-module-id="health"]').click();
+    if (!await desktop.locator('.tf-clinic-header').count()) throw new Error('health module is missing its independent clinic app header');
     await desktop.locator('[data-action="create-local-health"]').click();
     if (!await desktop.locator('.tf-care-scene').count()) throw new Error('animated local health scene is missing');
     if (!await desktop.locator('.tf-care-room .tf-care-character.is-patient').count()) throw new Error('health scene is missing its patient character');
     if (!await desktop.locator('.tf-care-progress-label').count()) throw new Error('health scene progress has no readable label');
+    if (!await desktop.locator('.tf-care-instrument').count()) throw new Error('health scene is missing its examination instrument');
+    if (!await desktop.locator('.tf-clinic-timeline').count()) throw new Error('health case is missing its recovery timeline');
+    if (!await desktop.locator('.tf-clinic-appointment').count()) throw new Error('health case is missing its appointment panel');
     if (await desktop.getByText('CARE MOMENT', { exact: true }).count()) throw new Error('old mixed-language health heading should not be rendered');
     await desktop.locator('[data-action="health-find-provider"]').first().click();
     if (!await desktop.locator('.tf-health-case-v3.is-stage-seeking').count()) throw new Error('health animation stage did not advance');
@@ -184,6 +296,57 @@ try {
     await mobile.locator('#tavern-forum-menu-item').dispatchEvent('touchend');
     if (!await mobile.locator('#tavern-forum-root').isVisible()) throw new Error('mobile extension menu touch did not open the forum');
     await mobile.screenshot({ path: 'preview-mobile.png' });
+    await mobile.locator('.tf-app').evaluate(node => { node.dataset.renderSentinel = 'stable-mobile'; });
+    await mobile.locator('.tf-view').evaluate(node => { node.scrollTop = Math.min(420, node.scrollHeight - node.clientHeight); });
+    const mobileHomeScroll = await mobile.locator('.tf-view').evaluate(node => node.scrollTop);
+    await mobile.evaluate(() => {
+        const settings = globalThis.SillyTavern.getContext().extensionSettings.tavern_forum;
+        settings.modules.travel.enabled = true;
+        settings.modules.fortune.enabled = true;
+        settings.modules.health.enabled = true;
+        settings.modules.inventory.enabled = true;
+        settings.ui.worldHomeLayout = 'bento';
+    });
+    await mobile.locator('.tf-mobile-main-nav [data-tab="services"]').click();
+    if (await mobile.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-mobile') throw new Error('mobile tab switch replaced the full app shell');
+    if (!await mobile.locator('.tf-world-hub.is-layout-bento .tf-world-bento').count()) throw new Error('mobile world bento is missing');
+    const mobileWorldWidth = await mobile.locator('.tf-world-hub').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
+    if (mobileWorldWidth.scroll > mobileWorldWidth.client + 2) throw new Error(`mobile world launcher overflowed horizontally (${mobileWorldWidth.scroll} > ${mobileWorldWidth.client})`);
+    await mobile.screenshot({ path: 'preview-world-mobile.png' });
+    await mobile.locator('[data-action="set-world-home-layout"][data-world-layout="window"]').click();
+    if (!await mobile.locator('.tf-world-hub.is-layout-window .tf-world-window-scene').count()) throw new Error('mobile world window is missing');
+    if (await mobile.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-mobile') throw new Error('mobile layout switch replaced the app shell');
+    const mobileWindowWidth = await mobile.locator('.tf-world-hub').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
+    if (mobileWindowWidth.scroll > mobileWindowWidth.client + 2) throw new Error(`mobile world window overflowed horizontally (${mobileWindowWidth.scroll} > ${mobileWindowWidth.client})`);
+    await mobile.screenshot({ path: 'preview-world-window-mobile.png', fullPage: true });
+    await mobile.locator('[data-action="set-world-home-layout"][data-world-layout="bento"]').click();
+    if (await mobile.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-mobile') throw new Error('mobile return to the card layout replaced the app shell');
+    await mobile.locator('.tf-service-card[data-module-id="fortune"]').click();
+    if (await mobile.locator('[data-action="revoke-local-fortune"]').count()) await mobile.locator('[data-action="revoke-local-fortune"]').click();
+    if (!await mobile.locator('.tf-fortune-deck').count()) throw new Error('mobile fortune ritual is missing');
+    const mobileDeckWidth = await mobile.locator('.tf-fortune-ritual').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
+    if (mobileDeckWidth.scroll > mobileDeckWidth.client + 2) throw new Error(`mobile fortune ritual overflowed horizontally (${mobileDeckWidth.scroll} > ${mobileDeckWidth.client})`);
+    await mobile.screenshot({ path: 'preview-fortune-mobile-v3.png', fullPage: true });
+    await mobile.locator('[data-action="back-world-home"]').click();
+    await mobile.locator('.tf-service-card[data-module-id="health"]').click();
+    if (!await mobile.locator('.tf-health-case-v4').count()) await mobile.locator('[data-action="create-local-health"]').click();
+    if (!await mobile.locator('.tf-clinic-timeline').count()) throw new Error('mobile health clinic lost its case timeline');
+    await mobile.screenshot({ path: 'preview-health-mobile-v4.png', fullPage: true });
+    await mobile.locator('[data-action="back-world-home"]').click();
+    await mobile.locator('.tf-service-card[data-module-id="inventory"]').click();
+    if (!await mobile.locator('.tf-inventory-app').count()) throw new Error('mobile inventory app is missing');
+    const mobileInventoryWidth = await mobile.locator('.tf-inventory-app').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
+    if (mobileInventoryWidth.scroll > mobileInventoryWidth.client + 2) throw new Error(`mobile inventory overflowed horizontally (${mobileInventoryWidth.scroll} > ${mobileInventoryWidth.client})`);
+    const mobileInventoryHasItems = await mobile.locator('.tf-inventory-grid .tf-inventory-item').count();
+    if (mobileInventoryHasItems && !await mobile.locator('.tf-inventory-detail').count()) throw new Error('mobile inventory lost its item detail');
+    if (!mobileInventoryHasItems && !await mobile.locator('.tf-inventory-empty').count()) throw new Error('mobile inventory lost both its item grid and empty state');
+    await mobile.screenshot({ path: 'preview-inventory-mobile-v2.png', fullPage: true });
+    await mobile.locator('[data-action="back-world-home"]').click();
+    await mobile.locator('.tf-mobile-main-nav [data-tab="home"]').click();
+    await mobile.waitForTimeout(40);
+    const restoredMobileHomeScroll = await mobile.locator('.tf-view').evaluate(node => node.scrollTop);
+    if (mobileHomeScroll > 80 && Math.abs(restoredMobileHomeScroll - mobileHomeScroll) > 8) throw new Error(`switching tabs did not restore home scroll from ${mobileHomeScroll} to ${restoredMobileHomeScroll}`);
+    if (await mobile.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-mobile') throw new Error('mobile return home replaced the full app shell');
     await mobile.locator('.tf-mobile-main-nav [data-tab="me"]').click();
     await mobile.locator('.tf-settings-entry').click();
     await mobile.locator('[data-action="me-section"][data-section="modules"]').click();
@@ -236,4 +399,5 @@ try {
     await mobile.screenshot({ path: 'preview-notifications-mobile.png' });
 } finally {
     await browser.close();
+    await new Promise(resolveClose => server.close(resolveClose));
 }

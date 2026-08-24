@@ -246,6 +246,7 @@ function migrateSettings(settings) {
         imageKey: String(item.imageKey || '').trim(),
     }));
     if (!['home', 'services', 'messages', 'me', 'settings'].includes(settings.ui.activeTab)) settings.ui.activeTab = 'home';
+    if (!['bento', 'window'].includes(settings.ui.worldHomeLayout)) settings.ui.worldHomeLayout = 'bento';
 }
 
 export function getSettings() {

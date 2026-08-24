@@ -302,6 +302,51 @@ export function createLocalHealthEvent({ subject = '我', subjectNpcId = '', pro
     };
 }
 
+export function classifyInventoryItem(item) {
+    const value = `${item?.name || ''} ${item?.description || ''} ${item?.effect || ''}`;
+    if (/药|止痛|绷带|敷料|药剂|药水|治疗|疗愈|恢复|医用|medical|medicine|potion|bandage/i.test(value)) return 'medical';
+    if (/食物|零食|饼|鱼|肉|胡萝卜|莓|果|种子|谷物|口粮|点心|饮料|food|snack|cookie|berry|seed/i.test(value)) return 'companion';
+    return 'story';
+}
+
+export function applyInventoryItemUse(data, itemId, requestedUse = 'auto') {
+    data.world = normalizeWorldState(data.world);
+    const item = data.world.inventory.find(entry => entry.id === itemId);
+    if (!item || item.consumed || item.quantity <= 0 || item.usable === false) return { applied: false, reason: '这个物品现在不能使用' };
+    const kind = ['medical', 'companion', 'story'].includes(requestedUse) ? requestedUse : classifyInventoryItem(item);
+    let summary = `使用了 ${item.name}${item.effect ? `：${item.effect}` : ''}`;
+    let targetId = '';
+    if (kind === 'medical') {
+        const health = [...data.world.health].reverse().find(entry => entry.status !== 'resolved');
+        if (!health) return { applied: false, reason: '目前没有需要照护的身体事件' };
+        health.stage = 'recovering';
+        health.status = 'recovering';
+        health.progress = Math.min(95, Math.max(health.progress, 55) + 20);
+        health.careNote = `使用了“${item.name}”进行照护，接下来继续观察恢复。`;
+        health.updatedAt = Date.now();
+        targetId = health.id;
+        summary = `${item.name}用于照护${health.subject}的“${health.name}”，恢复进度达到 ${health.progress}%`;
+    } else if (kind === 'companion') {
+        const companion = data.world.companion;
+        companion.satiety = Math.min(100, Number(companion.satiety || 0) + 16);
+        companion.energy = Math.min(100, Number(companion.energy || 0) + 4);
+        companion.happiness = Math.min(100, Number(companion.happiness || 0) + 8);
+        companion.bond = Math.min(100, Number(companion.bond || 0) + 1);
+        companion.lastFood = item.name;
+        companion.lastAction = 'feed';
+        companion.mood = '满足';
+        companion.message = `它尝了尝“${item.name}”，开心地把包装也收拾好了。`;
+        companion.lastInteractionAt = Date.now();
+        companion.updatedAt = Date.now();
+        summary = `把${item.name}给了${companion.name}，饱腹与快乐有所恢复`;
+    }
+    item.quantity = Math.max(0, Number(item.quantity || 0) - 1);
+    item.consumed = item.quantity <= 0;
+    item.updatedAt = Date.now();
+    data.world.auditLog.push({ id: createId('audit'), moduleId: kind === 'medical' ? 'health' : kind === 'companion' ? 'travel' : 'inventory', summary, createdAt: Date.now() });
+    return { applied: true, kind, itemName: item.name, targetId, summary };
+}
+
 export function testModuleProbability(settings, data, moduleId, runs = 100, random = Math.random) {
     const total = Math.min(10000, Math.max(1, Number(runs || 100)));
     const reasons = {};

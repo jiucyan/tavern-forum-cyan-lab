@@ -78,6 +78,7 @@
             if (options?.jsonSchema?.name === 'tavern_forum_role_profile') return '{"bio":"记录雾港每一次异常潮汐与航行事故。","location":"东岸灯塔","signature":"潮水会留下证据。","tags":["航行"],"followers":1280,"following":76,"followingHandles":["paperbird"],"persona":"谨慎克制的夜航记录员。","pinnedPost":"第三声汽笛之后不要靠近东岸。"}';
             const promptText = Array.isArray(options?.prompt) ? options.prompt.map(message => message.content).join('\n') : String(options?.prompt || options?.user || '');
             if (promptText.includes('私信记录')) return '我看见你的消息了，东岸今晚仍不安全。';
+            if (promptText.includes('用户主动 AI 抽签')) return '{"worldUpdates":{"fortune":{"date":"2026/8/24","label":"潮光","score":68,"summary":"潮水会把一条安静的线索送到近处。","effects":["旅途发现轻微增加","偶遇概率小幅上升"],"theme":"发现","sigil":"◇","aspects":{"encounter":62,"travel":58,"discovery":76},"modifiers":{"travelDeparture":6,"travelMessage":4,"souvenir":8,"detour":-3,"luckyDirection":"东"}}}}';
             return '{"topic":"雾港夜话","posts":[]}';
         },
     };
