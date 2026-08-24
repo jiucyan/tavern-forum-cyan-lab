@@ -56,6 +56,13 @@ const DEFAULT_MODULE_SETTINGS = Object.fromEntries(WORLD_MODULE_DEFINITIONS.map(
     probability: module.id === 'fortune' ? 100 : 35,
     cooldownMinutes: module.id === 'forum' ? 0 : 60,
     automation: module.id === 'forum' ? 'auto' : 'confirm',
+    ...(module.id === 'travel' ? {
+        travelDurationPreset: 'normal',
+        travelMinMinutes: 60,
+        travelMaxMinutes: 180,
+        travelMessageMinMinutes: 15,
+        travelMessageMaxMinutes: 35,
+    } : {}),
 }]));
 
 export const DEFAULT_SETTINGS = Object.freeze({

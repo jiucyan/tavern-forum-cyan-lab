@@ -17,6 +17,9 @@ import {
     filterWorldUpdatesBySafety,
     normalizeProactiveDirectMessages,
     normalizeWorldUpdates,
+    prepareCompanionJourney,
+    advanceCompanionJourney,
+    resolveCompanionTravelTiming,
     roleCan,
 } from '../src/world.js';
 
@@ -91,6 +94,49 @@ test('local health events create an interactive fictional care record without an
     assert.equal(item.stage, 'noticed');
     assert.ok(item.symptoms);
     assert.ok(item.careNote);
+});
+
+test('one API journey plan is scheduled and settled entirely by the local clock', () => {
+    const config = settings();
+    config.modules.travel.enabled = true;
+    config.modules.travel.travelDurationPreset = 'test';
+    const start = 1_800_000_000_000;
+    const data = normalizeForumDataShape({
+        world: {
+            companion: { name: '团子', species: '青蛙', status: 'home', energy: 80, satiety: 75, happiness: 70 },
+            trips: [{
+                id: 'trip-once', traveler: '团子', destination: '雾灯小径', status: 'planned',
+                departureMessage: '我出门啦。', returnMessage: '我顺利回来了。', notes: '沿着雾灯走了一圈。',
+                souvenir: '雾蓝色玻璃珠', souvenirDescription: '在雾灯旁捡到的玻璃珠。', souvenirEffect: '收藏品。',
+                messages: [
+                    { content: '刚刚走过石桥。', mood: '好奇', progress: 0.25 },
+                    { content: '在树下躲了一阵风。', mood: '专注', progress: 0.5 },
+                    { content: '开始沿原路返家。', mood: '期待', progress: 0.75 },
+                ],
+            }],
+        },
+    });
+    const timing = resolveCompanionTravelTiming(config.modules.travel, () => 0);
+    assert.equal(timing.durationMinutes, 2);
+    assert.equal(timing.messageCount, 2);
+    const prepared = prepareCompanionJourney(data, 'trip-once', config.modules.travel, { now: start, random: () => 0 });
+    assert.ok(prepared);
+    assert.equal(data.world.companion.status, 'away');
+    assert.equal(data.world.companion.expectedReturnAt, start + 120000);
+    assert.equal(prepared.trip.messages.length, 2);
+    const first = advanceCompanionJourney(data, { now: prepared.trip.messages[0].scheduledAt });
+    assert.equal(first.delivered.length, 1);
+    assert.equal(first.returned, false);
+    const duplicateTick = advanceCompanionJourney(data, { now: prepared.trip.messages[0].scheduledAt });
+    assert.equal(duplicateTick.changed, false);
+    const returned = advanceCompanionJourney(data, { now: prepared.trip.returnAt });
+    assert.equal(returned.returned, true);
+    assert.equal(returned.souvenir, '雾蓝色玻璃珠');
+    assert.equal(data.world.inventory.length, 1);
+    assert.equal(data.world.inventory[0].description, '在雾灯旁捡到的玻璃珠。');
+    const duplicateReturn = advanceCompanionJourney(data, { now: prepared.trip.returnAt + 1000 });
+    assert.equal(duplicateReturn.changed, false);
+    assert.equal(data.world.inventory.length, 1);
 });
 
 test('inventory food and medical supplies close local companion and health loops', () => {

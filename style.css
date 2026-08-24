@@ -8267,3 +8267,72 @@ button.tf-avatar {
 @media (prefers-reduced-motion: reduce) {
     #tavern-forum-root .tf-inventory-bag { animation: none !important; }
 }
+
+/* A journey is generated once, then played back by a persistent local clock. */
+#tavern-forum-root .tf-travel-once-note {
+    display: grid;
+    gap: 4px;
+    padding: 12px 14px;
+    color: var(--tf-text);
+    background: color-mix(in srgb, var(--tf-accent) 7%, var(--tf-faint));
+    border: 1px solid color-mix(in srgb, var(--tf-accent) 18%, var(--tf-line));
+    border-radius: 13px;
+}
+
+#tavern-forum-root .tf-travel-once-note b { font-size: 11px; }
+#tavern-forum-root .tf-travel-once-note small { color: var(--tf-muted); font-size: 9px; line-height: 1.55; }
+
+#tavern-forum-root .tf-travel-timing-settings {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    background: color-mix(in srgb, #eef2e8 72%, var(--tf-card));
+    border: 1px solid color-mix(in srgb, #728265 24%, var(--tf-line));
+    border-radius: 15px;
+}
+
+#tavern-forum-root .tf-travel-timing-settings > header,
+#tavern-forum-root .tf-travel-timing-settings > footer { display: flex; gap: 9px; align-items: center; justify-content: space-between; }
+#tavern-forum-root .tf-travel-timing-settings > header > div { display: grid; gap: 3px; }
+#tavern-forum-root .tf-travel-timing-settings > header b { font-size: 12px; }
+#tavern-forum-root .tf-travel-timing-settings > header small,
+#tavern-forum-root .tf-travel-timing-settings > footer small { color: var(--tf-muted); font-size: 8px; }
+#tavern-forum-root .tf-travel-timing-settings > header > span { padding: 6px 9px; color: #5c6d51; font-size: 9px; font-weight: 700; background: rgb(255 255 255 / 65%); border-radius: 99px; white-space: nowrap; }
+#tavern-forum-root .tf-travel-timing-settings > label { display: grid; gap: 5px; }
+#tavern-forum-root .tf-travel-timing-settings > label > span { color: var(--tf-muted); font-size: 9px; }
+
+#tavern-forum-root .tf-travel-custom-time { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+#tavern-forum-root .tf-travel-custom-time label { position: relative; display: grid; gap: 5px; }
+#tavern-forum-root .tf-travel-custom-time label > span { color: var(--tf-muted); font-size: 8px; }
+#tavern-forum-root .tf-travel-custom-time label > small { position: absolute; right: 10px; bottom: 12px; color: var(--tf-muted); font-size: 8px; pointer-events: none; }
+#tavern-forum-root .tf-travel-custom-time input { padding-right: 38px; }
+#tavern-forum-root .tf-travel-timing-settings > footer { align-items: flex-start; flex-direction: column; gap: 4px; padding-top: 2px; }
+#tavern-forum-root .tf-travel-timing-settings > footer > span { display: inline-flex; gap: 6px; align-items: center; color: #5c6d51; font-size: 9px; font-weight: 650; }
+#tavern-forum-root .tf-travel-timing-settings > footer .tf-icon { width: 15px; height: 15px; }
+
+#tavern-forum-root .tf-companion-trip-schedule {
+    display: grid;
+    gap: 8px;
+    padding: 12px 13px;
+    color: var(--tf-text);
+    background: color-mix(in srgb, #eef2e8 80%, var(--tf-card));
+    border: 1px solid color-mix(in srgb, #78876b 22%, var(--tf-line));
+    border-radius: 13px;
+}
+
+#tavern-forum-root .tf-companion-trip-schedule > header,
+#tavern-forum-root .tf-companion-trip-schedule > footer { display: flex; gap: 9px; align-items: center; justify-content: space-between; }
+#tavern-forum-root .tf-companion-trip-schedule > header span { display: inline-flex; gap: 6px; align-items: center; font-size: 9px; font-weight: 700; }
+#tavern-forum-root .tf-companion-trip-schedule > header .tf-icon { width: 15px; height: 15px; color: #6b7d60; }
+#tavern-forum-root .tf-companion-trip-schedule > header b { color: #66745d; font: 750 9px/1 ui-monospace, monospace; }
+#tavern-forum-root .tf-companion-trip-schedule progress { width: 100%; height: 6px; overflow: hidden; appearance: none; background: rgb(255 255 255 / 75%); border: 0; border-radius: 99px; }
+#tavern-forum-root .tf-companion-trip-schedule progress::-webkit-progress-bar { background: rgb(255 255 255 / 75%); }
+#tavern-forum-root .tf-companion-trip-schedule progress::-webkit-progress-value { background: linear-gradient(90deg, #8fa17f, #69795e); border-radius: 99px; transition: width .35s ease; }
+#tavern-forum-root .tf-companion-trip-schedule progress::-moz-progress-bar { background: linear-gradient(90deg, #8fa17f, #69795e); border-radius: 99px; }
+#tavern-forum-root .tf-companion-trip-schedule > footer { color: var(--tf-muted); font-size: 8px; }
+
+@container (max-width: 520px) {
+    #tavern-forum-root .tf-travel-timing-settings > header { align-items: flex-start; flex-direction: column; }
+    #tavern-forum-root .tf-travel-custom-time { grid-template-columns: 1fr; }
+    #tavern-forum-root .tf-companion-trip-schedule > footer { align-items: flex-start; flex-direction: column; gap: 3px; }
+}

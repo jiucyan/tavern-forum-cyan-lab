@@ -120,12 +120,20 @@ try {
         return block.getBoundingClientRect().top - view.getBoundingClientRect().top;
     });
     if (injectionOffset > 80) throw new Error(`main-chat injection controls were not focused after navigation (${injectionOffset}px)`);
-    await desktop.screenshot({ path: 'preview-injection.png' });
+    await desktop.screenshot({ path: 'preview-injection-v2.png' });
     await desktop.locator('[data-action="me-section"][data-section="modules"]').click();
     await desktop.screenshot({ path: 'preview-settings-v3.png' });
     if (await desktop.locator('.tf-world-layout-switch.is-settings [data-action="set-world-home-layout"]').count() !== 2) throw new Error('settings center is missing the two world home layouts');
     const travelToggle = desktop.locator('[data-action="toggle-world-module"][data-module-id="travel"]');
     if (!await travelToggle.isChecked()) await travelToggle.check({ force: true });
+    await desktop.locator('[data-module-id="travel"] [data-module-field="travelDurationPreset"]').selectOption('test');
+    if (!/2 分钟～5 分钟返家/.test(await desktop.locator('[data-module-id="travel"] .tf-travel-timing-settings').innerText())) throw new Error('travel duration preset did not expose the user-selected return window');
+    if (await desktop.locator('[data-module-id="travel"] [data-module-field="generationMode"]').count()) throw new Error('travel should not expose a repeated linked-generation mode');
+    await desktop.locator('[data-module-id="travel"] [data-module-field="travelDurationPreset"]').selectOption('custom');
+    if (await desktop.locator('[data-module-id="travel"] .tf-travel-custom-time input').count() !== 4) throw new Error('custom travel timing did not expose duration and message interval controls');
+    await desktop.locator('[data-module-id="travel"] [data-module-field="travelDurationPreset"]').selectOption('test');
+    await desktop.locator('[data-module-id="travel"] .tf-travel-timing-settings').scrollIntoViewIfNeeded();
+    await desktop.screenshot({ path: 'preview-travel-settings-v2.png' });
     const fortuneToggle = desktop.locator('[data-action="toggle-world-module"][data-module-id="fortune"]');
     if (!await fortuneToggle.isChecked()) await fortuneToggle.check({ force: true });
     const healthToggle = desktop.locator('[data-action="toggle-world-module"][data-module-id="health"]');
@@ -189,9 +197,18 @@ try {
     await desktop.screenshot({ path: 'preview-companion-profile.png' });
 
     await desktop.evaluate(() => { Math.random = () => 0; });
-    await desktop.locator('[data-action="companion-depart-local"]').click();
+    const callsBeforeJourney = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
+    await desktop.locator('[data-action="companion-depart-ai"]').click();
+    await desktop.locator('.tf-companion-trip-schedule').waitFor();
+    await desktop.waitForFunction(before => globalThis.SillyTavern.getContext().generateCalls === before + 1, callsBeforeJourney);
+    if (!/2 则来信/.test(await desktop.locator('.tf-companion-trip-schedule').innerText())) throw new Error('the one-call journey did not persist its full message schedule');
+    await desktop.locator('.tf-companion-home').scrollIntoViewIfNeeded();
+    await desktop.screenshot({ path: 'preview-companion-journey-v2.png' });
     await desktop.locator('[data-action="companion-signal-local"]').click();
+    if (await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls) !== callsBeforeJourney + 1) throw new Error('checking journey progress unexpectedly called the API again');
     await desktop.locator('[data-action="companion-return"]').click();
+    await desktop.getByText(/已经放进背包/).waitFor();
+    if (await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls) !== callsBeforeJourney + 1) throw new Error('returning and settling the journey unexpectedly called the API again');
     if (!/背包/.test(await desktop.locator('.tf-pet-message').innerText())) throw new Error('companion return did not confirm souvenir inventory settlement');
 
     await desktop.locator('[data-action="back-world-home"]').click();

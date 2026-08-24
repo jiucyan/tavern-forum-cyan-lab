@@ -66,6 +66,7 @@ import {
     buildLinkedWorldInstruction,
     buildWorldModuleInjection,
     buildWorldModuleRequest,
+    COMPANION_TRAVEL_PRESETS,
     createPostReport,
     getModuleDefinition,
     getPermissionLevel,
@@ -77,6 +78,9 @@ import {
     isQuietHours,
     normalizeWorldUpdates,
     normalizeProactiveDirectMessages,
+    prepareCompanionJourney,
+    advanceCompanionJourney,
+    resolveCompanionTravelTiming,
     roleCan,
     setModuleDecision,
 } from './world.js';
@@ -236,6 +240,8 @@ const viewState = {
     worldLoading: false,
     searchQuery: '',
     autoRefreshTimer: 0,
+    companionJourneyTimer: 0,
+    companionJourneyBusy: false,
     pendingNpcAvatarId: '',
     pendingNpcBackgroundId: '',
     pendingViewWallpaperId: '',
@@ -1028,6 +1034,33 @@ function renderModuleApiOptions(selectedId) {
     return `<option value="inherit" ${selectedId === 'inherit' ? 'selected' : ''}>跟随当前 API 配置</option>${settings.apiProfiles.map(profile => `<option value="${escapeHtml(profile.id)}" ${selectedId === profile.id ? 'selected' : ''}>${escapeHtml(profile.name)}</option>`).join('')}`;
 }
 
+function formatTravelDuration(minutes) {
+    const value = Math.max(0, Number(minutes || 0));
+    if (value < 1) return `${Math.max(1, Math.round(value * 60))} 秒`;
+    if (value < 60) return `${Math.round(value)} 分钟`;
+    if (value < 1440) return `${Math.round(value / 6) / 10} 小时`;
+    return `${Math.round(value / 144) / 10} 天`;
+}
+
+function formatTimeUntil(timestamp) {
+    const seconds = Math.max(0, Math.ceil((Number(timestamp || 0) - Date.now()) / 1000));
+    if (seconds < 60) return `${seconds} 秒`;
+    if (seconds < 3600) return `${Math.ceil(seconds / 60)} 分钟`;
+    if (seconds < 86400) return `${Math.round(seconds / 360) / 10} 小时`;
+    return `${Math.round(seconds / 8640) / 10} 天`;
+}
+
+function renderTravelTimingSettings(module) {
+    const timing = resolveCompanionTravelTiming(module, () => 0.5);
+    const custom = module.travelDurationPreset === 'custom';
+    const options = [
+        ...Object.entries(COMPANION_TRAVEL_PRESETS).map(([id, preset]) => `<option value="${id}" ${module.travelDurationPreset === id ? 'selected' : ''}>${preset.label} · ${formatTravelDuration(preset.duration[0])}～${formatTravelDuration(preset.duration[1])}</option>`),
+        `<option value="custom" ${custom ? 'selected' : ''}>自定义时间</option>`,
+    ].join('');
+    const customFields = custom ? `<div class="tf-travel-custom-time"><label><span>最短旅行</span><input type="number" min="0.25" max="43200" step="0.25" data-module-field="travelMinMinutes" value="${Number(module.travelMinMinutes || 60)}"><small>分钟</small></label><label><span>最长旅行</span><input type="number" min="0.25" max="43200" step="0.25" data-module-field="travelMaxMinutes" value="${Number(module.travelMaxMinutes || 180)}"><small>分钟</small></label><label><span>最短消息间隔</span><input type="number" min="0.25" max="14400" step="0.25" data-module-field="travelMessageMinMinutes" value="${Number(module.travelMessageMinMinutes || 15)}"><small>分钟</small></label><label><span>最长消息间隔</span><input type="number" min="0.25" max="14400" step="0.25" data-module-field="travelMessageMaxMinutes" value="${Number(module.travelMessageMaxMinutes || 35)}"><small>分钟</small></label></div>` : '';
+    return `<section class="tf-travel-timing-settings"><header><div><b>旅行节奏</b><small>整趟行程只在出发时调用一次 API</small></div><span>${formatTravelDuration(timing.durationMinimum)}～${formatTravelDuration(timing.durationMaximum)}返家</span></header><label><span>返家模式</span><select data-module-field="travelDurationPreset">${options}</select></label>${customFields}<footer><span>${icon('message')}途中预计释放 ${timing.messageCount} 条预生成消息</span><small>修改只影响下一次出发；关闭酒馆后仍按时间戳继续。</small></footer></section>`;
+}
+
 function renderModuleCard(definition) {
     const settings = getSettings();
     const module = settings.modules[definition.id];
@@ -1039,19 +1072,19 @@ function renderModuleCard(definition) {
     const independent = module.generationMode === 'independent';
     const runtime = getForumData().world.moduleRuntime?.[definition.id];
     const runtimeText = runtime?.lastDecision || (!module.enabled ? '模块已关闭' : module.generationMode === 'independent' ? '独立模式，等待手动刷新或自动触发' : module.generationMode === 'local' ? '本地模式，等待日期或手动刷新' : '将在下次论坛刷新时参与联动');
-    const modeControl = definition.id === 'forum' ? '<span class="tf-mode-note">论坛随“刷新”生成</span>' : `<label class="tf-module-mode"><span>生成方式</span><select data-module-field="generationMode"><option value="linked" ${module.generationMode === 'linked' ? 'selected' : ''}>持续联动 · 每次论坛刷新一起生成</option><option value="independent" ${independent ? 'selected' : ''}>独立生成 · 使用本模块 API</option>${definition.id === 'fortune' ? `<option value="local" ${module.generationMode === 'local' ? 'selected' : ''}>本地随机 · 不调用 API</option>` : ''}</select><small>${module.generationMode === 'linked' ? '不关闭就会一直参与联动；与论坛共用一次 API 请求。' : module.generationMode === 'local' ? '按世界内日期缓存，同一天不会重复调用 API。' : '手动或自动单独生成；只有此模式使用下面的 API 和 RPM。'}</small></label>`;
+    const modeControl = definition.id === 'forum' ? '<span class="tf-mode-note">论坛随“刷新”生成</span>' : definition.id === 'travel' ? '<div class="tf-mode-note tf-travel-once-note"><b>出发时预生成完整行程</b><small>途中消息、返家内容和待带回物品共用一次 API；出发后全部在本地按时间释放。</small></div>' : `<label class="tf-module-mode"><span>生成方式</span><select data-module-field="generationMode"><option value="linked" ${module.generationMode === 'linked' ? 'selected' : ''}>持续联动 · 每次论坛刷新一起生成</option><option value="independent" ${independent ? 'selected' : ''}>独立生成 · 使用本模块 API</option>${definition.id === 'fortune' ? `<option value="local" ${module.generationMode === 'local' ? 'selected' : ''}>本地随机 · 不调用 API</option>` : ''}</select><small>${module.generationMode === 'linked' ? '不关闭就会一直参与联动；与论坛共用一次 API 请求。' : module.generationMode === 'local' ? '按世界内日期缓存，同一天不会重复调用 API。' : '手动或自动单独生成；只有此模式使用下面的 API 和 RPM。'}</small></label>`;
     const flowControl = definition.id === 'forum'
         ? `<div class="tf-module-flow tf-direction-summary"><span><b>主聊天读取论坛内容</b><small>${settings.injection.enabled ? '已开启；仅使用单独选中的帖子' : '当前关闭，不会向正文提供帖子'}</small></span><button class="tf-secondary-button" data-action="go-injection-settings">前往“注入主聊天”</button></div>`
         : `<div class="tf-module-flow"><div>${renderSwitch({ checked: injectIntoChat, action: 'toggle-module-injection', label: '允许该模块状态进入正文', disabled: !module.enabled, dataset: { moduleId: definition.id } })}<small data-module-token="${escapeHtml(definition.id)}">${tokens ? `当前约 ${numberLabel(tokens)} Tokens` : '当前没有注入内容'}</small></div></div>`;
     const fortuneApiToggle = definition.id === 'fortune' ? `<div class="tf-module-feature-toggle">${renderSwitch({ checked: module.allowApiDraw, action: 'toggle-fortune-api-draw', label: '允许 AI 生成抽签结果' })}<small>默认关闭。开启后只有主动点击“AI 抽签”才会调用一次文本 API。</small></div>` : '';
     const showApiControls = independent || (definition.id === 'fortune' && module.allowApiDraw);
     const apiControls = `${fortuneApiToggle}${showApiControls ? `<label><span>${independent ? '独立 API' : '抽签 API'}</span><select data-module-field="apiProfileId">${renderModuleApiOptions(module.apiProfileId)}</select></label><label><span>${independent ? '独立' : '抽签'} RPM 上限</span><input type="number" min="0" max="600" data-module-field="rpm" value="${Number(module.rpm || 0)}" placeholder="0=不限"></label>` : ''}`;
-    const probability = definition.id === 'forum' ? '' : `<label><span>自动触发概率（%）</span><input type="number" min="0" max="100" data-module-field="probability" value="${Number(module.probability ?? 35)}"></label><label><span>自动冷却（分钟）</span><input type="number" min="0" max="43200" data-module-field="cooldownMinutes" value="${Number(module.cooldownMinutes || 0)}"></label>`;
+    const probability = ['forum', 'travel'].includes(definition.id) ? '' : `<label><span>自动触发概率（%）</span><input type="number" min="0" max="100" data-module-field="probability" value="${Number(module.probability ?? 35)}"></label><label><span>自动冷却（分钟）</span><input type="number" min="0" max="43200" data-module-field="cooldownMinutes" value="${Number(module.cooldownMinutes || 0)}"></label>`;
     const pageButton = definition.id === 'forum'
         ? '<button class="tf-secondary-button" data-action="switch-tab" data-tab="home">打开论坛</button>'
-        : `<button class="tf-secondary-button" data-action="open-module-context" data-module-id="${escapeHtml(definition.id)}" ${!module.enabled ? 'disabled' : ''}>${escapeHtml(contextLabels[definition.id] || '查看内容')}</button>${module.generationMode === 'independent' || module.generationMode === 'local' ? `<button class="tf-secondary-button" data-action="refresh-world-module" data-module-id="${escapeHtml(definition.id)}" ${!module.enabled || busy ? 'disabled' : ''}>${busy ? '<span class="tf-spinner"></span>生成中' : `${icon('refresh')}刷新`}</button>` : ''}`;
+        : `<button class="tf-secondary-button" data-action="open-module-context" data-module-id="${escapeHtml(definition.id)}" ${!module.enabled ? 'disabled' : ''}>${escapeHtml(contextLabels[definition.id] || '查看内容')}</button>${definition.id !== 'travel' && (module.generationMode === 'independent' || module.generationMode === 'local') ? `<button class="tf-secondary-button" data-action="refresh-world-module" data-module-id="${escapeHtml(definition.id)}" ${!module.enabled || busy ? 'disabled' : ''}>${busy ? '<span class="tf-spinner"></span>生成中' : `${icon('refresh')}刷新`}</button>` : ''}`;
     const tools = viewState.openModuleToolsId === definition.id ? `<div class="tf-module-tools-menu"><button data-action="export-module" data-module-id="${escapeHtml(definition.id)}">导出此模块设置</button><button data-action="import-module" data-module-id="${escapeHtml(definition.id)}">导入此模块设置</button><button data-action="reset-module" data-module-id="${escapeHtml(definition.id)}">恢复此模块默认设置</button></div>` : '';
-    return `<article class="tf-module-card tf-card ${module.enabled ? 'is-enabled' : ''}" data-module-id="${escapeHtml(definition.id)}"><header><span class="tf-module-icon">${icon(definition.icon)}</span><div><h3>${escapeHtml(definition.name)}</h3><p>${escapeHtml(definition.description)}</p></div><div class="tf-module-tools-wrap"><button class="tf-icon-button" data-action="module-tools" data-module-id="${escapeHtml(definition.id)}" aria-label="模块数据工具">${icon('more')}</button>${tools}</div>${renderSwitch({ checked: module.enabled, action: 'toggle-world-module', label: '', dataset: { moduleId: definition.id } })}</header>${modeControl}${flowControl}<div class="tf-module-options">${apiControls}${probability}<label><span>自动化权限</span><select data-module-field="automation">${automationLabels.map(([value, label]) => `<option value="${value}" ${module.automation === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div>${definition.id === 'forum' ? '' : `<div class="tf-module-diagnostics"><span>为什么没有生成：${escapeHtml(runtimeText)}</span></div>`}<footer>${pageButton}</footer></article>`;
+    return `<article class="tf-module-card tf-card ${module.enabled ? 'is-enabled' : ''}" data-module-id="${escapeHtml(definition.id)}"><header><span class="tf-module-icon">${icon(definition.icon)}</span><div><h3>${escapeHtml(definition.name)}</h3><p>${escapeHtml(definition.description)}</p></div><div class="tf-module-tools-wrap"><button class="tf-icon-button" data-action="module-tools" data-module-id="${escapeHtml(definition.id)}" aria-label="模块数据工具">${icon('more')}</button>${tools}</div>${renderSwitch({ checked: module.enabled, action: 'toggle-world-module', label: '', dataset: { moduleId: definition.id } })}</header>${modeControl}${flowControl}${definition.id === 'travel' ? renderTravelTimingSettings(module) : ''}<div class="tf-module-options">${apiControls}${probability}<label><span>自动化权限</span><select data-module-field="automation">${automationLabels.map(([value, label]) => `<option value="${value}" ${module.automation === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div>${definition.id === 'forum' ? '' : `<div class="tf-module-diagnostics"><span>为什么没有生成：${escapeHtml(runtimeText)}</span></div>`}<footer>${pageButton}</footer></article>`;
 }
 
 function renderInventoryUseButton(item) {
@@ -1222,9 +1255,15 @@ function renderCompanionAppV2(data) {
 
 function renderCompanionAppV3(data) {
     const companion = data.world.companion;
+    const activeTrip = [...data.world.trips].reverse().find(item => item.status === 'away') || null;
+    const tripSignals = activeTrip?.messages || [];
+    const deliveredSignals = tripSignals.filter(message => message.deliveredAt).length;
+    const tripProgress = activeTrip?.returnAt && activeTrip?.schedulePreparedAt
+        ? Math.min(100, Math.max(0, Math.round((Date.now() - activeTrip.schedulePreparedAt) / Math.max(1, activeTrip.returnAt - activeTrip.schedulePreparedAt) * 100)))
+        : 0;
     const time = getLocalCompanionTime(companion);
     const weather = getLocalCompanionWeather(data, time);
-    const statusLabel = companion.status === 'away' ? `正在${companion.destination || '附近'}旅行` : companion.status === 'resting' ? '正在小窝休息' : '在小窝等你';
+    const statusLabel = companion.status === 'away' ? `正在${companion.destination || '附近'}旅行 · ${formatTimeUntil(activeTrip?.returnAt || companion.expectedReturnAt)}后返家` : companion.status === 'resting' ? '正在小窝休息' : '在小窝等你';
     const statusCode = companion.status === 'away' ? 'TRIP' : companion.status === 'resting' ? 'REST' : 'HOME';
     const bond = Math.max(0, Math.min(100, Number(companion.bond || 0)));
     const fortune = data.world.fortune;
@@ -1250,7 +1289,8 @@ function renderCompanionAppV3(data) {
     const stat = (label, value) => `<div><span>${label}<b>${Number(value)}</b></span><progress max="100" value="${Number(value)}"></progress></div>`;
     const animationLayer = `<span class="tf-pet-animation-layer" aria-hidden="true"><span class="tf-feed-drop"><i></i><i></i><i></i><i></i></span><span class="tf-pet-hearts"><i>♥</i><i>♥</i><i>♥</i><i>♥</i></span><span class="tf-play-ball">◆</span><span class="tf-play-trail"><i></i><i></i><i></i></span><span class="tf-sleep-cloud"><i>Z</i><i>z</i><i>z</i></span><span class="tf-touch-rings"><i></i><i></i><i></i></span><span class="tf-pet-stars"><i>✦</i><i>·</i><i>✦</i><i>·</i></span></span>`;
     const weatherLayer = `<span class="tf-pet-weather" aria-hidden="true"><span class="tf-weather-sun"><i></i></span><span class="tf-weather-moon">☾<i>·</i><i>·</i><i>·</i></span><span class="tf-weather-cloud"><i></i><i></i></span><span class="tf-weather-rain">${'<i></i>'.repeat(8)}</span><span class="tf-weather-snow"><i>✣</i><i>·</i><i>✣</i><i>·</i><i>✣</i><i>·</i></span><span class="tf-weather-wind"><i></i><i></i><i></i><b>◆</b></span></span>`;
-    return `<div class="tf-companion-page tf-companion-v3 is-device-${skin.id} is-action-${escapeHtml(companion.lastAction || 'idle')} is-weather-${weather.id}"><section class="tf-card tf-companion-home"><div class="tf-pet-console-wrap"><div class="tf-pet-console"><div class="tf-pet-console-brand"><span>${skin.id === 'terminal' ? 'FIELD UNIT' : skin.id === 'arcane' ? 'FAMILIAR LINK' : 'POCKET TRAVELER'}</span><b>${escapeHtml(skin.name)}</b></div><div class="tf-pet-screen-bezel"><div class="tf-pet-screen"><div class="tf-pet-screen-top"><b>${statusCode}</b><span>${escapeHtml(companion.mood || '好奇')}</span><span class="tf-pet-signal"><i></i><i></i><i></i></span></div><div class="tf-pet-stage">${portrait}${animationLayer}${weatherLayer}<span class="tf-pet-cloud is-one"></span><span class="tf-pet-cloud is-two"></span><span class="tf-pet-ground"></span></div><div class="tf-pet-screen-menu">${menuItems.map((item, index) => `<button class="${index === menuIndex ? 'is-selected' : ''}" data-action="companion-care" data-care="${item.id}" title="${item.label}"><span>${item.symbol}</span><b>${item.label}</b></button>`).join('')}</div><div class="tf-pet-screen-bottom"><span>${escapeHtml(companion.species)}</span><span title="${escapeHtml(weather.note)}">${weather.icon} ${escapeHtml(weather.label)}</span><span>♥ ${String(bond).padStart(3, '0')}</span></div></div></div><div class="tf-pet-device-controls"><button type="button" data-action="companion-menu-nav" data-direction="-1" aria-label="上一个功能"><i></i><span>PREV</span></button><button type="button" data-action="companion-menu-confirm" aria-label="确认当前功能"><i></i><span>OK</span></button><button type="button" data-action="companion-menu-nav" data-direction="1" aria-label="下一个功能"><i></i><span>NEXT</span></button></div></div></div><div class="tf-companion-status"><span class="tf-pet-kicker">MY LITTLE TRAVELER · ${statusCode}</span><div class="tf-companion-title"><div><h2>${escapeHtml(companion.name)}</h2><small>${escapeHtml(companion.species)}</small></div><b>${escapeHtml(statusLabel)}</b></div><div class="tf-pet-message"><span>${companion.lastAction ? 'REACTION LOG' : 'MESSAGE'}</span><p>${escapeHtml(companion.lastAction ? actionCopy[companion.lastAction] || companion.message : companion.message || '它正安静地看着你。')}</p><small>直接在左侧宠物机内操作 · 本地运行</small></div><div class="tf-pet-vitals">${stat('饱腹', companion.satiety ?? 75)}${stat('体力', companion.energy ?? 80)}${stat('快乐', companion.happiness ?? 70)}</div><div class="tf-pet-info-strip"><span><small>亲密</small><b>${bond}</b></span><span><small>行囊</small><b>${escapeHtml(companion.carrying || '未准备')}</b></span><span class="tf-weather-summary" title="${escapeHtml(weather.note)}"><small>天气</small><b>${weather.icon} ${escapeHtml(weather.label)}</b></span>${luckyDirection ? `<span><small>幸运方向</small><b>${escapeHtml(luckyDirection)}</b></span>` : ''}</div>${luckyDirection ? `<div class="tf-pet-luck-note">${icon('sparkles')}<span>运势会影响旅途见闻、绕路与纪念品概率。</span></div>` : ''}<footer class="tf-pet-trip-actions"><button class="tf-primary-button tf-pet-main-action" data-action="${companion.status === 'away' ? 'companion-signal-local' : 'companion-depart-local'}">${icon(companion.status === 'away' ? 'message' : 'repost')}${companion.status === 'away' ? '等待旅途讯号（本地）' : '准备好后自由出发'}</button>${companion.status === 'away' ? '<button class="tf-secondary-button" data-action="companion-return">接它回家</button>' : ''}</footer></div></section><details class="tf-card tf-companion-profile-card" ${viewState.companionProfileOpen ? 'open' : ''}><summary data-action="toggle-companion-profile"><span class="tf-companion-profile-avatar">${renderPixelCompanion(companion.species, 'home', true)}</span><div><small>TRAVELER PROFILE</small><h3>${escapeHtml(companion.name)} · ${escapeHtml(companion.species)}</h3><p>${escapeHtml(skin.name)} · 点击展开更换旅伴或设备</p></div><span class="tf-profile-expand">编辑档案⌄</span></summary><div class="tf-companion-profile-content"><section><header><div><h3>旅伴图鉴</h3><p>更换形象不会清除亲密度、行囊和旅行记录。</p></div></header><div class="tf-pet-species-grid tf-pet-species-compact">${speciesOptions}<button type="button" class="tf-pet-species-option is-custom ${customSelected ? 'is-selected' : ''}" data-action="choose-companion-custom"><span>＋</span><b>自定义</b></button></div><div class="tf-companion-profile-grid"><label><span>名字</span><input data-companion-field="name" value="${escapeHtml(companion.name)}" maxlength="32"></label>${customSelected ? `<label><span>自定义种类</span><input data-companion-field="species" value="${escapeHtml(companion.species === '自定义旅伴' ? '' : companion.species)}" placeholder="例如：史莱姆、龙、机械犬"></label>` : ''}<label class="is-wide"><span>准备的行囊</span><input data-companion-field="carrying" value="${escapeHtml(companion.carrying)}" placeholder="食物、护符、地图……"></label></div></section><section class="tf-device-skin-section"><header><div><h3>设备外观</h3><p>只改变机身结构、屏幕色调和动画风格，不改变宠物数据。</p></div></header><div class="tf-device-skin-grid">${deviceOptions}</div></section></div></details></div>`;
+    const tripSchedule = activeTrip ? `<section class="tf-companion-trip-schedule"><header><span>${icon('message')}预生成行程</span><b>${deliveredSignals}/${tripSignals.length} 则来信</b></header><progress max="100" value="${tripProgress}"></progress><footer><span>预计 ${formatTimeUntil(activeTrip.returnAt)} 后返家</span><small>消息按时间在本地释放，不再调用 API</small></footer></section>` : '';
+    return `<div class="tf-companion-page tf-companion-v3 is-device-${skin.id} is-action-${escapeHtml(companion.lastAction || 'idle')} is-weather-${weather.id}"><section class="tf-card tf-companion-home"><div class="tf-pet-console-wrap"><div class="tf-pet-console"><div class="tf-pet-console-brand"><span>${skin.id === 'terminal' ? 'FIELD UNIT' : skin.id === 'arcane' ? 'FAMILIAR LINK' : 'POCKET TRAVELER'}</span><b>${escapeHtml(skin.name)}</b></div><div class="tf-pet-screen-bezel"><div class="tf-pet-screen"><div class="tf-pet-screen-top"><b>${statusCode}</b><span>${escapeHtml(companion.mood || '好奇')}</span><span class="tf-pet-signal"><i></i><i></i><i></i></span></div><div class="tf-pet-stage">${portrait}${animationLayer}${weatherLayer}<span class="tf-pet-cloud is-one"></span><span class="tf-pet-cloud is-two"></span><span class="tf-pet-ground"></span></div><div class="tf-pet-screen-menu">${menuItems.map((item, index) => `<button class="${index === menuIndex ? 'is-selected' : ''}" data-action="companion-care" data-care="${item.id}" title="${item.label}"><span>${item.symbol}</span><b>${item.label}</b></button>`).join('')}</div><div class="tf-pet-screen-bottom"><span>${escapeHtml(companion.species)}</span><span title="${escapeHtml(weather.note)}">${weather.icon} ${escapeHtml(weather.label)}</span><span>♥ ${String(bond).padStart(3, '0')}</span></div></div></div><div class="tf-pet-device-controls"><button type="button" data-action="companion-menu-nav" data-direction="-1" aria-label="上一个功能"><i></i><span>PREV</span></button><button type="button" data-action="companion-menu-confirm" aria-label="确认当前功能"><i></i><span>OK</span></button><button type="button" data-action="companion-menu-nav" data-direction="1" aria-label="下一个功能"><i></i><span>NEXT</span></button></div></div></div><div class="tf-companion-status"><span class="tf-pet-kicker">MY LITTLE TRAVELER · ${statusCode}</span><div class="tf-companion-title"><div><h2>${escapeHtml(companion.name)}</h2><small>${escapeHtml(companion.species)}</small></div><b>${escapeHtml(statusLabel)}</b></div><div class="tf-pet-message"><span>${companion.lastAction ? 'REACTION LOG' : 'MESSAGE'}</span><p>${escapeHtml(companion.lastAction ? actionCopy[companion.lastAction] || companion.message : companion.message || '它正安静地看着你。')}</p><small>直接在左侧宠物机内操作 · 本地运行</small></div><div class="tf-pet-vitals">${stat('饱腹', companion.satiety ?? 75)}${stat('体力', companion.energy ?? 80)}${stat('快乐', companion.happiness ?? 70)}</div><div class="tf-pet-info-strip"><span><small>亲密</small><b>${bond}</b></span><span><small>行囊</small><b>${escapeHtml(companion.carrying || '未准备')}</b></span><span class="tf-weather-summary" title="${escapeHtml(weather.note)}"><small>天气</small><b>${weather.icon} ${escapeHtml(weather.label)}</b></span>${luckyDirection ? `<span><small>幸运方向</small><b>${escapeHtml(luckyDirection)}</b></span>` : ''}</div>${luckyDirection ? `<div class="tf-pet-luck-note">${icon('sparkles')}<span>运势会影响旅途见闻、绕路与纪念品概率。</span></div>` : ''}${tripSchedule}<footer class="tf-pet-trip-actions"><button class="tf-primary-button tf-pet-main-action" data-action="${companion.status === 'away' ? 'companion-signal-local' : 'companion-depart-ai'}" ${viewState.moduleBusy.has('travel') ? 'disabled' : ''}>${viewState.moduleBusy.has('travel') ? '<span class="tf-spinner"></span>正在规划整趟旅行' : `${icon(companion.status === 'away' ? 'message' : 'repost')}${companion.status === 'away' ? '查看行程进度' : '出发 · 仅调用一次 API'}`}</button>${companion.status === 'away' ? '<button class="tf-secondary-button" data-action="companion-return">立即召回</button>' : ''}</footer></div></section><details class="tf-card tf-companion-profile-card" ${viewState.companionProfileOpen ? 'open' : ''}><summary data-action="toggle-companion-profile"><span class="tf-companion-profile-avatar">${renderPixelCompanion(companion.species, 'home', true)}</span><div><small>TRAVELER PROFILE</small><h3>${escapeHtml(companion.name)} · ${escapeHtml(companion.species)}</h3><p>${escapeHtml(skin.name)} · 点击展开更换旅伴或设备</p></div><span class="tf-profile-expand">编辑档案⌄</span></summary><div class="tf-companion-profile-content"><section><header><div><h3>旅伴图鉴</h3><p>更换形象不会清除亲密度、行囊和旅行记录。</p></div></header><div class="tf-pet-species-grid tf-pet-species-compact">${speciesOptions}<button type="button" class="tf-pet-species-option is-custom ${customSelected ? 'is-selected' : ''}" data-action="choose-companion-custom"><span>＋</span><b>自定义</b></button></div><div class="tf-companion-profile-grid"><label><span>名字</span><input data-companion-field="name" value="${escapeHtml(companion.name)}" maxlength="32"></label>${customSelected ? `<label><span>自定义种类</span><input data-companion-field="species" value="${escapeHtml(companion.species === '自定义旅伴' ? '' : companion.species)}" placeholder="例如：史莱姆、龙、机械犬"></label>` : ''}<label class="is-wide"><span>准备的行囊</span><input data-companion-field="carrying" value="${escapeHtml(companion.carrying)}" placeholder="食物、护符、地图……"></label></div></section><section class="tf-device-skin-section"><header><div><h3>设备外观</h3><p>只改变机身结构、屏幕色调和动画风格，不改变宠物数据。</p></div></header><div class="tf-device-skin-grid">${deviceOptions}</div></section></div></details></div>`;
 }
 
 function getCompanionHabit(companion) {
@@ -1406,7 +1446,7 @@ function renderWorldFeaturePage(data, moduleId) {
                 : moduleId === 'inventory' ? renderInventoryApp(data)
                     : moduleId === 'health' ? renderHealthAppV3(data)
                         : renderModeration(data, true);
-    const apiButton = ['tasks', 'inventory'].includes(moduleId) || (moduleId === 'travel' && data.world.companion.status === 'away')
+    const apiButton = ['tasks', 'inventory'].includes(moduleId)
             ? `<button class="tf-secondary-button" data-action="refresh-world-module" data-module-id="${escapeHtml(moduleId)}" ${viewState.moduleBusy.has(moduleId) ? 'disabled' : ''}>${viewState.moduleBusy.has(moduleId) ? '<span class="tf-spinner"></span>' : icon('sparkles')}明确生成</button>` : '';
     return `<section class="tf-world-app-page"><header class="tf-world-app-header"><button class="tf-back-button" data-action="back-world-home">${icon('chevron')}世界</button><div><h1>${escapeHtml(definition.name)}</h1>${moduleId === 'inventory' ? '' : `<p>${escapeHtml(definition.description)}</p>`}</div>${apiButton}</header>${content}</section>`;
 }
@@ -2296,19 +2336,21 @@ function appendWorldRequestInstruction(request, instruction) {
     request.messages = messages;
 }
 
-async function runWorldModuleGeneration(moduleId, { reportId = '', forceApi = false, fortuneChoice = '' } = {}) {
+async function runWorldModuleGeneration(moduleId, { reportId = '', forceApi = false, fortuneChoice = '', startJourney = false } = {}) {
     const settings = getSettings();
     const definition = getModuleDefinition(moduleId);
     if (!definition || moduleId === 'forum' || !settings.modules[moduleId]?.enabled) return;
     if (viewState.moduleBusy.has(moduleId)) return;
     if (!hasActiveChat()) return notify('warning', '请先打开一个角色聊天');
     if (moduleId === 'fortune' && forceApi && !settings.modules.fortune.allowApiDraw) return notify('warning', '请先在运势模块设置中开启“允许 AI 生成抽签结果”');
+    if (startJourney && getForumData().world.companion.status === 'away') return notify('info', '旅伴已经在旅行中');
     if (moduleId === 'moderation' && reportId && !settings.moderation.systemAdminEnabled) return notify('warning', '系统 AI 管理员当前未开启');
     if (settings.modules[moduleId].generationMode === 'linked' && !reportId && !forceApi) return notify('info', `${definition.name}正在持续联动；请刷新论坛，仍只调用一次 API`);
     viewState.moduleBusy.add(moduleId);
     render();
     let result = null;
     let config = null;
+    const travelTimingRoll = startJourney ? Math.random() : 0;
     try {
         const data = getForumData();
         if (moduleId === 'fortune' && settings.modules.fortune.generationMode === 'local' && !forceApi) {
@@ -2328,6 +2370,10 @@ async function runWorldModuleGeneration(moduleId, { reportId = '', forceApi = fa
         const sourceContext = await getGenerationSourceContext();
         const request = buildWorldModuleRequest({ moduleId, settings, data, sourceContext });
         if (moduleId === 'fortune' && forceApi) appendWorldRequestInstruction(request, `【用户主动 AI 抽签】\n这是用户明确选择并翻开“${fortuneChoice || 'middle'}”位置牌面后发起的一次 AI 解签。请结合当前世界资料生成全新的今日签，但保持影响轻微、可逆，不得强制剧情结果。`);
+        if (moduleId === 'travel' && startJourney) {
+            const timing = resolveCompanionTravelTiming(settings.modules.travel, () => travelTimingRoll);
+            appendWorldRequestInstruction(request, `【用户主动让旅伴出发：只调用这一次 API】\n请一次性规划完整旅程。旅行将持续约 ${formatTravelDuration(timing.durationMinutes)}，请生成 ${timing.messageCount} 条按先后顺序释放的途中消息；每条 messages 使用 progress 表示旅程进度（0.08～0.92）。同时预先生成 departureMessage、returnMessage、完整 notes，以及返家后才揭晓的 souvenir、souvenirDescription、souvenirEffect。journey.status 与 companion.status 必须为 away。不要把纪念品写进 companion.carrying，不要在出发留言或途中消息中提前透露纪念品，不要返回 inventory。本次返回后，插件只用本地时间戳发送消息和结算返家，不会再次调用 API。`);
+        }
         if (reportId) {
             const report = data.world.reports.find(item => item.id === reportId);
             const post = report && data.posts.find(item => item.id === report.postId);
@@ -2350,11 +2396,34 @@ async function runWorldModuleGeneration(moduleId, { reportId = '', forceApi = fa
                 action.reportId = reportId;
             }
         }
+        let preparedJourney = null;
+        if (moduleId === 'travel' && startJourney) {
+            const journey = updates.travel?.[0];
+            if (!journey) throw new Error('旅伴模块没有返回完整旅行计划');
+            journey.id = createId('trip');
+            journey.status = 'away';
+            journey.departureMessage = journey.departureMessage || updates.companion?.message || '';
+            updates.travel = [];
+            updates.companion = {
+                status: 'away',
+                destination: journey.destination,
+                mood: updates.companion?.mood || data.world.companion.mood,
+                message: journey.departureMessage || updates.companion?.message || data.world.companion.message,
+            };
+            data.world.trips.push(journey);
+            preparedJourney = prepareCompanionJourney(data, journey.id, settings.modules.travel, { random: () => travelTimingRoll });
+            if (!preparedJourney) throw new Error('无法建立旅伴旅行时间表');
+        }
         if (!Object.keys(updates).length) throw new Error(`${definition.name}模块没有返回可读取的数据`);
         const before = { reportCount: data.world.reports.length };
         const applied = applyWorldUpdates(data, updates, settings);
-        routeWorldUpdatesToApp(data, updates, before);
-        setModuleDecision(data, moduleId, 'generated', '已使用本模块独立 API 生成', { generated: true });
+        if (preparedJourney) {
+            applied.push(`完整行程 ${preparedJourney.timing.messageCount} 则来信`);
+            const conversation = ensureCompanionConversation(data);
+            addConversationMessage(conversation, data.world.companion.message, { kind: 'companion', tripId: preparedJourney.trip.id });
+            addModuleNotification(data, 'companion', `${data.world.companion.name}已经出发：${preparedJourney.trip.destination}`, { actorName: data.world.companion.name, moduleId: 'travel', itemId: preparedJourney.trip.id, conversationId: conversation.id });
+        } else routeWorldUpdatesToApp(data, updates, before);
+        setModuleDecision(data, moduleId, 'generated', preparedJourney ? '已用一次 API 预生成完整行程；后续消息与返家均在本地执行' : '已使用本模块独立 API 生成', { generated: true });
         if (filtered.blocked.length) data.world.auditLog.push({ id: createId('audit'), moduleId: 'safety', summary: `已按剧情禁区拦截：${filtered.blocked.join('、')}`, createdAt: Date.now() });
         for (let index = 0; index < Number(filtered.acceptedSevere || 0); index += 1) data.world.auditLog.push({ id: createId('audit'), moduleId: 'severity', summary: '本轮允许了一项重大剧情事件', createdAt: Date.now() });
         if (reportId) {
@@ -2375,6 +2444,7 @@ async function runWorldModuleGeneration(moduleId, { reportId = '', forceApi = fa
         });
         await saveForumData(data, true);
         syncInjection();
+        if (preparedJourney) wakeCompanionJourneyClock();
         if (moduleId === 'fortune' && forceApi) viewState.fortuneAiMode = false;
         notify('success', `${applied.length ? `${definition.name}已更新：${applied.join('、')}` : `${definition.name}已生成，等待你确认操作`}${filtered.blocked.length ? `；已拦截禁区事件：${filtered.blocked.join('、')}` : ''}`);
     } catch (error) {
@@ -2398,6 +2468,56 @@ async function runWorldModuleGeneration(moduleId, { reportId = '', forceApi = fa
             setTimeout(() => { viewState.fortuneRevealChoice = ''; }, 1400);
         }
     }
+}
+
+async function processCompanionJourneyClock({ forceReturn = false } = {}) {
+    if (viewState.companionJourneyBusy) return null;
+    viewState.companionJourneyBusy = true;
+    try {
+        const data = getForumData();
+        const result = advanceCompanionJourney(data, { forceReturn });
+        if (!result.changed) return result;
+        const companion = data.world.companion;
+        const conversation = ensureCompanionConversation(data);
+        if (result.delivered.length) {
+            if (result.delivered.length <= 2) {
+                for (const message of result.delivered) addConversationMessage(conversation, message.content, { kind: 'companion', tripId: result.trip.id, journeyMessageId: message.id });
+            } else {
+                const latest = result.delivered.at(-1);
+                addConversationMessage(conversation, `回来查看时收到了 ${result.delivered.length} 则途中消息。最新一则：${latest.content}`, { kind: 'companion', tripId: result.trip.id, journeyMessageId: latest.id });
+            }
+            const latest = result.delivered.at(-1);
+            addModuleNotification(data, 'companion', `${companion.name}寄回旅途消息：${latest.content}`, { actorName: companion.name, moduleId: 'travel', itemId: result.trip.id, conversationId: conversation.id });
+        }
+        if (result.returned) {
+            addConversationMessage(conversation, companion.message, { kind: 'companion', tripId: result.trip.id });
+            addModuleNotification(data, 'companion', `${companion.name}旅行归来了${result.souvenir ? `，并带回${result.souvenir}` : ''}`, { actorName: companion.name, moduleId: 'travel', itemId: result.trip.id, conversationId: conversation.id });
+            setModuleDecision(data, 'travel', 'returned', '预生成行程已按本地时间完成返家与背包结算', { generated: false });
+        } else setModuleDecision(data, 'travel', 'local-signal', '已按本地时间释放预生成旅途消息，未调用 API', { generated: false });
+        await saveForumData(data, true);
+        syncInjection();
+        if (viewState.open) render({ preserveScroll: true });
+        return result;
+    } finally {
+        viewState.companionJourneyBusy = false;
+    }
+}
+
+function startCompanionJourneyClock() {
+    if (viewState.companionJourneyTimer) return;
+    const tick = async () => {
+        viewState.companionJourneyTimer = 0;
+        try { await processCompanionJourneyClock(); } catch (error) { console.error('[微坛] 旅伴本地行程时钟更新失败', error); }
+        const away = getForumData().world.companion.status === 'away';
+        viewState.companionJourneyTimer = window.setTimeout(tick, away ? 5000 : 30000);
+    };
+    void tick();
+}
+
+function wakeCompanionJourneyClock() {
+    if (viewState.companionJourneyTimer) window.clearTimeout(viewState.companionJourneyTimer);
+    viewState.companionJourneyTimer = 0;
+    startCompanionJourneyClock();
 }
 
 async function runThreadContinuation(postId, userComment) {
@@ -2939,58 +3059,18 @@ async function handleRootClick(event) {
         syncInjection();
         return render({ preserveScroll: true });
     }
-    if (action === 'companion-depart-local') {
-        const data = getForumData();
-        const companion = data.world.companion;
-        if (companion.status === 'away') return;
+    if (action === 'companion-depart-ai' || action === 'companion-depart-local') {
+        const companion = getForumData().world.companion;
+        if (companion.status === 'away') return notify('info', '旅伴已经在旅行中');
         if (Number(companion.energy || 0) < 15 || Number(companion.satiety || 0) < 10) return notify('warning', '旅伴有点累或饿，先照顾它一下吧');
-        const fortune = data.world.fortune;
-        const direction = fortune?.modifiers?.luckyDirection || ['东', '南', '西', '北'][Math.floor(Math.random() * 4)];
-        const places = ['风铃小径', '旧街转角', '河岸集市', '林间驿站', '钟楼附近', '发光苔原'];
-        const detour = Number(fortune?.modifiers?.detour || 0) > 5;
-        const destination = `${direction}边的${places[Math.floor(Math.random() * places.length)]}`;
-        const trip = { id: createId('trip'), traveler: companion.name, travelerNpcId: '', destination, status: 'away', notes: detour ? '路上好像出现了一条很有趣的岔路。' : '刚刚踏上旅途，还没有寄回见闻。', souvenir: '', createdAt: Date.now(), updatedAt: Date.now() };
-        data.world.trips.push(trip);
-        companion.status = 'away';
-        companion.destination = destination;
-        companion.energy = Math.max(0, Number(companion.energy || 0) - 10);
-        companion.satiety = Math.max(0, Number(companion.satiety || 0) - 7);
-        companion.luckyDirection = direction;
-        companion.lastAction = 'depart';
-        companion.message = detour ? `我往${direction}边走啦，好像发现了一条岔路！` : `我带好行囊，往${direction}边出发啦。`;
-        companion.departedAt = Date.now();
-        companion.departedCarrying = companion.carrying || '';
-        companion.expectedReturnAt = Date.now() + 60 * 60000;
-        companion.updatedAt = Date.now();
-        const conversation = ensureCompanionConversation(data);
-        addConversationMessage(conversation, companion.message, { kind: 'companion', tripId: trip.id });
-        addModuleNotification(data, 'companion', `${companion.name}已经出发：${destination}`, { actorName: companion.name, moduleId: 'travel', itemId: trip.id });
-        await saveForumData(data, true);
-        syncInjection();
-        return render({ preserveScroll: true });
+        return void runWorldModuleGeneration('travel', { forceApi: true, startJourney: true });
     }
     if (action === 'companion-signal-local') {
-        const data = getForumData();
-        const companion = data.world.companion;
-        const trip = [...data.world.trips].reverse().find(item => item.status === 'away');
+        await processCompanionJourneyClock();
+        const trip = [...getForumData().world.trips].reverse().find(item => item.status === 'away');
         if (!trip) return notify('info', '现在还没有进行中的旅途');
-        const modifier = Number(data.world.fortune?.modifiers?.souvenir || 0);
-        const found = Math.random() * 100 < 28 + modifier;
-        const observations = ['遇到一阵会把叶片吹成漩涡的风', '在路边听见了陌生又轻快的铃声', '发现墙角藏着一枚奇怪的小记号', '和一位路过的人交换了方向', '停下来认真看了一会儿云'];
-        const observation = observations[Math.floor(Math.random() * observations.length)];
-        trip.notes = `${trip.notes ? `${trip.notes} ` : ''}${companion.name}${observation}。`;
-        if (found && !trip.souvenir) trip.souvenir = ['一枚圆润石子', '褪色的小丝带', '会反光的叶片', '迷你路牌挂件'][Math.floor(Math.random() * 4)];
-        trip.updatedAt = Date.now();
-        companion.lastAction = 'signal';
-        companion.mood = found ? '惊喜' : '专注';
-        companion.message = `${observation}。${trip.souvenir ? `我还捡到${trip.souvenir}！` : '我会继续看看。'}`;
-        companion.updatedAt = Date.now();
-        const conversation = ensureCompanionConversation(data);
-        addConversationMessage(conversation, companion.message, { kind: 'companion', tripId: trip.id });
-        addModuleNotification(data, 'companion', `${companion.name}寄回一枚旅途讯号`, { actorName: companion.name, moduleId: 'travel', itemId: trip.id, conversationId: conversation.id });
-        await saveForumData(data, true);
-        syncInjection();
-        return render({ preserveScroll: true });
+        const nextMessage = trip.messages.find(message => !message.deliveredAt && !message.skippedAt);
+        return notify('info', nextMessage ? `下一条旅途消息约在 ${formatTimeUntil(nextMessage.scheduledAt)} 后送达` : `旅伴正在返程，约 ${formatTimeUntil(trip.returnAt)} 后回家`);
     }
     if (action === 'revoke-local-fortune') {
         const data = getForumData();
@@ -3197,32 +3277,9 @@ async function handleRootClick(event) {
         return render();
     }
     if (action === 'companion-return') {
-        const data = getForumData();
-        const companion = data.world.companion;
-        const trip = [...data.world.trips].reverse().find(item => ['planned', 'away'].includes(item.status));
-        companion.status = 'home';
-        companion.destination = '';
-        companion.departedAt = 0;
-        companion.expectedReturnAt = 0;
-        companion.bond = Math.min(100, Number(companion.bond || 0) + 1);
-        companion.message = trip?.notes ? `我回来了。${trip.notes}` : '我回来了，正在小窝里休息。';
-        companion.updatedAt = Date.now();
-        if (trip) {
-            trip.status = 'returned';
-            trip.updatedAt = Date.now();
-            const source = `${companion.name}返程 · ${trip.id}`;
-            if (trip.souvenir && !trip.souvenirClaimedAt && !data.world.inventory.some(item => item.name === trip.souvenir && item.source === source)) {
-                data.world.inventory.push({ id: createId('item'), name: trip.souvenir, description: `${companion.name}从${trip.destination}带回的小物件。`, quantity: 1, effect: '可收藏，也可在合适的情境中使用。', source, usable: true, consumed: false, createdAt: Date.now(), updatedAt: Date.now() });
-                trip.souvenirClaimedAt = Date.now();
-                companion.message = `${companion.message} “${trip.souvenir}”已经放进背包。`;
-            }
-        }
-        const conversation = ensureCompanionConversation(data);
-        addConversationMessage(conversation, companion.message, { kind: 'companion', tripId: trip?.id || '' });
-        addModuleNotification(data, 'companion', `${companion.name}旅行归来了${trip?.souvenir ? `，并带回${trip.souvenir}` : ''}`, { actorName: companion.name, moduleId: 'travel', itemId: trip?.id || '' });
-        await saveForumData(data, true);
-        syncInjection();
-        return render({ preserveScroll: true });
+        const result = await processCompanionJourneyClock({ forceReturn: true });
+        if (!result?.returned) notify('info', '旅伴现在就在家里');
+        return;
     }
     if (action === 'advance-health-status') {
         const data = getForumData();
@@ -4137,7 +4194,7 @@ function handleRootChange(event) {
     if (target.dataset.moduleField) {
         const module = getSettings().modules[target.closest('[data-module-id]')?.dataset.moduleId];
         if (!module) return;
-        const numeric = ['rpm', 'probability', 'cooldownMinutes'].includes(target.dataset.moduleField);
+        const numeric = ['rpm', 'probability', 'cooldownMinutes', 'travelMinMinutes', 'travelMaxMinutes', 'travelMessageMinMinutes', 'travelMessageMaxMinutes'].includes(target.dataset.moduleField);
         module[target.dataset.moduleField] = numeric ? Number(target.value) : target.value;
         if (target.dataset.moduleField === 'generationMode') module.joinGeneration = target.value === 'linked';
         saveSettings();
@@ -4654,6 +4711,7 @@ export async function initializeForumUi() {
     installMenuLauncherCapture();
     installLaunchers();
     bindSillyTavernEvents();
+    startCompanionJourneyClock();
     viewState.initialized = true;
     render();
 }

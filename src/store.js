@@ -128,6 +128,17 @@ function migrateSettings(settings) {
         settings.modules[definition.id].rpm = Math.min(600, Math.max(0, Number(settings.modules[definition.id].rpm || 0)));
         settings.modules[definition.id].probability = Math.min(100, Math.max(0, Number(settings.modules[definition.id].probability ?? 35)));
         settings.modules[definition.id].cooldownMinutes = Math.min(43200, Math.max(0, Number(settings.modules[definition.id].cooldownMinutes || 0)));
+        if (definition.id === 'travel') {
+            settings.modules[definition.id].generationMode = 'independent';
+            settings.modules[definition.id].joinGeneration = false;
+            settings.modules[definition.id].travelDurationPreset = ['test', 'short', 'normal', 'long', 'custom'].includes(settings.modules[definition.id].travelDurationPreset)
+                ? settings.modules[definition.id].travelDurationPreset
+                : 'normal';
+            settings.modules[definition.id].travelMinMinutes = Math.min(43200, Math.max(0.25, Number(settings.modules[definition.id].travelMinMinutes || 60)));
+            settings.modules[definition.id].travelMaxMinutes = Math.min(43200, Math.max(settings.modules[definition.id].travelMinMinutes, Number(settings.modules[definition.id].travelMaxMinutes || 180)));
+            settings.modules[definition.id].travelMessageMinMinutes = Math.min(14400, Math.max(0.25, Number(settings.modules[definition.id].travelMessageMinMinutes || 15)));
+            settings.modules[definition.id].travelMessageMaxMinutes = Math.min(14400, Math.max(settings.modules[definition.id].travelMessageMinMinutes, Number(settings.modules[definition.id].travelMessageMaxMinutes || 35)));
+        }
     }
     settings.orchestration.apiProfileId = String(settings.orchestration.apiProfileId || 'inherit');
     settings.orchestration.rpm = Math.min(600, Math.max(0, Number(settings.orchestration.rpm || 0)));

@@ -89,7 +89,7 @@ export function normalizeWorldState(value) {
         satiety: integer(companion.satiety, 75, 0, 100),
         happiness: integer(companion.happiness, 70, 0, 100),
         luckyDirection: text(companion.luckyDirection),
-        lastAction: ['feed', 'pet', 'play', 'rest', 'depart', 'signal', 'weather'].includes(companion.lastAction) ? companion.lastAction : '',
+        lastAction: ['feed', 'pet', 'play', 'rest', 'depart', 'signal', 'return', 'weather'].includes(companion.lastAction) ? companion.lastAction : '',
         deviceSkin: ['classic', 'pocket', 'crystal', 'arcane', 'terminal'].includes(companion.deviceSkin) ? companion.deviceSkin : 'classic',
         weather: ['auto', 'sunny', 'cloudy', 'rain', 'wind', 'snow'].includes(companion.weather) ? companion.weather : 'auto',
         timeOfDay: ['auto', 'dawn', 'day', 'dusk', 'night'].includes(companion.timeOfDay) ? companion.timeOfDay : 'auto',
@@ -107,7 +107,27 @@ export function normalizeWorldState(value) {
         destination: text(item?.destination, '未知地点'),
         status: ['planned', 'away', 'returned', 'cancelled'].includes(item?.status) ? item.status : 'planned',
         notes: text(item?.notes),
+        departureMessage: text(item?.departureMessage),
+        returnMessage: text(item?.returnMessage),
         souvenir: text(item?.souvenir),
+        souvenirDescription: text(item?.souvenirDescription),
+        souvenirEffect: text(item?.souvenirEffect),
+        messages: list(item?.messages || item?.signals || item?.checkpoints).map((entry, index) => {
+            const message = typeof entry === 'string' ? { content: entry } : entry && typeof entry === 'object' ? entry : {};
+            return {
+                id: text(message.id) || `${text(item?.id, 'trip')}-signal-${index + 1}`,
+                content: text(message.content || message.message || message.text),
+                mood: text(message.mood),
+                progress: Math.min(0.95, Math.max(0.05, Number(message.progress || message.ratio || 0))),
+                scheduledAt: Math.max(0, Number(message.scheduledAt || 0)),
+                deliveredAt: Math.max(0, Number(message.deliveredAt || 0)),
+                skippedAt: Math.max(0, Number(message.skippedAt || 0)),
+            };
+        }).filter(message => message.content).slice(0, 12),
+        plannedDurationMinutes: Math.max(0, Number(item?.plannedDurationMinutes || 0)),
+        schedulePreparedAt: Math.max(0, Number(item?.schedulePreparedAt || 0)),
+        returnAt: Math.max(0, Number(item?.returnAt || 0)),
+        returnedAt: Math.max(0, Number(item?.returnedAt || 0)),
         souvenirClaimedAt: Math.max(0, Number(item?.souvenirClaimedAt || 0)),
         createdAt: now(item?.createdAt),
         updatedAt: now(item?.updatedAt || item?.createdAt),
@@ -185,6 +205,146 @@ export function normalizeWorldState(value) {
         blockedCount: integer(item?.blockedCount, 0, 0, 999999),
     }]));
     return world;
+}
+
+export const COMPANION_TRAVEL_PRESETS = Object.freeze({
+    test: { label: '极速测试', duration: [2, 5], interval: [0.5, 1] },
+    short: { label: '短途', duration: [15, 30], interval: [3, 8] },
+    normal: { label: '普通', duration: [60, 180], interval: [15, 35] },
+    long: { label: '长途', duration: [360, 720], interval: [45, 120] },
+});
+
+function travelRange(value, fallback, minimum, maximum) {
+    const number = Number(value);
+    return Math.min(maximum, Math.max(minimum, Number.isFinite(number) ? number : fallback));
+}
+
+export function resolveCompanionTravelTiming(moduleSettings = {}, random = Math.random) {
+    const presetId = COMPANION_TRAVEL_PRESETS[moduleSettings.travelDurationPreset] ? moduleSettings.travelDurationPreset : 'custom';
+    const preset = COMPANION_TRAVEL_PRESETS[presetId];
+    const durationMinimum = preset ? preset.duration[0] : travelRange(moduleSettings.travelMinMinutes, 60, 0.25, 43200);
+    const durationMaximum = Math.max(durationMinimum, preset ? preset.duration[1] : travelRange(moduleSettings.travelMaxMinutes, 180, 0.25, 43200));
+    const intervalMinimum = preset ? preset.interval[0] : travelRange(moduleSettings.travelMessageMinMinutes, 15, 0.25, 14400);
+    const intervalMaximum = Math.max(intervalMinimum, preset ? preset.interval[1] : travelRange(moduleSettings.travelMessageMaxMinutes, 35, 0.25, 14400));
+    const roll = Math.min(1, Math.max(0, Number(random?.() ?? 0.5)));
+    const durationMinutes = durationMinimum + (durationMaximum - durationMinimum) * roll;
+    const averageInterval = (intervalMinimum + intervalMaximum) / 2;
+    const messageCount = Math.min(8, Math.max(1, Math.floor(durationMinutes / Math.max(0.25, averageInterval))));
+    return {
+        presetId,
+        durationMinimum,
+        durationMaximum,
+        intervalMinimum,
+        intervalMaximum,
+        durationMinutes: Math.round(durationMinutes * 100) / 100,
+        messageCount,
+    };
+}
+
+function fallbackJourneyMessages(companionName, destination) {
+    return [
+        `${companionName}说已经顺利走出熟悉的小路，正朝${destination}前进。`,
+        `${companionName}在途中停了一会儿，认真观察了附近的声音和气味。`,
+        `${companionName}绕过一段陌生的路，发现了一处适合歇脚的地方。`,
+        `${companionName}寄来一枚简短讯号：旅途平安，还想再往前看看。`,
+        `${companionName}开始整理沿途见闻，也在检查回家的方向。`,
+        `${companionName}已经踏上返程，行囊里似乎多了一点东西。`,
+        `${companionName}离家越来越近，很快就能回到小窝。`,
+        `${companionName}从远处发来最后一枚平安讯号。`,
+    ];
+}
+
+export function prepareCompanionJourney(data, tripId, moduleSettings = {}, options = {}) {
+    if (!data?.world) return null;
+    const timestamp = Math.max(0, Number(options.now || Date.now()));
+    data.world = normalizeWorldState(data.world);
+    const trip = data.world.trips.find(item => item.id === tripId);
+    if (!trip) return null;
+    const companion = data.world.companion;
+    const timing = resolveCompanionTravelTiming(moduleSettings, options.random || Math.random);
+    const durationMs = Math.max(15000, Math.round(timing.durationMinutes * 60000));
+    const fallback = fallbackJourneyMessages(companion.name, trip.destination);
+    const sourceMessages = [...trip.messages];
+    while (sourceMessages.length < timing.messageCount) sourceMessages.push({ id: '', content: fallback[sourceMessages.length % fallback.length], mood: '' });
+    const selectedMessages = sourceMessages.length <= timing.messageCount
+        ? sourceMessages
+        : timing.messageCount === 1
+            ? [sourceMessages[Math.floor(sourceMessages.length / 2)]]
+            : Array.from({ length: timing.messageCount }, (_, index) => sourceMessages[Math.round(index * (sourceMessages.length - 1) / (timing.messageCount - 1))]);
+    trip.messages = selectedMessages.map((message, index, entries) => {
+        const suggestedProgress = Number(message.progress || 0);
+        const progress = suggestedProgress > 0 ? Math.min(0.92, Math.max(0.08, suggestedProgress)) : (index + 1) / (entries.length + 1);
+        return {
+            ...message,
+            id: message.id || `${trip.id}-signal-${index + 1}`,
+            progress,
+            scheduledAt: timestamp + Math.round(durationMs * progress),
+            deliveredAt: 0,
+            skippedAt: 0,
+        };
+    }).sort((left, right) => left.scheduledAt - right.scheduledAt);
+    trip.status = 'away';
+    trip.plannedDurationMinutes = timing.durationMinutes;
+    trip.schedulePreparedAt = timestamp;
+    trip.returnAt = timestamp + durationMs;
+    trip.returnedAt = 0;
+    trip.createdAt = timestamp;
+    trip.updatedAt = timestamp;
+    companion.status = 'away';
+    companion.destination = trip.destination;
+    companion.departedAt = timestamp;
+    companion.departedCarrying = companion.carrying || '';
+    companion.expectedReturnAt = trip.returnAt;
+    companion.lastAction = 'depart';
+    companion.message = trip.departureMessage || `我带好行囊，准备前往${trip.destination}。`;
+    companion.energy = Math.max(0, Number(companion.energy || 0) - 10);
+    companion.satiety = Math.max(0, Number(companion.satiety || 0) - 7);
+    companion.updatedAt = timestamp;
+    return { trip, timing };
+}
+
+export function advanceCompanionJourney(data, options = {}) {
+    if (!data?.world) return { changed: false, delivered: [], returned: false, souvenir: '', trip: null };
+    const timestamp = Math.max(0, Number(options.now || Date.now()));
+    data.world = normalizeWorldState(data.world);
+    const trip = [...data.world.trips].reverse().find(item => item.status === 'away');
+    if (!trip) return { changed: false, delivered: [], returned: false, souvenir: '', trip: null };
+    const companion = data.world.companion;
+    const delivered = [];
+    if (options.forceReturn) {
+        for (const message of trip.messages) if (!message.deliveredAt && !message.skippedAt) message.skippedAt = timestamp;
+    } else {
+        for (const message of trip.messages) {
+            if (message.deliveredAt || message.skippedAt || !message.scheduledAt || message.scheduledAt > timestamp) continue;
+            message.deliveredAt = timestamp;
+            delivered.push(message);
+            companion.message = message.content;
+            companion.mood = message.mood || companion.mood;
+            companion.lastAction = 'signal';
+            trip.notes = `${trip.notes ? `${trip.notes} ` : ''}${message.content}`.trim();
+        }
+    }
+    const returnAt = Number(trip.returnAt || companion.expectedReturnAt || 0);
+    const shouldReturn = Boolean(options.forceReturn || (returnAt && timestamp >= returnAt));
+    if (!delivered.length && !shouldReturn) return { changed: false, delivered: [], returned: false, souvenir: '', trip };
+    trip.updatedAt = timestamp;
+    companion.updatedAt = timestamp;
+    if (!shouldReturn) return { changed: true, delivered, returned: false, souvenir: '', trip };
+    for (const message of trip.messages) if (!message.deliveredAt && !message.skippedAt) message.skippedAt = timestamp;
+    trip.status = 'returned';
+    trip.returnedAt = timestamp;
+    trip.updatedAt = timestamp;
+    companion.status = 'home';
+    companion.destination = '';
+    companion.departedAt = 0;
+    companion.expectedReturnAt = 0;
+    companion.bond = Math.min(100, Number(companion.bond || 0) + 1);
+    companion.lastAction = 'return';
+    companion.message = trip.returnMessage || `我从${trip.destination}回来啦。`;
+    const souvenir = addTravelSouvenirToInventory(data, trip, companion.name, timestamp);
+    if (souvenir) companion.message = `${companion.message} “${souvenir}”已经放进背包。`;
+    companion.updatedAt = timestamp;
+    return { changed: true, delivered, returned: true, souvenir, trip };
 }
 
 function minutesOfDay(value) {
@@ -535,19 +695,19 @@ function executeModerationAction(data, settings, action) {
     return true;
 }
 
-function addTravelSouvenirToInventory(data, trip, companionName) {
+function addTravelSouvenirToInventory(data, trip, companionName, timestamp = Date.now()) {
     if (!trip || trip.status !== 'returned' || !trip.souvenir || trip.souvenirClaimedAt) return '';
     const source = `${companionName}返程 · ${trip.id}`;
     if (!data.world.inventory.some(item => item.name === trip.souvenir && item.source === source)) {
         data.world.inventory.push({
             id: createId('item'), name: trip.souvenir,
-            description: `${companionName}从${trip.destination || '旅途'}带回的小物件。`,
-            quantity: 1, effect: '可收藏，也可在合适的情境中使用。', source,
-            usable: true, consumed: false, createdAt: Date.now(), updatedAt: Date.now(),
+            description: trip.souvenirDescription || `${companionName}从${trip.destination || '旅途'}带回的小物件。`,
+            quantity: 1, effect: trip.souvenirEffect || '可收藏，也可在合适的情境中使用。', source,
+            usable: true, consumed: false, createdAt: timestamp, updatedAt: timestamp,
         });
     }
-    trip.souvenirClaimedAt = Date.now();
-    trip.updatedAt = Date.now();
+    trip.souvenirClaimedAt = timestamp;
+    trip.updatedAt = timestamp;
     return trip.souvenir;
 }
 
@@ -708,7 +868,7 @@ function moduleOutputShape(moduleIds) {
     const fields = [];
     if (moduleIds.includes('tasks')) fields.push('"tasks":[{"title":"任务名","description":"内容","issuer":"发布者","issuerHandle":"必须是已有角色账号","risk":"low|medium|high|unknown","reward":"奖励","failure":"失败影响","scam":false,"secret":"幕后真相"}]');
     if (moduleIds.includes('fortune')) fields.push('"fortune":{"date":"世界内日期","label":"运势名","score":0,"summary":"概述","effects":["轻微影响"]}');
-    if (moduleIds.includes('travel')) fields.push('"travel":{"companion":{"name":"旅伴名","species":"宠物种类","status":"home|away|resting","mood":"心情","destination":"当前去向","carrying":"随身物","message":"寄回的短讯","bond":0},"journeys":[{"traveler":"旅伴名","destination":"地点","status":"away|returned","notes":"旅途见闻","souvenir":"可能带回的小物件"}]}');
+    if (moduleIds.includes('travel')) fields.push('"travel":{"companion":{"name":"旅伴名","species":"宠物种类","status":"away","mood":"出发心情","destination":"目的地","message":"出发留言","bond":0},"journeys":[{"traveler":"旅伴名","destination":"地点","status":"away","departureMessage":"出发留言","messages":[{"content":"途中消息","mood":"当时心情","progress":0.25}],"returnMessage":"返家留言","notes":"完整旅途摘要","souvenir":"返家后才揭晓的小物件","souvenirDescription":"物品描述","souvenirEffect":"轻微用途"}]}');
     if (moduleIds.includes('inventory')) fields.push('"inventory":[{"name":"物品","description":"描述","quantity":1,"effect":"剧情作用","source":"来源"}]');
     if (moduleIds.includes('health')) fields.push('"health":[{"subject":"角色","name":"状态","severity":"minor|moderate|serious","status":"active|recovering|resolved","symptoms":"表现","storyEffect":"剧情影响"}]');
     if (moduleIds.includes('moderation')) fields.push('"moderationActions":[{"actorHandle":"有管理权限的角色账号","postId":"准确帖子ID","action":"hide|delete|warn|dismiss","reason":"依据"}]');
