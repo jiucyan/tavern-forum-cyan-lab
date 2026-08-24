@@ -1,4 +1,4 @@
-import { generateForumImage, generateForumText, generateForumTextResult } from './api.js';
+import { fetchAvailableModels, generateForumImage, generateForumText, generateForumTextResult } from './api.js';
 import { DEFAULT_BUILTIN_PROMPTS, DEFAULT_SETTINGS, WORLD_MODULE_DEFINITIONS } from './constants.js';
 import {
     buildDirectMessageRequest,
@@ -99,6 +99,15 @@ const COMPANION_SPECIES = Object.freeze([
     { id: 'penguin', name: '小企鹅' },
     { id: 'robo-bird', name: '机械鸟' },
 ]);
+const COMPANION_PALETTES = Object.freeze({
+    frog: { body: '#63ad5c', accent: '#e7c65a' },
+    cat: { body: '#3f414d', accent: '#9b78ba' },
+    rabbit: { body: '#ded4c4', accent: '#d995a9' },
+    fox: { body: '#c96e3f', accent: '#713b3d' },
+    penguin: { body: '#354b62', accent: '#e6a94f' },
+    'robo-bird': { body: '#5c8f91', accent: '#e1b75a' },
+    mystery: { body: '#74658b', accent: '#d1a7bd' },
+});
 const COMPANION_DEVICE_SKINS = Object.freeze([
     { id: 'classic', name: '经典蛋机', note: '圆润三键 · 绿屏' },
     { id: 'pocket', name: '口袋掌机', note: '十字键 · 横向面板' },
@@ -113,6 +122,13 @@ const COMPANION_FOODS = Object.freeze([
     { id: 'berry', symbol: '●', name: '森林莓果', satiety: 16, energy: 5, happiness: 10 },
     { id: 'seed-mix', symbol: '⁙', name: '谷物种子', satiety: 18, energy: 7, happiness: 6 },
     { id: 'battery', symbol: '▣', name: '迷你电池', satiety: 25, energy: 14, happiness: 5 },
+]);
+const COMPANION_ACCESSORIES = Object.freeze([
+    { id: 'none', name: '不佩戴' },
+    { id: 'scarf', name: '旅行围巾' },
+    { id: 'satchel', name: '小挎包' },
+    { id: 'flower', name: '像素小花' },
+    { id: 'charm', name: '幸运挂坠' },
 ]);
 const COMPANION_HABITS = Object.freeze({
     frog: { favorite: 'bug-cookie', likes: ['berry'], pet: '青蛙眯起眼，前爪轻轻拍了拍屏幕。', play: '它追着光点跳过三片像素荷叶。', rest: '它缩进湿润的小窝，呼吸慢慢平稳。', weather: { sunny: ['暖洋洋地趴在水边晒背。', '惬意'], cloudy: ['它抬头盯着云层，像在等雨。', '期待'], rain: ['雨声一响，它立刻活跃地蹦了起来！', '雀跃'], wind: ['它压低身体，认真听风穿过草叶。', '专注'], snow: ['它把脚趾收起来，悄悄靠近了暖灯。', '怕冷'] } },
@@ -276,6 +292,8 @@ const viewState = {
     pendingModuleImportId: '',
     openModuleToolsId: '',
     toasts: [],
+    apiModels: new Map(),
+    apiModelBusy: new Set(),
 };
 
 const ICONS = {
@@ -637,7 +655,7 @@ function renderWorldPortal(data) {
         inventory: data.world.inventory.filter(item => !item.consumed && item.quantity > 0).length,
         health: data.world.health.filter(item => item.status !== 'resolved').length,
     };
-    return `<nav class="tf-world-portal tf-card" aria-label="世界功能入口">${definitions.map(definition => `<button data-action="open-world-page" data-module-id="${escapeHtml(definition.id)}"><span>${definition.id === 'travel' ? renderPixelCompanion(data.world.companion.species, data.world.companion.status, true) : icon(definition.icon)}</span><b>${escapeHtml(definition.name)}</b>${counts[definition.id] !== '' ? `<small>${escapeHtml(String(counts[definition.id]))}</small>` : ''}</button>`).join('')}</nav>`;
+    return `<nav class="tf-world-portal tf-card" aria-label="世界功能入口">${definitions.map(definition => `<button data-action="open-world-page" data-module-id="${escapeHtml(definition.id)}"><span>${definition.id === 'travel' ? renderPixelCompanion(data.world.companion.species, data.world.companion.status, true, data.world.companion) : icon(definition.icon)}</span><b>${escapeHtml(definition.name)}</b>${counts[definition.id] !== '' ? `<small>${escapeHtml(String(counts[definition.id]))}</small>` : ''}</button>`).join('')}</nav>`;
 }
 
 function renderWorldLayoutSwitcher(layout, settingsMode = false) {
@@ -645,7 +663,7 @@ function renderWorldLayoutSwitcher(layout, settingsMode = false) {
 }
 
 function renderWorldAppDock(cards, companion, className = '') {
-    return `<nav class="tf-world-app-dock ${className}" aria-label="世界应用">${cards.map(([id, name, summary, state]) => `<button class="tf-service-card tf-world-app-icon is-${id}" data-action="open-world-page" data-module-id="${id}" title="${escapeHtml(summary)}"><span class="tf-service-icon">${id === 'travel' ? renderPixelCompanion(companion.species, companion.status, true) : icon(getModuleDefinition(id)?.icon || 'sparkles')}</span><span><b>${escapeHtml(name)}</b><small>${escapeHtml(state)}</small></span><i aria-hidden="true"></i></button>`).join('')}</nav>`;
+    return `<nav class="tf-world-app-dock ${className}" aria-label="世界应用">${cards.map(([id, name, summary, state]) => `<button class="tf-service-card tf-world-app-icon is-${id}" data-action="open-world-page" data-module-id="${id}" title="${escapeHtml(summary)}"><span class="tf-service-icon">${id === 'travel' ? renderPixelCompanion(companion.species, companion.status, true, companion) : icon(getModuleDefinition(id)?.icon || 'sparkles')}</span><span><b>${escapeHtml(name)}</b><small>${escapeHtml(state)}</small></span><i aria-hidden="true"></i></button>`).join('')}</nav>`;
 }
 
 function renderWorldWindowWeather() {
@@ -1190,33 +1208,39 @@ function getLocalCompanionWeather(data, time, date = new Date()) {
     };
 }
 
-function renderPixelCompanion(species, status = 'home', mini = false) {
+function renderPixelCompanion(species, status = 'home', mini = false, appearance = null) {
     const kind = getCompanionSpecies(species)?.id || 'mystery';
     const safeStatus = ['home', 'away', 'resting'].includes(status) ? status : 'home';
+    const currentCompanion = getForumData()?.world?.companion;
+    const liveAppearance = appearance || (currentCompanion && getCompanionSpecies(currentCompanion.species)?.id === kind ? currentCompanion : null);
+    const safeColor = value => /^#[0-9a-f]{6}$/i.test(String(value || '').trim()) ? String(value).trim().toLocaleLowerCase() : '';
+    const bodyColor = safeColor(liveAppearance?.bodyColor);
+    const accentColor = safeColor(liveAppearance?.accentColor);
+    const accessory = COMPANION_ACCESSORIES.some(item => item.id === liveAppearance?.accessory) ? liveAppearance.accessory : 'none';
+    const customStyle = [bodyColor ? `--pet-body-user:${bodyColor}` : '', accentColor ? `--pet-accent-user:${accentColor}` : ''].filter(Boolean).join(';');
     const shapes = {
-        frog: '<rect x="16" y="19" width="32" height="29"/><rect x="12" y="14" width="13" height="13"/><rect x="39" y="14" width="13" height="13"/><rect class="tf-pixel-cut" x="16" y="17" width="5" height="6"/><rect class="tf-pixel-cut" x="43" y="17" width="5" height="6"/><rect class="tf-pixel-cut" x="24" y="31" width="4" height="4"/><rect class="tf-pixel-cut" x="36" y="31" width="4" height="4"/><rect class="tf-pixel-cut" x="26" y="39" width="12" height="3"/><rect x="9" y="45" width="19" height="5"/><rect x="36" y="45" width="19" height="5"/>',
-        cat: '<path d="M14 22V10h4l8 8h12l8-8h4v32l-8 8H22l-8-8z"/><rect x="19" y="44" width="8" height="9"/><rect x="37" y="44" width="8" height="9"/><rect x="49" y="33" width="7" height="15"/><rect x="53" y="27" width="5" height="10"/><rect class="tf-pixel-cut" x="22" y="27" width="5" height="6"/><rect class="tf-pixel-cut" x="37" y="27" width="5" height="6"/><rect class="tf-pixel-cut" x="30" y="35" width="4" height="4"/><rect class="tf-pixel-cut" x="25" y="40" width="14" height="3"/>',
-        rabbit: '<rect x="18" y="6" width="9" height="24"/><rect x="37" y="6" width="9" height="24"/><rect x="14" y="23" width="36" height="28"/><rect x="10" y="32" width="8" height="14"/><rect x="46" y="32" width="8" height="14"/><rect x="18" y="48" width="10" height="7"/><rect x="36" y="48" width="10" height="7"/><rect class="tf-pixel-cut" x="22" y="30" width="5" height="6"/><rect class="tf-pixel-cut" x="37" y="30" width="5" height="6"/><rect class="tf-pixel-cut" x="30" y="38" width="4" height="4"/><rect class="tf-pixel-cut" x="27" y="43" width="10" height="3"/>',
-        fox: '<path d="M12 12h5l11 9h8l11-9h5v31l-9 9H21l-9-9z"/><path d="M46 38h10v5h4v10H48v-5H37z"/><rect class="tf-pixel-cut" x="20" y="28" width="5" height="6"/><rect class="tf-pixel-cut" x="39" y="28" width="5" height="6"/><rect class="tf-pixel-cut" x="30" y="35" width="5" height="5"/><rect class="tf-pixel-cut" x="25" y="42" width="15" height="3"/><rect class="tf-pixel-cut" x="16" y="16" width="4" height="7"/><rect class="tf-pixel-cut" x="44" y="16" width="4" height="7"/>',
-        penguin: '<rect x="23" y="9" width="18" height="5"/><rect x="17" y="14" width="30" height="34"/><rect x="12" y="25" width="7" height="20"/><rect x="45" y="25" width="7" height="20"/><rect x="20" y="47" width="10" height="7"/><rect x="34" y="47" width="10" height="7"/><rect class="tf-pixel-cut" x="23" y="20" width="5" height="6"/><rect class="tf-pixel-cut" x="36" y="20" width="5" height="6"/><rect class="tf-pixel-cut" x="27" y="31" width="10" height="13"/><rect x="27" y="28" width="10" height="5"/>',
-        'robo-bird': '<rect x="17" y="17" width="30" height="27"/><rect x="22" y="11" width="20" height="7"/><rect x="30" y="6" width="4" height="7"/><rect x="9" y="25" width="10" height="13"/><rect x="45" y="25" width="10" height="13"/><rect x="23" y="43" width="7" height="10"/><rect x="36" y="43" width="7" height="10"/><rect x="47" y="24" width="10" height="7"/><rect class="tf-pixel-cut" x="22" y="23" width="7" height="7"/><rect class="tf-pixel-cut" x="36" y="23" width="7" height="7"/><rect class="tf-pixel-cut" x="27" y="35" width="12" height="4"/>',
-        mystery: '<rect x="18" y="17" width="28" height="32"/><rect x="13" y="24" width="7" height="18"/><rect x="44" y="24" width="7" height="18"/><rect x="22" y="47" width="8" height="7"/><rect x="36" y="47" width="8" height="7"/><rect class="tf-pixel-cut" x="23" y="26" width="5" height="6"/><rect class="tf-pixel-cut" x="36" y="26" width="5" height="6"/><rect class="tf-pixel-cut" x="30" y="36" width="4" height="4"/>',
+        frog: '<g class="tf-pixel-body"><rect x="15" y="21" width="34" height="26"/><rect x="11" y="15" width="15" height="14"/><rect x="38" y="15" width="15" height="14"/><rect x="8" y="44" width="21" height="6"/><rect x="35" y="44" width="21" height="6"/></g><rect class="tf-pixel-light" x="21" y="34" width="22" height="11"/><g class="tf-pixel-eyes"><rect class="tf-pixel-light" x="15" y="18" width="7" height="7"/><rect class="tf-pixel-light" x="42" y="18" width="7" height="7"/><rect class="tf-pixel-ink" x="18" y="19" width="4" height="5"/><rect class="tf-pixel-ink" x="42" y="19" width="4" height="5"/></g><rect class="tf-pixel-ink" x="25" y="37" width="4" height="3"/><rect class="tf-pixel-ink" x="35" y="37" width="4" height="3"/><rect class="tf-pixel-ink" x="28" y="42" width="8" height="2"/>',
+        cat: '<g class="tf-pixel-tail"><rect class="tf-pixel-body" x="48" y="31" width="7" height="18"/><rect class="tf-pixel-body" x="52" y="24" width="6" height="12"/><rect class="tf-pixel-accent" x="52" y="23" width="6" height="6"/></g><path class="tf-pixel-body" d="M14 21V9h5l8 9h10l8-9h5v32l-8 10H22L14 41z"/><rect class="tf-pixel-body" x="19" y="45" width="9" height="9"/><rect class="tf-pixel-body" x="36" y="45" width="9" height="9"/><path class="tf-pixel-accent" d="M18 13v9h8zM46 13v9h-8z"/><rect class="tf-pixel-light" x="23" y="27" width="6" height="7"/><rect class="tf-pixel-light" x="36" y="27" width="6" height="7"/><g class="tf-pixel-eyes"><rect class="tf-pixel-ink" x="25" y="28" width="3" height="5"/><rect class="tf-pixel-ink" x="37" y="28" width="3" height="5"/></g><rect class="tf-pixel-accent" x="30" y="35" width="5" height="4"/><path class="tf-pixel-ink" d="M25 41h6v2h3v-2h6v3H25z"/>',
+        rabbit: '<g class="tf-pixel-ears"><rect class="tf-pixel-body" x="17" y="5" width="11" height="26"/><rect class="tf-pixel-body" x="36" y="5" width="11" height="26"/><rect class="tf-pixel-accent" x="20" y="9" width="5" height="16"/><rect class="tf-pixel-accent" x="39" y="9" width="5" height="16"/></g><rect class="tf-pixel-body" x="14" y="24" width="36" height="27"/><rect class="tf-pixel-light" x="19" y="37" width="26" height="13"/><rect class="tf-pixel-body" x="9" y="33" width="9" height="14"/><rect class="tf-pixel-body" x="46" y="33" width="9" height="14"/><rect class="tf-pixel-body" x="18" y="48" width="11" height="7"/><rect class="tf-pixel-body" x="35" y="48" width="11" height="7"/><g class="tf-pixel-eyes"><rect class="tf-pixel-ink" x="22" y="30" width="5" height="6"/><rect class="tf-pixel-ink" x="37" y="30" width="5" height="6"/></g><rect class="tf-pixel-accent" x="30" y="37" width="5" height="4"/><path class="tf-pixel-ink" d="M27 43h5v2h3v-2h4v3H27z"/>',
+        fox: '<g class="tf-pixel-tail"><path class="tf-pixel-body" d="M42 36h12v4h6v12H45v-5h-9z"/><path class="tf-pixel-light" d="M53 40h7v12H48v-5h5z"/></g><path class="tf-pixel-body" d="M11 11h7l10 10h8l10-10h7v31l-10 11H21L11 42z"/><path class="tf-pixel-accent" d="M16 16h4l7 8H16zM48 16h-4l-7 8h11z"/><path class="tf-pixel-light" d="M20 35h7l5 4 5-4h8v11l-5 6H25l-5-6z"/><g class="tf-pixel-eyes"><rect class="tf-pixel-ink" x="20" y="28" width="6" height="6"/><rect class="tf-pixel-ink" x="39" y="28" width="6" height="6"/></g><rect class="tf-pixel-ink" x="30" y="38" width="5" height="5"/><rect class="tf-pixel-ink" x="27" y="46" width="11" height="3"/>',
+        penguin: '<g class="tf-pixel-wings"><rect class="tf-pixel-body" x="11" y="25" width="8" height="22"/><rect class="tf-pixel-body" x="45" y="25" width="8" height="22"/></g><rect class="tf-pixel-body" x="17" y="13" width="30" height="36"/><rect class="tf-pixel-body" x="23" y="8" width="18" height="7"/><path class="tf-pixel-light" d="M22 27h20v19H22z"/><rect class="tf-pixel-light" x="22" y="19" width="8" height="8"/><rect class="tf-pixel-light" x="35" y="19" width="8" height="8"/><g class="tf-pixel-eyes"><rect class="tf-pixel-ink" x="25" y="21" width="4" height="5"/><rect class="tf-pixel-ink" x="36" y="21" width="4" height="5"/></g><rect class="tf-pixel-accent" x="28" y="28" width="9" height="6"/><rect class="tf-pixel-accent" x="19" y="48" width="13" height="6"/><rect class="tf-pixel-accent" x="34" y="48" width="13" height="6"/>',
+        'robo-bird': '<g class="tf-pixel-wings"><rect class="tf-pixel-body" x="8" y="25" width="11" height="15"/><rect class="tf-pixel-body" x="45" y="25" width="11" height="15"/></g><rect class="tf-pixel-body" x="17" y="17" width="30" height="28"/><rect class="tf-pixel-light" x="22" y="12" width="20" height="7"/><g class="tf-pixel-antenna"><rect class="tf-pixel-accent" x="30" y="6" width="4" height="7"/><rect class="tf-pixel-accent" x="28" y="4" width="8" height="4"/></g><rect class="tf-pixel-screen" x="21" y="22" width="22" height="11"/><g class="tf-pixel-eyes"><rect class="tf-pixel-accent" x="24" y="24" width="6" height="6"/><rect class="tf-pixel-accent" x="35" y="24" width="6" height="6"/></g><rect class="tf-pixel-accent" x="27" y="36" width="12" height="4"/><rect class="tf-pixel-body" x="22" y="44" width="8" height="10"/><rect class="tf-pixel-body" x="36" y="44" width="8" height="10"/><rect class="tf-pixel-accent" x="47" y="26" width="10" height="7"/>',
+        mystery: '<rect class="tf-pixel-body" x="18" y="17" width="28" height="32"/><rect class="tf-pixel-accent" x="13" y="24" width="7" height="18"/><rect class="tf-pixel-accent" x="44" y="24" width="7" height="18"/><rect class="tf-pixel-body" x="22" y="47" width="8" height="7"/><rect class="tf-pixel-body" x="36" y="47" width="8" height="7"/><g class="tf-pixel-eyes"><rect class="tf-pixel-light" x="23" y="26" width="5" height="6"/><rect class="tf-pixel-light" x="36" y="26" width="5" height="6"/></g><rect class="tf-pixel-accent" x="30" y="36" width="4" height="4"/><rect class="tf-pixel-ink" x="27" y="42" width="10" height="2"/>',
     };
-    const details = {
-        frog: '<rect x="18" y="36" width="5" height="3"/><rect x="41" y="36" width="5" height="3"/>',
-        cat: '<rect x="30" y="20" width="4" height="6"/><rect x="20" y="36" width="7" height="2"/><rect x="37" y="36" width="7" height="2"/>',
-        rabbit: '<rect x="21" y="10" width="3" height="13"/><rect x="40" y="10" width="3" height="13"/><rect x="47" y="43" width="5" height="5"/>',
-        fox: '<rect x="28" y="39" width="10" height="6"/><rect x="49" y="42" width="7" height="4"/>',
-        penguin: '<rect x="28" y="34" width="8" height="9"/><rect x="25" y="50" width="4" height="3"/><rect x="35" y="50" width="4" height="3"/>',
-        'robo-bird': '<rect x="31" y="9" width="2" height="3"/><rect x="19" y="34" width="3" height="3"/><rect x="42" y="34" width="3" height="3"/>',
-        mystery: '<rect x="27" y="42" width="10" height="2"/>',
+    const accessories = {
+        none: '',
+        scarf: '<g class="tf-pixel-accessory is-scarf"><rect x="18" y="42" width="29" height="5"/><rect x="39" y="46" width="7" height="11"/><rect class="tf-pixel-light" x="41" y="49" width="3" height="2"/></g>',
+        satchel: '<g class="tf-pixel-accessory is-satchel"><path d="M22 30h4l17 20h-5z"/><rect x="35" y="43" width="14" height="11"/><rect class="tf-pixel-light" x="39" y="46" width="6" height="3"/></g>',
+        flower: '<g class="tf-pixel-accessory is-flower"><rect class="tf-pixel-ink" x="47" y="13" width="3" height="10"/><rect x="43" y="9" width="5" height="5"/><rect x="50" y="9" width="5" height="5"/><rect x="47" y="6" width="4" height="5"/><rect class="tf-pixel-light" x="48" y="10" width="3" height="3"/></g>',
+        charm: '<g class="tf-pixel-accessory is-charm"><rect x="31" y="43" width="3" height="7"/><path d="M27 50h11v7H27z"/><rect class="tf-pixel-light" x="30" y="52" width="5" height="3"/></g>',
     };
-    return `<svg class="tf-pixel-pet is-kind-${kind} is-${safeStatus}${mini ? ' is-mini' : ''}" viewBox="0 0 64 64" aria-hidden="true" shape-rendering="crispEdges"><g>${shapes[kind]}</g><g class="tf-pixel-detail">${details[kind]}</g></svg>`;
+    const travelKit = '<g class="tf-pixel-travel-kit"><rect class="tf-pixel-accent" x="45" y="23" width="11" height="20"/><rect class="tf-pixel-light" x="48" y="27" width="5" height="5"/><rect class="tf-pixel-ink" x="42" y="28" width="4" height="11"/></g>';
+    return `<svg class="tf-pixel-pet is-kind-${kind} is-${safeStatus} is-accessory-${accessory}${mini ? ' is-mini' : ''}" ${customStyle ? `style="${customStyle}"` : ''} viewBox="0 0 64 64" aria-hidden="true" shape-rendering="crispEdges"><g class="tf-pixel-character">${shapes[kind]}</g>${travelKit}${accessories[accessory]}</svg>`;
 }
 
 function renderCompanionAvatar(data, large = false) {
     const companion = data.world.companion;
-    return `<span class="tf-avatar tf-companion-dm-avatar ${large ? 'tf-avatar-large' : ''}" role="img" aria-label="${escapeHtml(companion.species)}旅伴">${renderPixelCompanion(companion.species, companion.status, true)}</span>`;
+    return `<span class="tf-avatar tf-companion-dm-avatar ${large ? 'tf-avatar-large' : ''}" role="img" aria-label="${escapeHtml(companion.species)}旅伴">${renderPixelCompanion(companion.species, companion.status, true, companion)}</span>`;
 }
 
 function renderCompanionApp(data) {
@@ -1283,9 +1307,11 @@ function renderCompanionAppV3(data) {
         return `<button type="button" class="tf-pet-species-option ${selected ? 'is-selected' : ''}" data-action="choose-companion-species" data-species-id="${species.id}" aria-pressed="${selected}"><span>${renderPixelCompanion(species.name, 'home', true)}</span><b>${species.name}</b></button>`;
     }).join('');
     const customSelected = !getCompanionSpecies(companion.species);
+    const palette = COMPANION_PALETTES[getCompanionSpecies(companion.species)?.id || 'mystery'];
+    const appearanceControls = `<section class="tf-pet-appearance-controls"><header><div><b>像素形象</b><small>颜色与配件会同步用于小窝、世界首页和私信头像。</small></div><button class="tf-secondary-button" data-action="reset-companion-appearance">恢复物种默认</button></header><div><label><span>主色</span><input type="color" data-companion-field="bodyColor" value="${escapeHtml(companion.bodyColor || palette.body)}"></label><label><span>花纹色</span><input type="color" data-companion-field="accentColor" value="${escapeHtml(companion.accentColor || palette.accent)}"></label><label><span>随身配件</span><select data-companion-field="accessory">${COMPANION_ACCESSORIES.map(item => `<option value="${item.id}" ${companion.accessory === item.id ? 'selected' : ''}>${item.name}</option>`).join('')}</select></label></div></section>`;
     let deviceOptions = COMPANION_DEVICE_SKINS.map(item => `<button type="button" class="tf-device-skin-option ${skin.id === item.id ? 'is-selected' : ''}" data-action="choose-companion-device" data-device-skin="${item.id}"><span class="tf-device-swatch is-${item.id}"><i></i><b></b></span><div><b>${item.name}</b><small>${item.note}</small></div></button>`).join('');
     const environmentControls = `<div class="tf-pet-environment-controls"><label><span>小窝天气</span><select data-companion-environment="weather"><option value="auto" ${companion.weather === 'auto' ? 'selected' : ''}>自动（本地时段）</option><option value="sunny" ${companion.weather === 'sunny' ? 'selected' : ''}>晴朗</option><option value="cloudy" ${companion.weather === 'cloudy' ? 'selected' : ''}>多云</option><option value="rain" ${companion.weather === 'rain' ? 'selected' : ''}>小雨</option><option value="wind" ${companion.weather === 'wind' ? 'selected' : ''}>微风</option><option value="snow" ${companion.weather === 'snow' ? 'selected' : ''}>飘雪</option></select></label><label><span>小窝时间</span><select data-companion-environment="timeOfDay"><option value="auto" ${companion.timeOfDay === 'auto' ? 'selected' : ''}>自动（本地时间）</option><option value="dawn" ${companion.timeOfDay === 'dawn' ? 'selected' : ''}>清晨</option><option value="day" ${companion.timeOfDay === 'day' ? 'selected' : ''}>白天</option><option value="dusk" ${companion.timeOfDay === 'dusk' ? 'selected' : ''}>黄昏</option><option value="night" ${companion.timeOfDay === 'night' ? 'selected' : ''}>夜晚</option></select></label></div>`;
-    deviceOptions = `${environmentControls}${deviceOptions}`;
+    deviceOptions = `${appearanceControls}${environmentControls}${deviceOptions}`;
     const stat = (label, value) => `<div><span>${label}<b>${Number(value)}</b></span><progress max="100" value="${Number(value)}"></progress></div>`;
     const animationLayer = `<span class="tf-pet-animation-layer" aria-hidden="true"><span class="tf-feed-drop"><i></i><i></i><i></i><i></i></span><span class="tf-pet-hearts"><i>♥</i><i>♥</i><i>♥</i><i>♥</i></span><span class="tf-play-ball">◆</span><span class="tf-play-trail"><i></i><i></i><i></i></span><span class="tf-sleep-cloud"><i>Z</i><i>z</i><i>z</i></span><span class="tf-touch-rings"><i></i><i></i><i></i></span><span class="tf-pet-stars"><i>✦</i><i>·</i><i>✦</i><i>·</i></span></span>`;
     const weatherLayer = `<span class="tf-pet-weather" aria-hidden="true"><span class="tf-weather-sun"><i></i></span><span class="tf-weather-moon">☾<i>·</i><i>·</i><i>·</i></span><span class="tf-weather-cloud"><i></i><i></i></span><span class="tf-weather-rain">${'<i></i>'.repeat(8)}</span><span class="tf-weather-snow"><i>✣</i><i>·</i><i>✣</i><i>·</i><i>✣</i><i>·</i></span><span class="tf-weather-wind"><i></i><i></i><i></i><b>◆</b></span></span>`;
@@ -1478,6 +1504,15 @@ function renderApiParameterRows(profile) {
     return `<div class="tf-api-parameters">${parameters.length ? parameters.map(parameter => `<div class="tf-api-parameter" data-api-param-id="${escapeHtml(parameter.id)}"><input type="checkbox" data-api-param-field="enabled" ${parameter.enabled !== false ? 'checked' : ''} title="启用参数"><input data-api-param-field="key" value="${escapeHtml(parameter.key)}" placeholder="参数名，例如 top_p"><select data-api-param-field="type">${types(parameter.type)}</select><input data-api-param-field="value" value="${escapeHtml(parameter.value)}" placeholder="参数值"><button class="tf-icon-button" data-action="delete-api-param" data-param-id="${escapeHtml(parameter.id)}" title="删除参数">${icon('trash')}</button></div>`).join('') : '<p class="tf-empty-mini">还没有额外参数。温度和最大输出 Tokens 已在上方单独设置。</p>'}</div>`;
 }
 
+function renderApiModelPicker(kind, config, profile) {
+    const key = `${profile.id}:${kind}`;
+    const models = viewState.apiModels.get(key) || [];
+    const busy = viewState.apiModelBusy.has(key);
+    const listId = `tf-models-${key.replace(/[^a-z0-9_-]/gi, '-')}`;
+    const label = kind === 'image' ? '生图模型' : '模型名称';
+    return `<div class="tf-api-model-field"><span>${label}</span><div><input list="${escapeHtml(listId)}" data-api-setting="${kind}.model" value="${escapeHtml(config.model)}" placeholder="可以手动输入模型名称" autocomplete="off"><button type="button" class="tf-secondary-button" data-action="fetch-api-models" data-api-kind="${kind}" ${busy ? 'disabled' : ''}>${busy ? '<span class="tf-spinner"></span>读取中' : `${icon('refresh')}读取模型`}</button></div><datalist id="${escapeHtml(listId)}">${models.map(model => `<option value="${escapeHtml(model)}"></option>`).join('')}</datalist><small>${models.length ? `已读取 ${models.length} 个模型；可从建议中选择，也可继续手动输入。` : '不会自动请求；点击“读取模型”时才访问一次当前 API 的 /models。'}</small></div>`;
+}
+
 function renderApiSettings() {
     const settings = getSettings();
     const profile = getActiveApiProfile();
@@ -1486,8 +1521,8 @@ function renderApiSettings() {
     const isSt = textConfig.provider === 'sillytavern';
     const textPanel = isSt
         ? `<div class="tf-st-provider-note">无需填写地址或 Key。切换酒馆主界面的连接后，微坛会自动跟随；采样参数由酒馆当前连接管理。思考模型会消耗更多输出额度，建议论坛最大输出保持 8192 或更高。</div><div class="tf-form-grid"><label><span>论坛最大输出 Tokens</span><input type="number" data-api-setting="text.maxTokens" value="${Number(textConfig.maxTokens)}" min="1024" max="65536" step="256"></label></div>`
-        : `<div class="tf-form-grid"><label><span>API 地址</span><input data-api-setting="text.endpoint" value="${escapeHtml(textConfig.endpoint)}" placeholder="https://api.example.com/v1"></label><label><span>模型名称</span><input data-api-setting="text.model" value="${escapeHtml(textConfig.model)}"></label><label><span>API Key</span><input type="password" data-secret="text" value="${escapeHtml(textConfig.apiKey)}"></label><label><span>温度</span><input type="number" data-api-setting="text.temperature" value="${Number(textConfig.temperature)}" min="0" max="2" step="0.1"></label><label><span>最大输出 Tokens</span><input type="number" data-api-setting="text.maxTokens" value="${Number(textConfig.maxTokens)}" min="1024" max="65536" step="256"></label></div><section class="tf-extra-parameter-panel"><header><div><h4>额外请求参数</h4><p>每行一个参数；点号可建立嵌套参数，例如 thinking.type。参数会随当前 API 配置保存。</p></div><button class="tf-secondary-button" data-action="add-api-param">新增一行</button></header><div class="tf-param-templates"><span>快速添加：</span><button data-action="add-api-param-template" data-key="top_p" data-value="1" data-type="number">top_p</button><button data-action="add-api-param-template" data-key="frequency_penalty" data-value="0" data-type="number">frequency_penalty</button><button data-action="add-api-param-template" data-key="presence_penalty" data-value="0" data-type="number">presence_penalty</button><button data-action="add-api-param-template" data-key="seed" data-value="0" data-type="number">seed</button></div>${renderApiParameterRows(profile)}<small>model、messages、stream 由插件负责，不能在这里覆盖。不同服务支持的参数不同，请按接口文档填写。</small></section>`;
-    return `<section class="tf-section-page"><header><div><h2>API 配置</h2><p>可以直接使用酒馆当前连接，也可以保存多套独立 API 与参数。</p></div></header><section class="tf-card tf-api-profile-bar"><select data-action="select-api-profile">${settings.apiProfiles.map(item => `<option value="${escapeHtml(item.id)}" ${item.id === profile.id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select><button class="tf-secondary-button" data-action="new-api-profile">另存为</button><button class="tf-secondary-button" data-action="rename-api-profile" ${profile.reserved ? 'disabled' : ''}>重命名</button><button class="tf-danger-text" data-action="delete-api-profile" ${profile.reserved ? 'disabled' : ''}>删除</button></section><section class="tf-card tf-settings-card"><header><div><h3>文本生成</h3><p>${isSt ? '使用 SillyTavern 当前选中的 API 与模型。' : '使用独立的 OpenAI Chat Completions 兼容接口。'}</p></div><span class="tf-provider-badge">${isSt ? '酒馆默认' : '独立 API'}</span></header>${textPanel}</section><section class="tf-card tf-settings-card"><header><div><h3>帖子与评论图片</h3><p>帖子和评论共用这一套生图配置；没有 API 时可显示文字配图。</p></div></header><div class="tf-form-grid"><div>${renderSwitch({ checked: imageConfig.enabled, action: 'toggle-image-api', label: '启用真实生图 API' })}</div><div>${renderSwitch({ checked: imageConfig.textFallback, action: 'toggle-text-image-fallback', label: '无 API 时显示文字配图' })}</div><label><span>生图地址</span><input data-api-setting="image.endpoint" value="${escapeHtml(imageConfig.endpoint)}"></label><label><span>生图模型</span><input data-api-setting="image.model" value="${escapeHtml(imageConfig.model)}"></label><label><span>API Key</span><input type="password" data-secret="image" value="${escapeHtml(imageConfig.apiKey)}"></label><label><span>图片尺寸</span><select data-api-setting="image.size">${['1024x1024','1024x1536','1536x1024','512x512'].map(size => `<option ${imageConfig.size === size ? 'selected' : ''}>${size}</option>`).join('')}</select></label><div>${renderSwitch({ checked: imageConfig.autoGenerate, action: 'toggle-auto-image', label: '自动处理第一张配图' })}</div></div></section><section class="tf-card tf-settings-card"><header><div><h3>API Key 保存</h3><p>默认仅保留在当前页面会话。</p></div>${renderSwitch({ checked: settings.privacy.rememberApiKeys, action: 'toggle-remember-keys', label: '记住 API Key' })}</header></section></section>`;
+        : `<div class="tf-form-grid"><label><span>API 地址</span><input data-api-setting="text.endpoint" value="${escapeHtml(textConfig.endpoint)}" placeholder="https://api.example.com/v1"></label>${renderApiModelPicker('text', textConfig, profile)}<label><span>API Key</span><input type="password" data-secret="text" value="${escapeHtml(textConfig.apiKey)}"></label><label><span>温度</span><input type="number" data-api-setting="text.temperature" value="${Number(textConfig.temperature)}" min="0" max="2" step="0.1"></label><label><span>最大输出 Tokens</span><input type="number" data-api-setting="text.maxTokens" value="${Number(textConfig.maxTokens)}" min="1024" max="65536" step="256"></label></div><section class="tf-extra-parameter-panel"><header><div><h4>额外请求参数</h4><p>每行一个参数；点号可建立嵌套参数，例如 thinking.type。参数会随当前 API 配置保存。</p></div><button class="tf-secondary-button" data-action="add-api-param">新增一行</button></header><div class="tf-param-templates"><span>快速添加：</span><button data-action="add-api-param-template" data-key="top_p" data-value="1" data-type="number">top_p</button><button data-action="add-api-param-template" data-key="frequency_penalty" data-value="0" data-type="number">frequency_penalty</button><button data-action="add-api-param-template" data-key="presence_penalty" data-value="0" data-type="number">presence_penalty</button><button data-action="add-api-param-template" data-key="seed" data-value="0" data-type="number">seed</button></div>${renderApiParameterRows(profile)}<small>model、messages、stream 由插件负责，不能在这里覆盖。不同服务支持的参数不同，请按接口文档填写。</small></section>`;
+    return `<section class="tf-section-page"><header><div><h2>API 配置</h2><p>可以直接使用酒馆当前连接，也可以保存多套独立 API 与参数。</p></div></header><section class="tf-card tf-api-profile-bar"><select data-action="select-api-profile">${settings.apiProfiles.map(item => `<option value="${escapeHtml(item.id)}" ${item.id === profile.id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select><button class="tf-secondary-button" data-action="new-api-profile">另存为</button><button class="tf-secondary-button" data-action="rename-api-profile" ${profile.reserved ? 'disabled' : ''}>重命名</button><button class="tf-danger-text" data-action="delete-api-profile" ${profile.reserved ? 'disabled' : ''}>删除</button></section><section class="tf-card tf-settings-card"><header><div><h3>文本生成</h3><p>${isSt ? '使用 SillyTavern 当前选中的 API 与模型。' : '使用独立的 OpenAI Chat Completions 兼容接口。'}</p></div><span class="tf-provider-badge">${isSt ? '酒馆默认' : '独立 API'}</span></header>${textPanel}</section><section class="tf-card tf-settings-card"><header><div><h3>帖子与评论图片</h3><p>帖子和评论共用这一套生图配置；没有 API 时可显示文字配图。</p></div></header><div class="tf-form-grid"><div>${renderSwitch({ checked: imageConfig.enabled, action: 'toggle-image-api', label: '启用真实生图 API' })}</div><div>${renderSwitch({ checked: imageConfig.textFallback, action: 'toggle-text-image-fallback', label: '无 API 时显示文字配图' })}</div><label><span>生图地址</span><input data-api-setting="image.endpoint" value="${escapeHtml(imageConfig.endpoint)}"></label>${renderApiModelPicker('image', imageConfig, profile)}<label><span>API Key</span><input type="password" data-secret="image" value="${escapeHtml(imageConfig.apiKey)}"></label><label><span>图片尺寸</span><select data-api-setting="image.size">${['1024x1024','1024x1536','1536x1024','512x512'].map(size => `<option ${imageConfig.size === size ? 'selected' : ''}>${size}</option>`).join('')}</select></label><div>${renderSwitch({ checked: imageConfig.autoGenerate, action: 'toggle-auto-image', label: '自动处理第一张配图' })}</div></div></section><section class="tf-card tf-settings-card"><header><div><h3>API Key 保存</h3><p>默认仅保留在当前页面会话。</p></div>${renderSwitch({ checked: settings.privacy.rememberApiKeys, action: 'toggle-remember-keys', label: '记住 API Key' })}</header></section></section>`;
 }
 
 function renderWorldInfoCatalogLegacy(settings) {
@@ -2945,6 +2980,8 @@ async function handleRootClick(event) {
         const data = getForumData();
         data.world.companion.species = species.name;
         data.world.companion.avatarUrl = '';
+        data.world.companion.bodyColor = '';
+        data.world.companion.accentColor = '';
         data.world.companion.updatedAt = Date.now();
         ensureCompanionConversation(data);
         await saveForumData(data, true);
@@ -3110,6 +3147,15 @@ async function handleRootClick(event) {
         if (viewState.moduleBusy.has('fortune')) return;
         viewState.fortuneAiMode = !viewState.fortuneAiMode;
         viewState.fortuneRevealChoice = '';
+        return render({ preserveScroll: true });
+    }
+    if (action === 'reset-companion-appearance') {
+        const data = getForumData();
+        data.world.companion.bodyColor = '';
+        data.world.companion.accentColor = '';
+        data.world.companion.accessory = 'none';
+        data.world.companion.updatedAt = Date.now();
+        await saveForumData(data, true);
         return render({ preserveScroll: true });
     }
     if (action === 'draw-api-fortune') {
@@ -3810,6 +3856,25 @@ async function handleRootClick(event) {
         if (!window.confirm(`确定删除“${profile.name}”吗？`)) return;
         try { deleteApiProfile(profile.id); } catch (error) { notify('warning', error.message); }
         return render();
+    }
+    if (action === 'fetch-api-models') {
+        const kind = target.dataset.apiKind === 'image' ? 'image' : 'text';
+        const profile = getActiveApiProfile();
+        const key = `${profile.id}:${kind}`;
+        if (viewState.apiModelBusy.has(key)) return;
+        viewState.apiModelBusy.add(key);
+        render({ preserveScroll: true });
+        try {
+            const models = await fetchAvailableModels(getApiConfig(kind));
+            viewState.apiModels.set(key, models);
+            notify('success', `已读取 ${models.length} 个模型，仍可手动输入其他名称`);
+        } catch (error) {
+            notify('warning', error.message);
+        } finally {
+            viewState.apiModelBusy.delete(key);
+            render({ preserveScroll: true });
+        }
+        return;
     }
     if (action === 'add-api-param' || action === 'add-api-param-template') {
         const profile = getActiveApiProfile();

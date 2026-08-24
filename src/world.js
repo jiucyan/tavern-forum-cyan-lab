@@ -23,6 +23,11 @@ function now(value) {
     return Math.max(0, Number(value || Date.now()));
 }
 
+function color(value) {
+    const normalized = String(value || '').trim();
+    return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized.toLocaleLowerCase() : '';
+}
+
 function builtinPrompt(settings, id) {
     return text(settings?.builtinPrompts?.[id], DEFAULT_BUILTIN_PROMPTS[id] || '');
 }
@@ -91,6 +96,9 @@ export function normalizeWorldState(value) {
         luckyDirection: text(companion.luckyDirection),
         lastAction: ['feed', 'pet', 'play', 'rest', 'depart', 'signal', 'return', 'weather'].includes(companion.lastAction) ? companion.lastAction : '',
         deviceSkin: ['classic', 'pocket', 'crystal', 'arcane', 'terminal'].includes(companion.deviceSkin) ? companion.deviceSkin : 'classic',
+        bodyColor: color(companion.bodyColor),
+        accentColor: color(companion.accentColor),
+        accessory: ['none', 'scarf', 'satchel', 'flower', 'charm'].includes(companion.accessory) ? companion.accessory : 'none',
         weather: ['auto', 'sunny', 'cloudy', 'rain', 'wind', 'snow'].includes(companion.weather) ? companion.weather : 'auto',
         timeOfDay: ['auto', 'dawn', 'day', 'dusk', 'night'].includes(companion.timeOfDay) ? companion.timeOfDay : 'auto',
         lastInteractionAt: Math.max(0, Number(companion.lastInteractionAt || 0)),

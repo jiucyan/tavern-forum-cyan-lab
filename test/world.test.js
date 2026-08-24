@@ -53,10 +53,14 @@ test('travel module keeps one persistent companion and its journey log', () => {
     const data = normalizeForumDataShape({});
     assert.equal(data.world.companion.weather, 'auto');
     assert.equal(data.world.companion.timeOfDay, 'auto');
-    const customizedRoom = normalizeForumDataShape({ world: { companion: { weather: 'rain', timeOfDay: 'night', deviceSkin: 'terminal' } } });
+    assert.equal(data.world.companion.accessory, 'none');
+    const customizedRoom = normalizeForumDataShape({ world: { companion: { weather: 'rain', timeOfDay: 'night', deviceSkin: 'terminal', bodyColor: '#AABBCC', accentColor: 'bad-css', accessory: 'scarf' } } });
     assert.equal(customizedRoom.world.companion.weather, 'rain');
     assert.equal(customizedRoom.world.companion.timeOfDay, 'night');
     assert.equal(customizedRoom.world.companion.deviceSkin, 'terminal');
+    assert.equal(customizedRoom.world.companion.bodyColor, '#aabbcc');
+    assert.equal(customizedRoom.world.companion.accentColor, '');
+    assert.equal(customizedRoom.world.companion.accessory, 'scarf');
     const updates = normalizeWorldUpdates('<module_data>{"worldUpdates":{"travel":{"companion":{"name":"豆包","species":"机械鸟","status":"away","mood":"兴奋","destination":"旧钟楼","message":"这里的风很大。","bond":8},"journeys":[{"traveler":"豆包","destination":"旧钟楼","status":"away","notes":"在屋檐下发现一枚齿轮。","souvenir":"旧齿轮"}]}}}</module_data>');
     applyWorldUpdates(data, updates, config);
     assert.equal(data.world.companion.name, '豆包');

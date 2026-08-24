@@ -5,9 +5,16 @@ import { extname, resolve, sep } from 'node:path';
 
 const contentTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml' };
 const previewRoot = resolve(process.cwd());
+let modelCatalogRequests = 0;
 const server = createServer(async (request, response) => {
     try {
         const pathname = decodeURIComponent(new URL(request.url || '/', 'http://127.0.0.1').pathname);
+        if (pathname === '/mock-api/models') {
+            modelCatalogRequests += 1;
+            response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+            response.end(JSON.stringify({ data: [{ id: 'story-model-large' }, { id: 'story-model-fast' }, { id: 'image-model-v1' }] }));
+            return;
+        }
         const file = resolve(previewRoot, pathname.replace(/^\/+/, '') || 'preview.html');
         if (file !== previewRoot && !file.startsWith(`${previewRoot}${sep}`)) throw new Error('outside preview root');
         const body = await readFile(file);
@@ -100,6 +107,22 @@ try {
     if (promptEntriesAfterDrag[0] === promptEntriesBeforeDrag[0]) throw new Error(`dragging a forum prompt did not persist its new order: ${JSON.stringify({ promptEntriesBeforeDrag, promptEntriesAfterDrag })}`);
     await desktop.screenshot({ path: 'preview-prompts-v2.png' });
 
+    await desktop.locator('[data-action="me-section"][data-section="api"]').click();
+    await desktop.locator('[data-action="select-api-profile"]').selectOption('default-api-profile');
+    if (await desktop.locator('.tf-api-model-field').count() !== 2) throw new Error('text and image API settings are missing their model pickers');
+    if (await desktop.locator('[data-action="fetch-api-models"]').count() !== 2) throw new Error('model catalogs are not explicitly fetchable');
+    const callsBeforeManualModel = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
+    await desktop.locator('[data-api-setting="text.endpoint"]').fill(`${new URL(url).origin}/mock-api`);
+    await desktop.locator('[data-action="fetch-api-models"][data-api-kind="text"]').click();
+    await desktop.locator('.tf-api-model-field datalist option[value="story-model-large"]').waitFor({ state: 'attached' });
+    if (modelCatalogRequests !== 1) throw new Error(`explicit model loading made ${modelCatalogRequests} catalog requests instead of one`);
+    await desktop.locator('[data-api-setting="text.endpoint"]').fill('https://api.example.com/v1');
+    await desktop.locator('[data-api-setting="text.model"]').fill('manual-model-name');
+    if (await desktop.locator('[data-api-setting="text.model"]').inputValue() !== 'manual-model-name') throw new Error('model name can no longer be entered manually');
+    if (await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls) !== callsBeforeManualModel) throw new Error('typing a model name unexpectedly called the API');
+    await desktop.screenshot({ path: 'preview-api-model-picker-v3.png' });
+    await desktop.locator('[data-action="select-api-profile"]').selectOption('sillytavern-default');
+
     await desktop.locator('[data-action="me-section"][data-section="modules"]').click();
     if (await desktop.locator('[data-action="test-module-probability"]').count()) throw new Error('obsolete 100-run probability test should not be rendered');
     if (await desktop.locator('[data-action="toggle-module-injection"][data-module-id="forum"]').count()) throw new Error('forum injection switch should only exist on the main-chat injection page');
@@ -175,7 +198,15 @@ try {
     await desktop.locator('[data-action="toggle-companion-profile"]').click();
     if (await desktop.locator('[data-action="choose-companion-species"]').count() !== 6) throw new Error('expected six built-in pixel companions');
     if (await desktop.locator('[data-action="choose-companion-device"]').count() !== 5) throw new Error('expected five device structures');
+    if (await desktop.locator('.tf-pet-appearance-controls input[type="color"]').count() !== 2) throw new Error('companion palette controls are missing');
+    if (await desktop.locator('.tf-pet-appearance-controls select[data-companion-field="accessory"]').count() !== 1) throw new Error('companion accessory control is missing');
+    const speciesBodyColors = await desktop.locator('[data-action="choose-companion-species"] .tf-pixel-body').evaluateAll(nodes => [...new Set(nodes.map(node => getComputedStyle(node).fill))]);
+    if (speciesBodyColors.length < 5) throw new Error(`companion species are still visually monochrome: ${JSON.stringify(speciesBodyColors)}`);
     await desktop.locator('[data-action="choose-companion-species"][data-species-id="fox"]').click();
+    await desktop.locator('[data-companion-field="accessory"]').selectOption('scarf');
+    if (!await desktop.locator('.tf-pet-stage .tf-pixel-pet.is-accessory-scarf').count()) throw new Error('selected companion accessory did not appear on the device');
+    await desktop.locator('[data-action="reset-companion-appearance"]').click();
+    if (!await desktop.locator('.tf-pet-stage .tf-pixel-pet.is-accessory-none').count()) throw new Error('companion appearance reset did not restore species defaults');
     const callsBeforePet = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
     await desktop.locator('[data-action="companion-care"][data-care="feed"]').last().click();
     if (await desktop.locator('[data-action="companion-feed-food"]').count() !== 6) throw new Error('pet food selector did not expose six foods inside the device');
@@ -375,6 +406,13 @@ try {
     const settingsNavScrollAfter = await mobile.locator('.tf-settings-page .tf-me-nav').evaluate(node => node.scrollLeft);
     if (settingsNavScrollBefore > 20 && Math.abs(settingsNavScrollAfter - settingsNavScrollBefore) > 8) throw new Error(`switching settings reset horizontal navigation from ${settingsNavScrollBefore} to ${settingsNavScrollAfter}`);
     await mobile.screenshot({ path: 'preview-settings-mobile.png' });
+    await mobile.locator('[data-action="me-section"][data-section="api"]').evaluate(node => node.click());
+    await mobile.locator('[data-action="select-api-profile"]').selectOption('default-api-profile');
+    const mobileApiWidth = await mobile.locator('.tf-section-page').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
+    if (mobileApiWidth.scroll > mobileApiWidth.client + 2) throw new Error(`mobile API model picker overflowed horizontally (${mobileApiWidth.scroll} > ${mobileApiWidth.client})`);
+    if (await mobile.locator('[data-api-setting="text.model"]').count() !== 1) throw new Error('mobile API settings lost manual model input');
+    await mobile.screenshot({ path: 'preview-api-model-picker-mobile-v3.png', fullPage: true });
+    await mobile.locator('[data-action="select-api-profile"]').selectOption('sillytavern-default');
     await mobile.locator('[data-action="me-section"][data-section="modules"]').evaluate(node => node.click());
     const mobileTravelToggle = mobile.locator('[data-action="toggle-world-module"][data-module-id="travel"]');
     if (!await mobileTravelToggle.isChecked()) await mobileTravelToggle.check({ force: true });

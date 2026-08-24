@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildTextRequestBody, generateForumText, generateForumTextResult, resolveEndpoint } from '../src/api.js';
+import { buildTextRequestBody, fetchAvailableModels, generateForumText, generateForumTextResult, resolveEndpoint, resolveModelsEndpoint } from '../src/api.js';
 import {
     FORUM_GENERATION_JSON_SCHEMA,
     buildDirectMessageRequest,
@@ -27,6 +27,30 @@ test('resolveEndpoint accepts base URLs and complete endpoints', () => {
     assert.equal(resolveEndpoint('https://api.example.com/v1/', 'text'), 'https://api.example.com/v1/chat/completions');
     assert.equal(resolveEndpoint('https://api.example.com/v1/chat/completions', 'text'), 'https://api.example.com/v1/chat/completions');
     assert.equal(resolveEndpoint('https://api.example.com/v1', 'image'), 'https://api.example.com/v1/images/generations');
+    assert.equal(resolveModelsEndpoint('https://api.example.com/v1'), 'https://api.example.com/v1/models');
+    assert.equal(resolveModelsEndpoint('https://api.example.com/v1/chat/completions'), 'https://api.example.com/v1/models');
+    assert.equal(resolveModelsEndpoint('https://api.example.com/v1/images/generations'), 'https://api.example.com/v1/models');
+});
+
+test('model catalog is fetched only on demand and accepts common response shapes', async () => {
+    const previousFetch = globalThis.fetch;
+    let received;
+    globalThis.fetch = async (url, init) => {
+        received = { url, init };
+        return {
+            ok: true,
+            async text() { return JSON.stringify({ data: [{ id: 'model-z' }, { id: 'model-a' }, { id: 'model-a' }] }); },
+        };
+    };
+    try {
+        const models = await fetchAvailableModels({ endpoint: 'https://api.example.com/v1/chat/completions', apiKey: 'session-only' });
+        assert.deepEqual(models, ['model-a', 'model-z']);
+        assert.equal(received.url, 'https://api.example.com/v1/models');
+        assert.equal(received.init.method, 'GET');
+        assert.equal(received.init.headers.Authorization, 'Bearer session-only');
+    } finally {
+        globalThis.fetch = previousFetch;
+    }
 });
 
 test('SillyTavern default text provider uses the current connection', async () => {

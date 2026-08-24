@@ -25,8 +25,18 @@ export function resolveEndpoint(base, kind) {
     return /\/chat\/completions$/i.test(endpoint) ? endpoint : `${endpoint}/chat/completions`;
 }
 
-function authHeaders(apiKey) {
-    const headers = { 'Content-Type': 'application/json' };
+export function resolveModelsEndpoint(base) {
+    const endpoint = cleanEndpoint(base);
+    if (!endpoint) throw new Error('请先填写 API 地址');
+    if (/\/models$/i.test(endpoint)) return endpoint;
+    const apiBase = endpoint
+        .replace(/\/chat\/completions$/i, '')
+        .replace(/\/images\/generations$/i, '');
+    return `${apiBase}/models`;
+}
+
+function authHeaders(apiKey, includeContentType = true) {
+    const headers = includeContentType ? { 'Content-Type': 'application/json' } : {};
     if (String(apiKey || '').trim()) headers.Authorization = `Bearer ${String(apiKey).trim()}`;
     return headers;
 }
@@ -55,6 +65,23 @@ async function fetchJson(url, init, timeoutMs = 90000) {
     } finally {
         clearTimeout(timer);
     }
+}
+
+export async function fetchAvailableModels(config) {
+    if (config?.provider === 'sillytavern') throw new Error('酒馆当前连接的模型由 SillyTavern 管理');
+    const payload = await fetchJson(resolveModelsEndpoint(config?.endpoint), {
+        method: 'GET',
+        headers: authHeaders(config?.apiKey, false),
+    }, 30000);
+    const source = Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.models) ? payload.models : Array.isArray(payload) ? payload : [];
+    const models = [...new Set(source.map(item => {
+        if (typeof item === 'string') return item.trim();
+        return String(item?.id || item?.name || item?.model || '').trim();
+    }).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    if (!models.length) throw new Error('接口已响应，但没有找到可用的模型名称');
+    return models;
 }
 
 function buildResponseFormat(jsonSchema) {
