@@ -140,7 +140,7 @@ const COMPANION_HABITS = Object.freeze({
     mystery: { favorite: 'berry', likes: COMPANION_FOODS.map(item => item.id), pet: '它用自己的方式回应了你的触碰。', play: '它围着光点开心地转了一圈。', rest: '它找到舒服的位置，安静休息起来。', weather: { sunny: ['它享受着小窝里的光。', '舒适'], cloudy: ['它安静地看着云层变化。', '平静'], rain: ['它听着雨声，显得若有所思。', '好奇'], wind: ['它追踪着风吹动的影子。', '专注'], snow: ['它第一次认真观察这些白色小点。', '新奇'] } },
 });
 const CUSTOM_STYLE_ID = 'tavern-forum-custom-css';
-const BUILTIN_CUSTOM_CSS_TEMPLATE = `/*
+const LEGACY_BUILTIN_CUSTOM_CSS_TEMPLATE = `/*
  * 微坛标准 CSS 美化模板
  * 可以直接修改数值；所有选择器都限制在论坛内部，不会修改酒馆界面。
  */
@@ -232,6 +232,177 @@ const BUILTIN_CUSTOM_CSS_TEMPLATE = `/*
         --tf-user-post-gap: 10px;
     }
 }`;
+const BUILTIN_CUSTOM_CSS_TEMPLATE = `/*
+ * 微坛全局 CSS 主题模板 v2（适配 0.10.6+）
+ * 修改变量即可统一调整；所有选择器都限制在插件根节点内，不会影响酒馆本体。
+ * 各世界 App 只统一外层节奏，不会把旅伴、运势、健康和论坛强行改成同一种风格。
+ */
+
+/* 1. 全局设计变量 */
+#tavern-forum-root {
+    --tf-user-radius: 18px;
+    --tf-user-radius-small: 12px;
+    --tf-user-shadow: 0 10px 34px rgb(15 23 42 / 8%);
+    --tf-user-elevated-shadow: 0 18px 48px rgb(15 23 42 / 12%);
+    --tf-user-page-gap: 18px;
+    --tf-user-post-gap: 18px;
+    --tf-user-world-gap: 16px;
+}
+
+/* 2. 插件外壳与导航 */
+#tavern-forum-root .tf-topbar,
+#tavern-forum-root .tf-mobile-main-nav,
+#tavern-forum-root .tf-settings-page .tf-me-nav {
+    box-shadow: none;
+}
+#tavern-forum-root .tf-main-nav button,
+#tavern-forum-root .tf-mobile-main-nav button,
+#tavern-forum-root .tf-me-nav button {
+    border-radius: var(--tf-user-radius-small);
+}
+
+/* 3. 通用表单与操作按钮 */
+#tavern-forum-root .tf-primary-button,
+#tavern-forum-root .tf-secondary-button,
+#tavern-forum-root .tf-back-button {
+    border-radius: var(--tf-user-radius-small);
+}
+#tavern-forum-root .tf-settings-card input,
+#tavern-forum-root .tf-settings-card select,
+#tavern-forum-root .tf-settings-card textarea {
+    border-radius: var(--tf-user-radius-small);
+}
+
+/* 4. 论坛首页与信息流 */
+#tavern-forum-root .tf-feed-column,
+#tavern-forum-root .tf-feed-list {
+    gap: var(--tf-user-post-gap);
+}
+#tavern-forum-root .tf-feed-tabs,
+#tavern-forum-root .tf-stories,
+#tavern-forum-root .tf-topic-header {
+    border-radius: var(--tf-user-radius);
+}
+#tavern-forum-root .tf-post {
+    border-radius: var(--tf-user-radius);
+    box-shadow: var(--tf-user-shadow);
+}
+#tavern-forum-root .tf-post-caption {
+    line-height: 1.8;
+}
+#tavern-forum-root .tf-comments {
+    border-radius: 0 0 var(--tf-user-radius) var(--tf-user-radius);
+}
+#tavern-forum-root .tf-comment {
+    line-height: 1.65;
+}
+
+/* 5. 头像、帖子图片与评论图片 */
+#tavern-forum-root .tf-avatar {
+    box-shadow: 0 0 0 2px rgb(255 255 255 / 78%);
+}
+#tavern-forum-root .tf-post-image {
+    max-height: 680px;
+    object-fit: cover;
+}
+#tavern-forum-root .tf-comment-image {
+    border-radius: var(--tf-user-radius-small);
+}
+
+/* 6. 个人页、角色页与私信 */
+#tavern-forum-root .tf-public-profile-hero,
+#tavern-forum-root .tf-personal-profile,
+#tavern-forum-root .tf-profile-content-list,
+#tavern-forum-root .tf-messages-shell {
+    border-radius: var(--tf-user-radius);
+}
+#tavern-forum-root .tf-dm-bubble {
+    border-radius: 18px;
+}
+#tavern-forum-root .tf-dm-bubble.is-me {
+    border-bottom-right-radius: 6px;
+}
+#tavern-forum-root .tf-dm-bubble.is-them {
+    border-bottom-left-radius: 6px;
+}
+
+/* 7. 世界主页：只统一布局，不覆盖两种主页模式的色彩 */
+#tavern-forum-root .tf-world-hub {
+    gap: var(--tf-user-world-gap);
+}
+#tavern-forum-root .tf-world-bento > *,
+#tavern-forum-root .tf-world-window-shell,
+#tavern-forum-root .tf-world-app-dock {
+    border-radius: var(--tf-user-radius);
+}
+#tavern-forum-root .tf-world-app-icon {
+    border-radius: var(--tf-user-radius-small);
+}
+
+/* 8. 世界 App 外层：保留掌机、抽牌、诊所、背包各自风格 */
+#tavern-forum-root .tf-world-app-page {
+    gap: var(--tf-user-page-gap);
+}
+#tavern-forum-root .tf-world-app-header,
+#tavern-forum-root .tf-inventory-hero,
+#tavern-forum-root .tf-inventory-detail,
+#tavern-forum-root .tf-health-case,
+#tavern-forum-root .tf-fortune-ritual,
+#tavern-forum-root .tf-fortune-reveal {
+    border-radius: var(--tf-user-radius);
+}
+#tavern-forum-root .tf-companion-v4 .tf-pet-console,
+#tavern-forum-root .tf-fortune-ritual,
+#tavern-forum-root .tf-health-case,
+#tavern-forum-root .tf-inventory-detail {
+    box-shadow: var(--tf-user-shadow);
+}
+
+/* 9. 设置中心与可拖动论坛设定 */
+#tavern-forum-root .tf-section-page,
+#tavern-forum-root .tf-module-grid {
+    gap: var(--tf-user-page-gap);
+}
+#tavern-forum-root .tf-settings-card,
+#tavern-forum-root .tf-dashboard-grid > button,
+#tavern-forum-root .tf-prompt-entry {
+    border-radius: var(--tf-user-radius);
+}
+#tavern-forum-root .tf-custom-css {
+    min-height: 420px;
+    line-height: 1.65;
+    tab-size: 4;
+}
+
+/* 10. 手机端：缩小间距并避免横向溢出 */
+@media (max-width: 680px) {
+    #tavern-forum-root {
+        --tf-user-radius: 14px;
+        --tf-user-radius-small: 10px;
+        --tf-user-page-gap: 12px;
+        --tf-user-post-gap: 10px;
+        --tf-user-world-gap: 10px;
+    }
+    #tavern-forum-root .tf-post {
+        margin-inline: 8px;
+    }
+    #tavern-forum-root .tf-world-app-page,
+    #tavern-forum-root .tf-section-page {
+        max-width: 100%;
+        overflow-x: clip;
+    }
+    #tavern-forum-root .tf-custom-css {
+        min-height: 320px;
+        font-size: 12px;
+    }
+}`;
+
+function getEffectiveCustomCss(appearance) {
+    const stored = String(appearance?.customCss || '');
+    if (stored === LEGACY_BUILTIN_CUSTOM_CSS_TEMPLATE) return BUILTIN_CUSTOM_CSS_TEMPLATE;
+    if (stored) return stored;
+    return appearance?.customCssCleared ? '' : BUILTIN_CUSTOM_CSS_TEMPLATE;
+}
 const imageMemory = new Map();
 
 const viewState = {
@@ -276,6 +447,7 @@ const viewState = {
     companionProfileOpen: false,
     companionFoodMenuOpen: false,
     companionFoodIndex: 0,
+    companionAppearanceDraft: null,
     fortuneRevealChoice: '',
     fortuneAiMode: false,
     openPromptEntries: new Set(),
@@ -1212,7 +1384,13 @@ function renderPixelCompanion(species, status = 'home', mini = false, appearance
     const kind = getCompanionSpecies(species)?.id || 'mystery';
     const safeStatus = ['home', 'away', 'resting'].includes(status) ? status : 'home';
     const currentCompanion = getForumData()?.world?.companion;
-    const liveAppearance = appearance || (currentCompanion && getCompanionSpecies(currentCompanion.species)?.id === kind ? currentCompanion : null);
+    const previewingAppearance = getSettings().ui.activeTab === 'services'
+        && viewState.worldPage === 'travel'
+        && viewState.companionProfileOpen
+        && viewState.companionAppearanceDraft;
+    const liveAppearance = appearance || (currentCompanion && getCompanionSpecies(currentCompanion.species)?.id === kind
+        ? { ...currentCompanion, ...(previewingAppearance || {}) }
+        : null);
     const safeColor = value => /^#[0-9a-f]{6}$/i.test(String(value || '').trim()) ? String(value).trim().toLocaleLowerCase() : '';
     const bodyColor = safeColor(liveAppearance?.bodyColor);
     const accentColor = safeColor(liveAppearance?.accentColor);
@@ -1235,7 +1413,8 @@ function renderPixelCompanion(species, status = 'home', mini = false, appearance
         charm: '<g class="tf-pixel-accessory is-charm"><rect x="31" y="43" width="3" height="7"/><path d="M27 50h11v7H27z"/><rect class="tf-pixel-light" x="30" y="52" width="5" height="3"/></g>',
     };
     const travelKit = '<g class="tf-pixel-travel-kit"><rect class="tf-pixel-accent" x="45" y="23" width="11" height="20"/><rect class="tf-pixel-light" x="48" y="27" width="5" height="5"/><rect class="tf-pixel-ink" x="42" y="28" width="4" height="11"/></g>';
-    return `<svg class="tf-pixel-pet is-kind-${kind} is-${safeStatus} is-accessory-${accessory}${mini ? ' is-mini' : ''}" ${customStyle ? `style="${customStyle}"` : ''} viewBox="0 0 64 64" aria-hidden="true" shape-rendering="crispEdges"><g class="tf-pixel-character">${shapes[kind]}</g>${travelKit}${accessories[accessory]}</svg>`;
+    const accessoryLayers = Object.entries(accessories).filter(([id]) => id !== 'none').map(([, markup]) => markup).join('');
+    return `<svg class="tf-pixel-pet is-kind-${kind} is-${safeStatus} is-accessory-${accessory}${mini ? ' is-mini' : ''}" ${customStyle ? `style="${customStyle}"` : ''} viewBox="0 0 64 64" aria-hidden="true" shape-rendering="crispEdges"><g class="tf-pixel-character">${shapes[kind]}</g>${travelKit}${accessoryLayers}</svg>`;
 }
 
 function renderCompanionAvatar(data, large = false) {
@@ -1308,7 +1487,8 @@ function renderCompanionAppV3(data) {
     }).join('');
     const customSelected = !getCompanionSpecies(companion.species);
     const palette = COMPANION_PALETTES[getCompanionSpecies(companion.species)?.id || 'mystery'];
-    const appearanceControls = `<section class="tf-pet-appearance-controls"><header><div><b>像素形象</b><small>颜色与配件会同步用于小窝、世界首页和私信头像。</small></div><button class="tf-secondary-button" data-action="reset-companion-appearance">恢复物种默认</button></header><div><label><span>主色</span><input type="color" data-companion-field="bodyColor" value="${escapeHtml(companion.bodyColor || palette.body)}"></label><label><span>花纹色</span><input type="color" data-companion-field="accentColor" value="${escapeHtml(companion.accentColor || palette.accent)}"></label><label><span>随身配件</span><select data-companion-field="accessory">${COMPANION_ACCESSORIES.map(item => `<option value="${item.id}" ${companion.accessory === item.id ? 'selected' : ''}>${item.name}</option>`).join('')}</select></label></div></section>`;
+    const appearanceDraft = viewState.companionAppearanceDraft || { bodyColor: companion.bodyColor, accentColor: companion.accentColor, accessory: companion.accessory };
+    const appearanceControls = `<section class="tf-pet-appearance-controls ${viewState.companionAppearanceDraft ? 'is-dirty' : 'is-saved'}"><header><div><b>像素形象</b><small class="tf-pet-appearance-state">${viewState.companionAppearanceDraft ? '正在预览，尚未保存' : '已保存 · 会同步用于小窝、世界首页和私信头像'}</small></div></header><div><label><span>主色</span><input type="color" data-companion-appearance-field="bodyColor" value="${escapeHtml(appearanceDraft.bodyColor || palette.body)}"></label><label><span>花纹色</span><input type="color" data-companion-appearance-field="accentColor" value="${escapeHtml(appearanceDraft.accentColor || palette.accent)}"></label><label><span>随身配件</span><select data-companion-appearance-field="accessory">${COMPANION_ACCESSORIES.map(item => `<option value="${item.id}" ${appearanceDraft.accessory === item.id ? 'selected' : ''}>${item.name}</option>`).join('')}</select></label></div><footer><button class="tf-secondary-button" data-action="reset-companion-appearance">预览物种默认</button><button class="tf-primary-button" data-action="save-companion-appearance" ${viewState.companionAppearanceDraft ? '' : 'disabled'}>保存形象</button></footer></section>`;
     let deviceOptions = COMPANION_DEVICE_SKINS.map(item => `<button type="button" class="tf-device-skin-option ${skin.id === item.id ? 'is-selected' : ''}" data-action="choose-companion-device" data-device-skin="${item.id}"><span class="tf-device-swatch is-${item.id}"><i></i><b></b></span><div><b>${item.name}</b><small>${item.note}</small></div></button>`).join('');
     const environmentControls = `<div class="tf-pet-environment-controls"><label><span>小窝天气</span><select data-companion-environment="weather"><option value="auto" ${companion.weather === 'auto' ? 'selected' : ''}>自动（本地时段）</option><option value="sunny" ${companion.weather === 'sunny' ? 'selected' : ''}>晴朗</option><option value="cloudy" ${companion.weather === 'cloudy' ? 'selected' : ''}>多云</option><option value="rain" ${companion.weather === 'rain' ? 'selected' : ''}>小雨</option><option value="wind" ${companion.weather === 'wind' ? 'selected' : ''}>微风</option><option value="snow" ${companion.weather === 'snow' ? 'selected' : ''}>飘雪</option></select></label><label><span>小窝时间</span><select data-companion-environment="timeOfDay"><option value="auto" ${companion.timeOfDay === 'auto' ? 'selected' : ''}>自动（本地时间）</option><option value="dawn" ${companion.timeOfDay === 'dawn' ? 'selected' : ''}>清晨</option><option value="day" ${companion.timeOfDay === 'day' ? 'selected' : ''}>白天</option><option value="dusk" ${companion.timeOfDay === 'dusk' ? 'selected' : ''}>黄昏</option><option value="night" ${companion.timeOfDay === 'night' ? 'selected' : ''}>夜晚</option></select></label></div>`;
     deviceOptions = `${appearanceControls}${environmentControls}${deviceOptions}`;
@@ -1323,21 +1503,29 @@ function getCompanionHabit(companion) {
     return COMPANION_HABITS[getCompanionSpecies(companion.species)?.id || 'mystery'] || COMPANION_HABITS.mystery;
 }
 
+function personalizeCompanionReaction(companion, value) {
+    const name = String(companion?.name || '旅伴').trim() || '旅伴';
+    let reaction = String(value || '');
+    for (const species of COMPANION_SPECIES) reaction = reaction.replaceAll(species.name, name);
+    return reaction.replaceAll('它', name);
+}
+
 function getCompanionWeatherReaction(data) {
     const companion = data.world.companion;
     const time = getLocalCompanionTime(companion);
     const weather = getLocalCompanionWeather(data, time);
     const weatherId = weather.id.split(' ')[0];
-    return getCompanionHabit(companion).weather[weatherId] || [weather.note, companion.mood || '平静'];
+    const [reaction, mood] = getCompanionHabit(companion).weather[weatherId] || [weather.note, companion.mood || '平静'];
+    return [personalizeCompanionReaction(companion, reaction), mood];
 }
 
 function getCompanionAmbientReaction(data) {
     const companion = data.world.companion;
     if (companion.status === 'away') return companion.message || '它正在旅途中观察周围。';
-    if (Number(companion.satiety || 0) < 22) return '它不时看向食物菜单，肚子像是有点饿了。';
-    if (Number(companion.energy || 0) < 22) return '它的动作慢了下来，正在寻找适合打盹的位置。';
-    if (Number(companion.happiness || 0) < 28) return '它安静地靠近屏幕边缘，希望有人陪一会儿。';
-    if (companion.lastAction && companion.message) return companion.message;
+    if (Number(companion.satiety || 0) < 22) return `${companion.name}不时看向食物菜单，肚子像是有点饿了。`;
+    if (Number(companion.energy || 0) < 22) return `${companion.name}的动作慢了下来，正在寻找适合打盹的位置。`;
+    if (Number(companion.happiness || 0) < 28) return `${companion.name}安静地靠近屏幕边缘，希望有人陪一会儿。`;
+    if (companion.lastAction && companion.message) return personalizeCompanionReaction(companion, companion.message);
     return getCompanionWeatherReaction(data)[0];
 }
 
@@ -1600,12 +1788,12 @@ function renderAppearanceSettingsLegacyOld() {
 function renderAppearanceSettingsLegacy(beforeCss = '') {
     const appearance = getSettings().appearance;
     const colorField = (field, label) => `<label class="tf-color-field"><span>${label}</span><input type="color" data-appearance="${field}" value="${escapeHtml(appearance[field])}"><code>${escapeHtml(appearance[field])}</code></label>`;
-    const cssValue = appearance.customCss || (appearance.customCssCleared ? '' : BUILTIN_CUSTOM_CSS_TEMPLATE);
+    const cssValue = getEffectiveCustomCss(appearance);
     return `<section class="tf-section-page"><header><div><h2>外观</h2><p>名称、字体、颜色和自定义 CSS 都会即时生效。</p></div></header>
         <section class="tf-card tf-settings-card"><header><div><h3>基础外观</h3><p>字体留空时自动跟随 SillyTavern。</p></div></header><div class="tf-form-grid"><label><span>论坛名称</span><input data-appearance="forumName" value="${escapeHtml(appearance.forumName)}" maxlength="30"></label><label><span>自定义字体</span><input data-appearance="fontFamily" value="${escapeHtml(appearance.fontFamily)}" placeholder="留空跟随酒馆；例：霞鹜文楷"></label>${colorField('primaryColor', '主题色')}${colorField('backgroundColor', '整体背景色')}${colorField('cardColor', '普通卡片色')}${colorField('textColor', '文字色')}</div></section>
         <section class="tf-card tf-settings-card"><header><div><h3>界面区域颜色</h3><p>可直接去掉原来的固定蓝色，不需要编写 CSS。</p></div></header><div class="tf-form-grid">${colorField('topNavColor', '顶部导航')}${colorField('sideNavColor', '左侧设置导航')}${colorField('activeNavColor', '选中导航项')}${colorField('postColor', '帖子卡片')}${colorField('commentColor', '评论区域')}</div></section>
         ${beforeCss}
-        <section class="tf-card tf-settings-card"><header><div><h3>导入 CSS 美化</h3><p>模板已按全局、导航、帖子、评论、主页、私信、设置和手机端分区，可直接修改。</p></div><div class="tf-css-actions"><button class="tf-secondary-button" data-action="import-css">导入 CSS</button><button class="tf-secondary-button" data-action="restore-standard-css">恢复标准模板</button><button class="tf-danger-text" data-action="clear-css">清空</button></div></header><textarea class="tf-custom-css" data-appearance="customCss" rows="24" placeholder="#tavern-forum-root .tf-post { ... }">${escapeHtml(cssValue)}</textarea></section>
+        <section class="tf-card tf-settings-card"><header><div><h3>全局 CSS 主题</h3><p>v2 模板已适配论坛、个人页、消息、世界主页、独立 App、设置中心和手机端；只会作用于插件内部。</p></div><div class="tf-css-actions"><button class="tf-secondary-button" data-action="import-css">导入 CSS</button><button class="tf-secondary-button" data-action="restore-standard-css">恢复标准模板</button><button class="tf-danger-text" data-action="clear-css">清空</button></div></header><textarea class="tf-custom-css" data-appearance="customCss" rows="24" spellcheck="false" aria-label="全局 CSS 主题" placeholder="#tavern-forum-root .tf-post { ... }">${escapeHtml(cssValue)}</textarea><footer class="tf-custom-css-scope-note"><span>作用域</span><code>#tavern-forum-root</code><small>自定义内容会即时预览；建议保留此前缀，避免影响酒馆界面。</small></footer></section>
     </section>`;
 }
 
@@ -1821,7 +2009,7 @@ function applyAppearance() {
         custom.id = CUSTOM_STYLE_ID;
         document.head.append(custom);
     }
-    const baseCss = settings.appearance.customCss || (settings.appearance.customCssCleared ? '' : BUILTIN_CUSTOM_CSS_TEMPLATE);
+    const baseCss = getEffectiveCustomCss(settings.appearance);
     const viewCss = theme.inherited ? '' : String(theme.view.customCss || '');
     custom.textContent = `${baseCss}\n${viewCss}`;
 }
@@ -2983,6 +3171,7 @@ async function handleRootClick(event) {
         data.world.companion.bodyColor = '';
         data.world.companion.accentColor = '';
         data.world.companion.updatedAt = Date.now();
+        viewState.companionAppearanceDraft = null;
         ensureCompanionConversation(data);
         await saveForumData(data, true);
         syncInjection();
@@ -3060,6 +3249,7 @@ async function handleRootClick(event) {
         data.world.companion.species = '自定义旅伴';
         data.world.companion.avatarUrl = '';
         data.world.companion.updatedAt = Date.now();
+        viewState.companionAppearanceDraft = null;
         ensureCompanionConversation(data);
         await saveForumData(data, true);
         syncInjection();
@@ -3087,7 +3277,7 @@ async function handleRootClick(event) {
         for (const field of ['satiety', 'energy', 'happiness', 'bond']) companion[field] = Math.max(0, Math.min(100, Number(companion[field] || 0) + deltas[field]));
         companion.mood = deltas.mood;
         companion.lastAction = care;
-        companion.message = care === 'pet' ? getCompanionHabit(companion).pet : care === 'play' ? getCompanionHabit(companion).play : getCompanionHabit(companion).rest;
+        companion.message = personalizeCompanionReaction(companion, care === 'pet' ? getCompanionHabit(companion).pet : care === 'play' ? getCompanionHabit(companion).play : getCompanionHabit(companion).rest);
         companion.lastInteractionAt = Date.now();
         companion.updatedAt = Date.now();
         if (care === 'rest') companion.status = 'resting';
@@ -3150,12 +3340,20 @@ async function handleRootClick(event) {
         return render({ preserveScroll: true });
     }
     if (action === 'reset-companion-appearance') {
+        viewState.companionAppearanceDraft = { bodyColor: '', accentColor: '', accessory: 'none' };
+        return render({ preserveScroll: true });
+    }
+    if (action === 'save-companion-appearance') {
+        if (!viewState.companionAppearanceDraft) return notify('info', '当前形象已经保存');
         const data = getForumData();
-        data.world.companion.bodyColor = '';
-        data.world.companion.accentColor = '';
-        data.world.companion.accessory = 'none';
+        const draft = viewState.companionAppearanceDraft;
+        data.world.companion.bodyColor = /^#[0-9a-f]{6}$/i.test(draft.bodyColor || '') ? draft.bodyColor : '';
+        data.world.companion.accentColor = /^#[0-9a-f]{6}$/i.test(draft.accentColor || '') ? draft.accentColor : '';
+        data.world.companion.accessory = COMPANION_ACCESSORIES.some(item => item.id === draft.accessory) ? draft.accessory : 'none';
         data.world.companion.updatedAt = Date.now();
+        viewState.companionAppearanceDraft = null;
         await saveForumData(data, true);
+        notify('success', `${data.world.companion.name}的新形象已经保存`);
         return render({ preserveScroll: true });
     }
     if (action === 'draw-api-fortune') {
@@ -3951,7 +4149,8 @@ async function handleRootClick(event) {
     if (action === 'clear-css') { getSettings().appearance.customCss = ''; getSettings().appearance.customCssCleared = true; saveSettings(); applyAppearance(); return render(); }
     if (action === 'load-builtin-css' || action === 'restore-standard-css') {
         const appearance = getSettings().appearance;
-        if (appearance.customCss.trim() && appearance.customCss !== BUILTIN_CUSTOM_CSS_TEMPLATE && !window.confirm('恢复模板会替换当前自定义 CSS，确定继续吗？')) return;
+        const currentCss = getEffectiveCustomCss(appearance);
+        if (currentCss.trim() && currentCss !== BUILTIN_CUSTOM_CSS_TEMPLATE && !window.confirm('恢复模板会替换当前自定义 CSS，确定继续吗？')) return;
         appearance.customCss = BUILTIN_CUSTOM_CSS_TEMPLATE;
         appearance.customCssCleared = false;
         saveSettings();
@@ -4067,6 +4266,34 @@ function handleRootInput(event) {
         }
         return;
     }
+    if (target.dataset.companionAppearanceField) {
+        const companion = getForumData().world.companion;
+        const field = target.dataset.companionAppearanceField;
+        if (!['bodyColor', 'accentColor', 'accessory'].includes(field)) return;
+        const draft = viewState.companionAppearanceDraft || {
+            bodyColor: companion.bodyColor || '',
+            accentColor: companion.accentColor || '',
+            accessory: companion.accessory || 'none',
+        };
+        draft[field] = target.value;
+        viewState.companionAppearanceDraft = draft;
+        const speciesId = getCompanionSpecies(companion.species)?.id || 'mystery';
+        getRoot()?.querySelectorAll(`.tf-pixel-pet.is-kind-${speciesId}`).forEach(sprite => {
+            if (field === 'bodyColor') sprite.style.setProperty('--pet-body-user', draft.bodyColor);
+            if (field === 'accentColor') sprite.style.setProperty('--pet-accent-user', draft.accentColor);
+            if (field === 'accessory') {
+                for (const item of COMPANION_ACCESSORIES) sprite.classList.remove(`is-accessory-${item.id}`);
+                sprite.classList.add(`is-accessory-${draft.accessory}`);
+            }
+        });
+        const panel = target.closest('.tf-pet-appearance-controls');
+        panel?.classList.remove('is-saved');
+        panel?.classList.add('is-dirty');
+        panel?.querySelector('.tf-pet-appearance-state')?.replaceChildren('正在预览，尚未保存');
+        const saveButton = panel?.querySelector('[data-action="save-companion-appearance"]');
+        if (saveButton) saveButton.disabled = false;
+        return;
+    }
     if (target.dataset.secret) { setSessionApiKey(target.dataset.secret, target.value); return; }
     if (target.dataset.apiParamField) {
         const parameter = (getActiveApiProfile().text.extraParameters || []).find(item => item.id === target.closest('[data-api-param-id]')?.dataset.apiParamId);
@@ -4168,6 +4395,10 @@ function handleRootInput(event) {
 
 function handleRootChange(event) {
     const target = event.target;
+    if (target.dataset.companionAppearanceField) {
+        handleRootInput(event);
+        return;
+    }
     if (target.dataset.permissionCapability && target.type === 'checkbox') {
         const level = getSettings().moderation.permissionLevels.find(item => item.id === target.closest('[data-permission-id]')?.dataset.permissionId);
         if (level) level[target.dataset.permissionCapability] = target.checked;
