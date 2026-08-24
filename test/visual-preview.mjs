@@ -167,6 +167,7 @@ try {
 
     await desktop.locator('[data-action="me-section"][data-section="modules"]').click();
     if (!await desktop.locator('.tf-modules-page > .tf-world-layout-settings').count()) throw new Error('world home layout controls are missing from world settings');
+    if (await desktop.locator('.tf-orchestrator-card option[value="inherit"]').first().textContent() !== '跟随当前插件') throw new Error('inherited module API label does not identify the current plugin configuration');
     const firstWorldSettingsCard = await desktop.locator('.tf-modules-page > .tf-card').first().getAttribute('class');
     if (!firstWorldSettingsCard?.includes('tf-world-layout-settings')) throw new Error('world home layout controls are not the first world settings card');
     if (await desktop.locator('[data-action="test-module-probability"]').count()) throw new Error('obsolete 100-run probability test should not be rendered');
@@ -513,10 +514,20 @@ try {
     await mobile.screenshot({ path: 'preview-settings-mobile.png' });
     await mobile.locator('[data-action="me-section"][data-section="api"]').evaluate(node => node.click());
     await mobile.locator('[data-action="select-api-profile"]').selectOption('default-api-profile');
+    await mobile.locator('[data-api-setting="text.endpoint"]').fill(`${new URL(url).origin}/mock-api`);
+    const mobileModelInput = mobile.locator('[data-api-setting="text.model"]');
+    await mobileModelInput.focus();
+    await mobile.locator('[data-action="fetch-api-models"][data-api-kind="text"]').dispatchEvent('click');
+    const mobileModelCatalog = mobile.locator('[data-api-model-choice="text"]');
+    await mobileModelCatalog.waitFor({ state: 'visible' });
+    const mobileModelInputStillFocused = await mobileModelInput.evaluate(node => document.activeElement === node);
+    if (mobileModelInputStillFocused) throw new Error('mobile model loading left the manual input focused and kept the soft keyboard open');
+    await mobileModelCatalog.selectOption('story-model-large');
+    if (await mobile.locator('[data-api-setting="text.model"]').inputValue() !== 'story-model-large') throw new Error('mobile model catalog did not update the active API model');
     const mobileApiWidth = await mobile.locator('.tf-section-page').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
     if (mobileApiWidth.scroll > mobileApiWidth.client + 2) throw new Error(`mobile API model picker overflowed horizontally (${mobileApiWidth.scroll} > ${mobileApiWidth.client})`);
     if (await mobile.locator('[data-api-setting="text.model"]').count() !== 1) throw new Error('mobile API settings lost manual model input');
-    await mobile.screenshot({ path: 'preview-api-model-picker-mobile-v3.png', fullPage: true });
+    await mobile.screenshot({ path: 'preview-api-model-picker-mobile-v4.png', fullPage: true });
     await mobile.locator('[data-action="select-api-profile"]').selectOption('sillytavern-default');
     await mobile.locator('[data-action="me-section"][data-section="modules"]').evaluate(node => node.click());
     if (await mobile.locator('.tf-world-layout-options input').count() !== 2) throw new Error('mobile world settings lost the two home layouts');

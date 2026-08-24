@@ -1315,7 +1315,7 @@ function renderBuiltinPrompts() {
 
 function renderModuleApiOptions(selectedId) {
     const settings = getSettings();
-    return `<option value="inherit" ${selectedId === 'inherit' ? 'selected' : ''}>跟随当前 API 配置</option>${settings.apiProfiles.map(profile => `<option value="${escapeHtml(profile.id)}" ${selectedId === profile.id ? 'selected' : ''}>${escapeHtml(profile.name)}</option>`).join('')}`;
+    return `<option value="inherit" ${selectedId === 'inherit' ? 'selected' : ''}>跟随当前插件</option>${settings.apiProfiles.map(profile => `<option value="${escapeHtml(profile.id)}" ${selectedId === profile.id ? 'selected' : ''}>${escapeHtml(profile.name)}</option>`).join('')}`;
 }
 
 function formatTravelDuration(minutes) {
@@ -1888,7 +1888,17 @@ function renderApiModelPicker(kind, config, profile) {
     const busy = viewState.apiModelBusy.has(key);
     const listId = `tf-models-${key.replace(/[^a-z0-9_-]/gi, '-')}`;
     const label = kind === 'image' ? '生图模型' : '模型名称';
-    return `<div class="tf-api-model-field"><span>${label}</span><div><input list="${escapeHtml(listId)}" data-api-setting="${kind}.model" value="${escapeHtml(config.model)}" placeholder="可以手动输入模型名称" autocomplete="off"><button type="button" class="tf-secondary-button" data-action="fetch-api-models" data-api-kind="${kind}" ${busy ? 'disabled' : ''}>${busy ? '<span class="tf-spinner"></span>读取中' : `${icon('refresh')}读取模型`}</button></div><datalist id="${escapeHtml(listId)}">${models.map(model => `<option value="${escapeHtml(model)}"></option>`).join('')}</datalist><small>${models.length ? `已读取 ${models.length} 个模型；可从建议中选择，也可继续手动输入。` : '不会自动请求；点击“读取模型”时才访问一次当前 API 的 /models。'}</small></div>`;
+    const hasSelectedModel = models.includes(config.model);
+    const modelCatalog = models.length
+        ? `<label class="tf-api-model-catalog"><span>已读取模型</span><select data-api-model-choice="${kind}" aria-label="选择${label}"><option value="" ${hasSelectedModel ? '' : 'selected'}>选择一个模型（${models.length}）</option>${models.map(model => `<option value="${escapeHtml(model)}" ${config.model === model ? 'selected' : ''}>${escapeHtml(model)}</option>`).join('')}</select></label>`
+        : '';
+    return `<div class="tf-api-model-field"><span>${label}</span><div><input list="${escapeHtml(listId)}" data-api-setting="${kind}.model" value="${escapeHtml(config.model)}" placeholder="可以手动输入模型名称" autocomplete="off"><button type="button" class="tf-secondary-button" data-action="fetch-api-models" data-api-kind="${kind}" ${busy ? 'disabled' : ''}>${busy ? '<span class="tf-spinner"></span>读取中' : `${icon('refresh')}读取模型`}</button></div>${modelCatalog}<datalist id="${escapeHtml(listId)}">${models.map(model => `<option value="${escapeHtml(model)}"></option>`).join('')}</datalist><small>${models.length ? `已读取 ${models.length} 个模型；可直接选择，也可继续手动输入。` : '不会自动请求；点击“读取模型”时才访问一次当前 API 的 /models。'}</small></div>`;
+}
+
+function dismissApiModelKeyboard() {
+    const activeElement = document.activeElement;
+    if (activeElement && typeof activeElement.blur === 'function') activeElement.blur();
+    try { globalThis.navigator?.virtualKeyboard?.hide?.(); } catch { /* unsupported mobile browser */ }
 }
 
 function renderApiSettings() {
@@ -4577,6 +4587,7 @@ async function handleRootClick(event) {
         const profile = getActiveApiProfile();
         const key = `${profile.id}:${kind}`;
         if (viewState.apiModelBusy.has(key)) return;
+        dismissApiModelKeyboard();
         viewState.apiModelBusy.add(key);
         render({ preserveScroll: true });
         try {
@@ -4588,6 +4599,7 @@ async function handleRootClick(event) {
         } finally {
             viewState.apiModelBusy.delete(key);
             render({ preserveScroll: true });
+            dismissApiModelKeyboard();
         }
         return;
     }
@@ -5044,6 +5056,13 @@ function handleRootChange(event) {
         return;
     }
     if (target.dataset.action === 'select-api-profile') { setActiveApiProfile(target.value); return render(); }
+    if (target.dataset.apiModelChoice) {
+        const kind = target.dataset.apiModelChoice === 'image' ? 'image' : 'text';
+        if (!target.value) return;
+        updateApiConfig(kind, 'model', target.value);
+        dismissApiModelKeyboard();
+        return render({ preserveScroll: true });
+    }
     if (target.dataset.apiSetting) {
         const [kind, field] = target.dataset.apiSetting.split('.');
         const current = getApiConfig(kind)[field];

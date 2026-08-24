@@ -4151,6 +4151,9 @@ button.tf-avatar {
 .tf-api-model-field > div button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding-inline: 11px; white-space: nowrap; }
 .tf-api-model-field > div button svg { width: 15px; height: 15px; }
 .tf-api-model-field > small { color: var(--tf-muted); font-size: 9px; line-height: 1.45; }
+.tf-api-model-catalog { display: grid; gap: 5px; min-width: 0; }
+.tf-api-model-catalog > span { color: var(--tf-muted); font-size: 10px; }
+.tf-api-model-catalog select { width: 100%; min-width: 0; min-height: 38px; }
 
 .tf-form-grid input,
 .tf-form-grid select,
@@ -5449,7 +5452,8 @@ button.tf-avatar {
         grid-template-columns: 1fr;
     }
 
-    .tf-api-model-field > div { grid-template-columns: minmax(0, 1fr) auto; }
+    .tf-api-model-field > div { grid-template-columns: 1fr; }
+    .tf-api-model-field > div button { width: 100%; }
 
     .tf-form-grid .is-wide {
         grid-column: auto;
