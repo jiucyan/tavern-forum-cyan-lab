@@ -11366,3 +11366,180 @@ button.tf-avatar {
 @container (max-width: 390px) {
     #tavern-forum-root .tf-companion-v4[class*="is-device-"] .tf-pet-console { width: calc(100% - 4px); padding-inline: 13px; }
 }
+
+/* Feeding choreography v3 — the food is offered by hand, accepted, chewed and acknowledged. */
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-food-tray {
+    top: 68%;
+    left: 50%;
+    z-index: 3;
+    display: block;
+    width: 61px;
+    height: 8px;
+    margin: -4px 0 0 -31px;
+    border: 3px solid var(--pet-ink);
+    border-radius: 50% 50% 6px 6px;
+    background: color-mix(in srgb, var(--pet-screen) 72%, white);
+    box-shadow: inset 0 2px 0 rgb(255 255 255 / 35%), 0 3px 0 color-mix(in srgb, var(--pet-screen-deep) 68%, var(--pet-ink));
+    opacity: 0;
+    animation: tf-feed-tray-v3 2.6s steps(13, end) both;
+}
+
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-food-tray > b {
+    position: absolute;
+    top: 2px;
+    right: 52px;
+    display: block;
+    width: 42px;
+    height: 12px;
+    border: 3px solid var(--pet-ink);
+    border-right: 0;
+    border-radius: 7px 0 0 7px;
+    background: #d9a691;
+    box-shadow: inset 0 3px 0 #efc5ae;
+}
+
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-food-tray > em {
+    position: absolute;
+    top: 0;
+    right: 84px;
+    display: block;
+    width: 17px;
+    height: 18px;
+    border: 3px solid var(--pet-ink);
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--pet-case) 64%, #f4e9db);
+    box-shadow: inset 0 3px 0 rgb(255 255 255 / 25%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-food-offering {
+    top: 58%;
+    left: 50%;
+    z-index: 5;
+    opacity: 0;
+    animation: tf-food-present-v3 2.6s steps(13, end) both;
+}
+
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-food-offering em {
+    top: 3px;
+    right: auto;
+    bottom: auto;
+    left: 4px;
+    width: 7px;
+    height: 4px;
+    border: 0;
+    border-radius: 2px;
+    background: var(--tf-food-highlight, rgb(255 255 255 / 40%));
+    box-shadow: none;
+}
+
+#tavern-forum-root .tf-companion-v4.is-species-goldfish.is-action-feed :is(.tf-food-offering,.tf-food-tray) { left: 43%; }
+
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-food-crumb {
+    top: 58%;
+    left: 50%;
+    animation: tf-feed-crumb-v3 .68s steps(5, end) 1.06s both;
+    --tf-food-crumb-x: -12px;
+    --tf-food-crumb-y: 21px;
+}
+
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-food-crumb.is-two { animation-delay: 1.31s; --tf-food-crumb-x: 11px; --tf-food-crumb-y: 18px; }
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-food-crumb.is-three { animation-delay: 1.56s; --tf-food-crumb-x: -5px; --tf-food-crumb-y: 24px; }
+#tavern-forum-root .tf-companion-v4.is-species-goldfish.is-action-feed .tf-food-crumb { left: 43%; }
+
+/* One 2.6 second clock now drives food, posture, face, carried items and shadow. */
+#tavern-forum-root .tf-companion-page.tf-companion-v4.is-action-feed :is(.tf-pixel-body-rig,.tf-pixel-wearable-rig,.tf-pixel-carry-rig) {
+    animation: tf-feed-body-v4 2.6s steps(13, end) both;
+}
+
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-pixel-face-rig { animation: tf-feed-face-v4 2.6s steps(13, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-pet-character-shadow { animation: tf-feed-shadow-v3 2.6s steps(13, end) both; }
+
+#tavern-forum-root .tf-companion-v4.is-action-feed :is(.tf-pixel-eyes-open,.tf-pixel-eyes-happy,.tf-pixel-mouth-default,.tf-pixel-mouth-feed) { display: block; }
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-pixel-eyes-open { animation: tf-feed-eyes-open-v3 2.6s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-pixel-eyes-happy { animation: tf-feed-eyes-happy-v3 2.6s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-pixel-pupils { animation: tf-feed-pupils-v3 2.6s steps(13, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-pixel-mouth-default { animation: tf-feed-mouth-closed-v3 2.6s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-pixel-mouth-feed { animation: tf-feed-mouth-bites-v3 2.6s steps(13, end) both; }
+
+/* Satisfaction arrives after swallowing instead of sparkling during the first bite. */
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-pet-stars i { animation: tf-feed-satisfied-star-v3 .62s steps(4, end) 1.92s both; }
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-pet-stars i:nth-child(2) { animation-delay: 2.02s; }
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-pet-stars i:nth-child(3) { animation-delay: 2.1s; }
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-pet-stars i:nth-child(4) { animation-delay: 2.16s; }
+
+/* Species keep their personality, but appendages now perform one readable gesture rather than rapid loops. */
+#tavern-forum-root .tf-companion-v4.is-species-frog.is-action-feed .tf-pixel-legs { animation: tf-feed-fold-v3 2.6s steps(8, end) both; }
+#tavern-forum-root .tf-companion-v4.is-species-frog.is-action-feed .tf-pixel-cheeks { animation: tf-feed-cheeks-v3 2.6s steps(8, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-feed:is(.is-species-cat,.is-species-fox) .tf-pixel-tail { animation: tf-feed-tail-v3 2.6s steps(10, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-feed:is(.is-species-cat,.is-species-fox) .tf-pixel-legs { animation: tf-feed-paws-v3 2.6s steps(10, end) both; }
+#tavern-forum-root .tf-companion-v4.is-species-rabbit.is-action-feed .tf-pixel-paws { animation: tf-feed-paws-v3 2.6s steps(10, end) both; }
+#tavern-forum-root .tf-companion-v4.is-species-rabbit.is-action-feed .tf-pixel-nose { animation: tf-feed-nose-v3 2.6s steps(10, end) both; }
+#tavern-forum-root .tf-companion-v4.is-species-penguin.is-action-feed .tf-penguin-wing.is-left,
+#tavern-forum-root .tf-companion-v4.is-species-robo-bird.is-action-feed .tf-robo-wing.is-left { animation: tf-feed-hold-left-v3 2.6s steps(9, end) both; }
+#tavern-forum-root .tf-companion-v4.is-species-penguin.is-action-feed .tf-penguin-wing.is-right,
+#tavern-forum-root .tf-companion-v4.is-species-robo-bird.is-action-feed .tf-robo-wing.is-right { animation: tf-feed-hold-right-v3 2.6s steps(9, end) both; }
+#tavern-forum-root .tf-companion-v4.is-species-robo-bird.is-action-feed .tf-pixel-antenna { animation: tf-feed-scan-v3 2.6s steps(9, end) both; }
+#tavern-forum-root .tf-companion-v4.is-species-octopus.is-action-feed :is(.tf-octopus-arm.is-front-left,.tf-octopus-arm.is-front-mid) { animation: tf-feed-reach-left-v3 2.6s steps(9, end) both; }
+#tavern-forum-root .tf-companion-v4.is-species-octopus.is-action-feed .tf-octopus-arm.is-front-right { animation: tf-feed-reach-right-v3 2.6s steps(9, end) both; }
+#tavern-forum-root .tf-companion-v4.is-species-goldfish.is-action-feed .tf-betta-fin.is-pectoral { animation: tf-feed-fin-v3 2.6s steps(10, end) both; }
+#tavern-forum-root .tf-companion-v4.is-species-goldfish.is-action-feed .tf-pixel-tail { animation: tf-feed-fish-tail-v3 2.6s steps(10, end) both; }
+#tavern-forum-root .tf-companion-v4.is-species-soot.is-action-feed .tf-pixel-arms { animation: tf-feed-reach-left-v3 2.6s steps(9, end) both; }
+#tavern-forum-root .tf-companion-v4.is-species-soot.is-action-feed .tf-pixel-soot-fuzz { animation: tf-feed-fuzz-v3 2.6s steps(10, end) both; }
+
+#tavern-forum-root .tf-companion-v4.is-species-frog.is-action-feed .tf-food-species-fx { animation: tf-feed-tongue-v3 2.6s steps(13, end) both; }
+#tavern-forum-root .tf-companion-v4.is-species-robo-bird.is-action-feed .tf-food-species-fx { animation: tf-feed-scan-ring-v3 2.6s steps(10, end) both; }
+#tavern-forum-root .tf-companion-v4.is-species-octopus.is-action-feed .tf-food-species-fx,
+#tavern-forum-root .tf-companion-v4.is-species-goldfish.is-action-feed .tf-food-species-fx { animation: tf-feed-bubbles-v3 2.6s steps(10, end) both; }
+#tavern-forum-root .tf-companion-v4.is-species-soot.is-action-feed .tf-food-species-fx { animation: tf-feed-spark-v3 2.6s steps(10, end) both; }
+
+@keyframes tf-feed-tray-v3 {
+    0%,5% { opacity: 0; transform: translate(-145px,34px); }
+    12% { opacity: 1; transform: translate(-92px,15px); }
+    20%,62% { opacity: 1; transform: translate(-35px,0); }
+    69% { opacity: .82; transform: translate(-67px,9px); }
+    77%,100% { opacity: 0; transform: translate(-145px,30px); }
+}
+
+@keyframes tf-food-present-v3 {
+    0%,7% { opacity: 0; transform: translate(-145px,45px) scale(.82); }
+    14% { opacity: 1; transform: translate(-88px,31px) scale(.92); }
+    20%,31% { opacity: 1; transform: translate(-35px,25px) scale(1); }
+    39% { opacity: 1; transform: translate(-17px,11px) scale(1); }
+    46% { opacity: 1; transform: translate(0,0) scale(1); }
+    55% { opacity: 1; transform: translate(0,0) scale(.76); }
+    64% { opacity: 1; transform: translate(0,0) scale(.49); }
+    72% { opacity: .9; transform: translate(0,1px) scale(.22); }
+    77%,100% { opacity: 0; transform: translate(0,1px) scale(.08); }
+}
+
+@keyframes tf-feed-crumb-v3 { 0%,12% { opacity: 0; transform: translate(0) scale(.45); } 24%,52% { opacity: .88; } 100% { opacity: 0; transform: translate(var(--tf-food-crumb-x),var(--tf-food-crumb-y)) rotate(90deg) scale(.25); } }
+@keyframes tf-feed-body-v4 { 0%,14%,100% { transform: translate(0) scale(1); } 22%,34% { transform: translate(-2px,2px) scale(1.012,.988); } 43%,67% { transform: translateY(2px) scale(1.018,.982); } 50%,60% { transform: translateY(3px) scale(1.022,.978); } 76% { transform: translateY(1px) scale(1.012,.988); } 84% { transform: translateY(-2px) scale(.995,1.008); } 91% { transform: translateY(-4px) scale(.985,1.018); } 96% { transform: translateY(1px) scale(1.01,.99); } }
+@keyframes tf-feed-face-v4 { 0%,14%,100% { transform: translate(0); } 22%,35% { transform: translate(-2px,1px); } 44%,68% { transform: translateY(2px); } 52%,61% { transform: translate(1px,2px); } 78% { transform: translateY(1px); } 88%,94% { transform: translateY(-2px); } }
+@keyframes tf-feed-shadow-v3 { 0%,16%,100% { opacity: .7; transform: scaleX(1); } 26%,70% { opacity: .78; transform: translateX(-1px) scaleX(1.035); } 84%,94% { opacity: .62; transform: scaleX(.94); } }
+@keyframes tf-feed-eyes-open-v3 { 0%,78%,95%,100% { opacity: 1; } 79%,94% { opacity: 0; } }
+@keyframes tf-feed-eyes-happy-v3 { 0%,78%,95%,100% { opacity: 0; } 79%,94% { opacity: 1; } }
+@keyframes tf-feed-pupils-v3 { 0%,10%,100% { transform: translate(0); } 18%,32% { transform: translate(-2px,2px); } 40%,71% { transform: translateY(2px); } 78%,94% { transform: translateY(0); } }
+@keyframes tf-feed-mouth-closed-v3 { 0%,36%,80%,100% { opacity: 1; } 37%,79% { opacity: 0; } }
+@keyframes tf-feed-mouth-bites-v3 { 0%,36%,80%,100% { opacity: 0; transform: scale(1); } 37%,45%,53%,61%,69%,78% { opacity: 1; transform: scale(1); } 49%,57%,65%,73% { opacity: 1; transform: translateY(1px) scale(.82,1.16); } }
+@keyframes tf-feed-satisfied-star-v3 { 0% { opacity: 0; transform: translate(-50%,4px) scale(.35); } 35%,68% { opacity: 1; transform: translate(-50%,-12px) scale(1.15); } 100% { opacity: 0; transform: translate(-50%,-23px) scale(.55); } }
+@keyframes tf-feed-fold-v3 { 0%,18%,100% { transform: translateY(0) scaleX(1); } 28%,72% { transform: translateY(2px) scaleX(1.08); } 84%,92% { transform: translateY(-1px) scaleX(.98); } }
+@keyframes tf-feed-cheeks-v3 { 0%,34%,100% { opacity: .72; transform: scale(1); } 44%,52%,60%,68% { opacity: 1; transform: scale(1.12); } 48%,56%,64%,72% { opacity: .85; transform: scale(1.02); } 82%,94% { opacity: 1; transform: scale(1.15); } }
+@keyframes tf-feed-tail-v3 { 0%,16%,100% { transform: rotate(0); } 24%,72% { transform: rotate(-7deg) translateY(1px); } 42%,62% { transform: rotate(4deg); } 84%,94% { transform: rotate(10deg) translateY(-2px); } }
+@keyframes tf-feed-paws-v3 { 0%,30%,100% { transform: translate(0); } 38%,72% { transform: translate(-1px,-2px) rotate(-2deg); } 47%,57%,67% { transform: translate(1px,-1px) rotate(2deg); } 84%,94% { transform: translateY(-1px); } }
+@keyframes tf-feed-nose-v3 { 0%,34%,100% { transform: scaleX(1); } 44%,52%,60%,68% { transform: scaleX(.58) translateY(1px); } 48%,56%,64%,72% { transform: scaleX(1); } }
+@keyframes tf-feed-hold-left-v3 { 0%,28%,100% { transform: rotate(0); } 38%,74% { transform: rotate(-14deg) translate(2px,-2px); } 84%,94% { transform: rotate(-7deg) translateY(-1px); } }
+@keyframes tf-feed-hold-right-v3 { 0%,28%,100% { transform: rotate(0); } 38%,74% { transform: rotate(14deg) translate(-2px,-2px); } 84%,94% { transform: rotate(7deg) translateY(-1px); } }
+@keyframes tf-feed-scan-v3 { 0%,14%,100% { transform: rotate(0); filter: brightness(1); } 22%,34% { transform: rotate(-8deg); filter: brightness(1.55); } 42%,72% { transform: rotate(6deg); filter: brightness(1.2); } 84%,94% { filter: brightness(1.65); } }
+@keyframes tf-feed-reach-left-v3 { 0%,28%,100% { transform: rotate(0); } 38%,74% { transform: rotate(-15deg) translate(-2px,-3px); } 84%,94% { transform: rotate(-5deg) translateY(-1px); } }
+@keyframes tf-feed-reach-right-v3 { 0%,28%,100% { transform: rotate(0); } 38%,74% { transform: rotate(15deg) translate(2px,-3px); } 84%,94% { transform: rotate(5deg) translateY(-1px); } }
+@keyframes tf-feed-fin-v3 { 0%,24%,100% { transform: rotate(-4deg) scale(.96); } 36%,72% { transform: rotate(9deg) scale(1.06); } 48%,64% { transform: rotate(-2deg) scale(.98); } 84%,94% { transform: rotate(12deg) scale(1.08); } }
+@keyframes tf-feed-fish-tail-v3 { 0%,18%,100% { transform: skewY(0) scaleX(1); } 30%,70% { transform: skewY(-6deg) scaleX(.9); } 46%,62% { transform: skewY(5deg) scaleX(.96); } 84%,94% { transform: skewY(8deg) scaleX(1.04); } }
+@keyframes tf-feed-fuzz-v3 { 0%,30%,100% { transform: scale(1); } 40%,72% { transform: scale(1.04,.96) translateY(1px); } 48%,58%,68% { transform: scale(.98,1.04); } 84%,94% { transform: scale(1.08,.94) translateY(-1px); } }
+@keyframes tf-feed-tongue-v3 { 0%,38%,58%,100% { opacity: 0; transform: scaleX(0); } 43%,50% { opacity: .9; transform: scaleX(.72); } 54% { opacity: .8; transform: scaleX(.2); } }
+@keyframes tf-feed-scan-ring-v3 { 0%,20%,76%,100% { opacity: 0; transform: scale(.35); } 30%,66% { opacity: .6; transform: scale(1.5); } }
+@keyframes tf-feed-bubbles-v3 { 0%,28%,78%,100% { opacity: 0; transform: translateY(7px) scale(.35); } 40%,68% { opacity: .68; transform: translateY(-9px) scale(1); } }
+@keyframes tf-feed-spark-v3 { 0%,34%,78%,100% { opacity: 0; transform: scale(.3) rotate(0); } 44%,70% { opacity: .82; transform: scale(1.15) rotate(90deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+    #tavern-forum-root .tf-companion-v4.is-action-feed :is(.tf-food-tray,.tf-food-offering,.tf-food-crumb,.tf-food-species-fx,.tf-pixel-body-rig,.tf-pixel-face-rig,.tf-pixel-pupils,.tf-pixel-mouth-feed,.tf-pet-character-shadow) { animation: none !important; }
+}

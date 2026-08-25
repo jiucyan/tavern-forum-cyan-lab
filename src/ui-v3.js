@@ -202,7 +202,7 @@ const COMPANION_CARE_ACTIONS = Object.freeze([
     { id: 'dress', symbol: '✦', label: '换装' },
 ]);
 const COMPANION_ACTION_DURATIONS = Object.freeze({
-    feed: 2300,
+    feed: 2600,
     pet: 2300,
     play: 2700,
     brush: 2200,
@@ -1673,7 +1673,7 @@ function renderCompanionAppV3(data) {
     deviceOptions = `${appearanceControls}${environmentControls}${deviceOptions}`;
     const stat = (label, value) => `<div><span>${label}<b>${Number(value)}</b></span><progress max="100" value="${Number(value)}"></progress></div>`;
     const lastFood = COMPANION_FOODS.find(item => item.id === companion.lastFood) || COMPANION_FOODS[0];
-    const animationLayer = `<span class="tf-pet-animation-layer" aria-hidden="true"><span class="tf-feed-drop" data-food-animation="${escapeHtml(lastFood.id)}"><i class="tf-food-offering"><b>${escapeHtml(lastFood.symbol)}</b><em></em></i><i class="tf-food-crumb is-one"></i><i class="tf-food-crumb is-two"></i><i class="tf-food-crumb is-three"></i><i class="tf-food-species-fx"></i></span><span class="tf-pet-hearts"><i>♥</i><i>♥</i><i>♥</i><i>♥</i></span><span class="tf-play-ball">◆</span><span class="tf-play-trail"><i></i><i></i><i></i></span><span class="tf-sleep-cloud"><i>Z</i><i>z</i><i>z</i></span><span class="tf-touch-rings"><i></i><i></i><i></i></span><span class="tf-pet-stars"><i>✦</i><i>·</i><i>✦</i><i>·</i></span><span class="tf-care-action-fx"><i></i><i></i><i></i></span><span class="tf-betta-bubbles"><i></i><i></i><i></i><i></i><i></i><i></i></span></span>`;
+    const animationLayer = `<span class="tf-pet-animation-layer" aria-hidden="true"><span class="tf-feed-drop" data-food-animation="${escapeHtml(lastFood.id)}"><i class="tf-food-tray"><b></b><em></em></i><i class="tf-food-offering"><b>${escapeHtml(lastFood.symbol)}</b><em></em></i><i class="tf-food-crumb is-one"></i><i class="tf-food-crumb is-two"></i><i class="tf-food-crumb is-three"></i><i class="tf-food-species-fx"></i></span><span class="tf-pet-hearts"><i>♥</i><i>♥</i><i>♥</i><i>♥</i></span><span class="tf-play-ball">◆</span><span class="tf-play-trail"><i></i><i></i><i></i></span><span class="tf-sleep-cloud"><i>Z</i><i>z</i><i>z</i></span><span class="tf-touch-rings"><i></i><i></i><i></i></span><span class="tf-pet-stars"><i>✦</i><i>·</i><i>✦</i><i>·</i></span><span class="tf-care-action-fx"><i></i><i></i><i></i></span><span class="tf-betta-bubbles"><i></i><i></i><i></i><i></i><i></i><i></i></span></span>`;
     const weatherLayer = `<span class="tf-pet-weather" aria-hidden="true"><span class="tf-weather-sun"><i></i></span><span class="tf-weather-moon">☾<i>·</i><i>·</i><i>·</i></span><span class="tf-weather-cloud"><i></i><i></i></span><span class="tf-weather-rain">${'<i></i>'.repeat(8)}</span><span class="tf-weather-snow"><i>✣</i><i>·</i><i>✣</i><i>·</i><i>✣</i><i>·</i></span><span class="tf-weather-wind"><i></i><i></i><i></i><b>◆</b></span></span>`;
     const habitatLayer = `<span class="tf-pet-habitat-layer" aria-hidden="true"><i class="is-backdrop"></i><i class="is-landmark"></i><i class="is-detail-one"></i><i class="is-detail-two"></i><i class="is-foreground"></i></span>`;
     const tripSchedule = activeTrip ? `<section class="tf-companion-trip-schedule"><header><span>${icon('message')}预生成行程</span><b>${deliveredSignals}/${tripSignals.length} 则来信</b></header><progress max="100" value="${tripProgress}"></progress><footer><span>预计 ${formatTimeUntil(activeTrip.returnAt)} 后返家</span><small>消息按时间在本地释放，不再调用 API</small></footer></section>` : '';

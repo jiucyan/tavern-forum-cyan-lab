@@ -341,25 +341,45 @@ try {
     const callsAfterPet = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
     if (callsAfterPet !== callsBeforePet) throw new Error('local companion care unexpectedly called the API');
     if (await desktop.locator('.tf-feed-drop').getAttribute('data-food-animation') !== 'berry') throw new Error('feed animation did not use the selected food');
-    if (!await desktop.locator('.tf-food-offering').count() || await desktop.locator('.tf-food-crumb').count() !== 3) throw new Error('feed sequence is missing its offering or bite crumbs');
-    const feedAnimationName = await desktop.locator('.tf-food-offering').evaluate(node => getComputedStyle(node).animationName);
-    if (!feedAnimationName.includes('tf-food-offer')) throw new Error(`food offering animation is inactive: ${feedAnimationName}`);
+    if (!await desktop.locator('.tf-food-tray').count() || !await desktop.locator('.tf-food-offering').count() || await desktop.locator('.tf-food-crumb').count() !== 3) throw new Error('feed sequence is missing its hand, tray, offering or bite crumbs');
+    const feedSequence = await desktop.locator('.tf-feed-drop').evaluate(node => {
+        const read = selector => {
+            const style = getComputedStyle(node.querySelector(selector));
+            return { name: style.animationName, duration: style.animationDuration };
+        };
+        return { tray: read('.tf-food-tray'), food: read('.tf-food-offering') };
+    });
+    if (!feedSequence.tray.name.includes('tf-feed-tray-v3') || !feedSequence.food.name.includes('tf-food-present-v3')) throw new Error(`food presentation choreography is inactive: ${JSON.stringify(feedSequence)}`);
+    if (feedSequence.tray.duration !== '2.6s' || feedSequence.food.duration !== '2.6s') throw new Error(`food and tray timelines are not synchronized: ${JSON.stringify(feedSequence)}`);
     const feedMotionRig = await desktop.locator('.tf-pet-sprite-control').evaluate(node => ({
         control: getComputedStyle(node).animationName,
         body: getComputedStyle(node.querySelector('.tf-pixel-body-rig')).animationName,
         face: getComputedStyle(node.querySelector('.tf-pixel-face-rig')).animationName,
         hasShadow: Boolean(node.querySelector('.tf-pet-character-shadow')),
     }));
-    if (feedMotionRig.control !== 'none' || !feedMotionRig.body.includes('tf-living-feed-body-v3') || !feedMotionRig.face.includes('tf-living-feed-face') || !feedMotionRig.hasShadow) throw new Error(`companion feed still behaves as one moving image: ${JSON.stringify(feedMotionRig)}`);
+    if (feedMotionRig.control !== 'none' || !feedMotionRig.body.includes('tf-feed-body-v4') || !feedMotionRig.face.includes('tf-feed-face-v4') || !feedMotionRig.hasShadow) throw new Error(`companion feed still behaves as one moving image: ${JSON.stringify(feedMotionRig)}`);
     const feedFaceFrames = await desktop.locator('.tf-pet-sprite-control').evaluate(node => ({
         open: getComputedStyle(node.querySelector('.tf-pixel-eyes-open')).animationName,
         happy: getComputedStyle(node.querySelector('.tf-pixel-eyes-happy')).animationName,
         pupils: getComputedStyle(node.querySelector('.tf-pixel-pupils')).animationName,
+        closedMouth: getComputedStyle(node.querySelector('.tf-pixel-mouth-default')).animationName,
         mouth: getComputedStyle(node.querySelector('.tf-pixel-mouth-feed')).animationName,
     }));
-    if (!feedFaceFrames.open.includes('tf-expression-feed-open') || !feedFaceFrames.happy.includes('tf-expression-feed-happy') || !feedFaceFrames.pupils.includes('tf-expression-pupils-down') || !feedFaceFrames.mouth.includes('tf-living-chew')) throw new Error(`feeding has no facial performance: ${JSON.stringify(feedFaceFrames)}`);
-    await desktop.waitForTimeout(620);
-    await desktop.locator('.tf-pet-screen').screenshot({ path: 'preview-companion-feed-v2.png' });
+    if (!feedFaceFrames.open.includes('tf-feed-eyes-open-v3') || !feedFaceFrames.happy.includes('tf-feed-eyes-happy-v3') || !feedFaceFrames.pupils.includes('tf-feed-pupils-v3') || !feedFaceFrames.closedMouth.includes('tf-feed-mouth-closed-v3') || !feedFaceFrames.mouth.includes('tf-feed-mouth-bites-v3')) throw new Error(`feeding has no staged facial performance: ${JSON.stringify(feedFaceFrames)}`);
+    await desktop.waitForTimeout(1200);
+    await desktop.locator('.tf-pet-screen').screenshot({ path: 'preview-companion-feed-v3.png' });
+    const feedingSpecies = [
+        ['frog', '.tf-pixel-legs'], ['cat', '.tf-pixel-tail'], ['rabbit', '.tf-pixel-paws'], ['penguin', '.tf-penguin-wing.is-left'],
+        ['robo-bird', '.tf-pixel-antenna'], ['octopus', '.tf-octopus-arm.is-front-left'], ['goldfish', '.tf-betta-fin.is-pectoral'], ['soot', '.tf-pixel-arms'], ['fox', '.tf-pixel-tail'],
+    ];
+    for (const [speciesId, anatomySelector] of feedingSpecies) {
+        await desktop.locator(`[data-action="choose-companion-species"][data-species-id="${speciesId}"]`).click();
+        await desktop.locator('[data-action="companion-care"][data-care="feed"]').last().click();
+        await desktop.locator('[data-action="companion-feed-food"][data-food-id="berry"]').click();
+        const anatomyMotion = await desktop.locator('.tf-pet-sprite-control').evaluate((node, selector) => getComputedStyle(node.querySelector(selector)).animationName, anatomySelector);
+        if (anatomyMotion === 'none') throw new Error(`${speciesId} has no species-aware feeding anatomy`);
+        if (!await desktop.locator('.tf-food-tray').count()) throw new Error(`${speciesId} lost the shared hand-fed sequence`);
+    }
     if (await desktop.locator('[data-action="choose-companion-species"][data-species-id="fox"]').getAttribute('aria-pressed') !== 'true') throw new Error('pixel companion selection did not update species');
     if (!await desktop.locator('.tf-companion-v3.is-action-feed .tf-feed-drop').isVisible()) throw new Error('feed animation did not activate');
     await desktop.locator('[data-action="companion-care"][data-care="pet"]').first().click();
