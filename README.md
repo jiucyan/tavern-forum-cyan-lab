@@ -181,4 +181,4 @@ npm run test:visual
 
 发布版本遵循 [Semantic Versioning](https://semver.org/)；`manifest.json` 是扩展版本的发布基准，`package.json` 与公开文档必须保持一致。数据结构版本独立递增，不与扩展版本混用。
 
-项目采用 MIT License。当前扩展版本为 `0.11.0-beta.1`，数据结构版本为 `12`。
+项目采用 MIT License。当前扩展版本为 `0.11.0-beta`，数据结构版本为 `12`。
