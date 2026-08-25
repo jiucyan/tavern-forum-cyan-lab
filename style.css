@@ -160,7 +160,7 @@
 #tavern-forum-root .tf-pixel-pet:not(.is-mini).is-kind-robo-bird .tf-robo-wing.is-left { animation: tf-robo-left-wing 3.1s steps(4, end) infinite; }
 #tavern-forum-root .tf-pixel-pet:not(.is-mini).is-kind-robo-bird .tf-robo-wing.is-right { animation: tf-robo-right-wing 3.1s steps(4, end) .16s infinite; }
 #tavern-forum-root .tf-pixel-pet:not(.is-mini).is-kind-robo-bird .tf-pixel-tail { transform-origin: 50% 10%; animation: tf-robo-tail 2.5s steps(3, end) infinite; }
-#tavern-forum-root .tf-pixel-pet:not(.is-mini).is-kind-robo-bird .tf-pixel-eyes-open { animation: tf-robo-eye-pulse 2.2s steps(3, end) infinite; }
+#tavern-forum-root :where(.tf-pixel-pet:not(.is-mini).is-kind-robo-bird) .tf-pixel-eyes-open { animation: tf-robo-eye-pulse 2.2s steps(3, end) infinite; }
 #tavern-forum-root .tf-pixel-pet:not(.is-mini).is-kind-octopus .tf-octopus-arm { transform-box: fill-box; transform-origin: 50% 22%; }
 #tavern-forum-root .tf-pixel-pet:not(.is-mini).is-kind-octopus .tf-octopus-arm.is-left { animation: tf-octopus-arm-left 3.2s steps(4, end) infinite; }
 #tavern-forum-root .tf-pixel-pet:not(.is-mini).is-kind-octopus .tf-octopus-arm.is-right { animation: tf-octopus-arm-right 3.2s steps(4, end) .22s infinite; }
@@ -173,7 +173,7 @@
 #tavern-forum-root .tf-pixel-pet:not(.is-mini).is-kind-goldfish .tf-betta-fin.is-ventral { transform-origin: 25% 10%; animation: tf-betta-ventral 2.35s steps(5, end) .18s infinite; }
 #tavern-forum-root .tf-pixel-pet:not(.is-mini).is-kind-goldfish .tf-betta-fin.is-pectoral { transform-origin: 20% 50%; animation: tf-betta-pectoral 1.65s steps(4, end) infinite; }
 #tavern-forum-root .tf-pixel-pet:not(.is-mini).is-kind-soot .tf-pixel-soot-fuzz { transform-origin: 50% 60%; animation: tf-soot-fuzz 2.2s steps(3, end) infinite; }
-#tavern-forum-root .tf-pixel-pet:not(.is-mini).is-kind-frog .tf-pixel-eyes { animation: tf-pet-blink 4.6s steps(2, end) infinite; }
+#tavern-forum-root :where(.tf-pixel-pet:not(.is-mini).is-kind-frog) .tf-pixel-eyes-open { animation: tf-pet-blink 4.6s steps(2, end) infinite; }
 #tavern-forum-root .tf-companion-page.is-action-pet.is-species-cat .tf-pixel-tail,
 #tavern-forum-root .tf-companion-page.is-action-play.is-species-fox .tf-pixel-tail { animation-duration: .5s; }
 #tavern-forum-root .tf-companion-page.is-action-play.is-species-rabbit .tf-pixel-ears { animation-duration: .45s; }
@@ -10495,11 +10495,11 @@ button.tf-avatar {
 
 #tavern-forum-root .tf-companion-v4 .tf-pixel-body-rig { transform-origin: 50% 82%; animation: tf-living-idle-body 5.8s steps(1, end) infinite; }
 #tavern-forum-root .tf-companion-v4 .tf-pixel-face-rig { transform-origin: 50% 66%; animation: tf-living-attention 7.2s steps(1, end) infinite; }
-#tavern-forum-root .tf-companion-v4 .tf-pixel-pet:not(.is-mini):is(.is-kind-frog,.is-kind-cat,.is-kind-fox,.is-kind-rabbit,.is-kind-penguin,.is-kind-octopus,.is-kind-goldfish,.is-kind-soot,.is-kind-mystery) .tf-pixel-eyes-open {
+#tavern-forum-root .tf-companion-v4 :where(.tf-pixel-pet:not(.is-mini):is(.is-kind-frog,.is-kind-cat,.is-kind-fox,.is-kind-rabbit,.is-kind-penguin,.is-kind-octopus,.is-kind-goldfish,.is-kind-soot,.is-kind-mystery)) .tf-pixel-eyes-open {
     transform-origin: 50% 70%;
     animation: tf-living-blink 6.4s steps(1, end) infinite;
 }
-#tavern-forum-root .tf-companion-v4 .tf-pixel-pet:not(.is-mini).is-kind-robo-bird .tf-pixel-eyes-open {
+#tavern-forum-root .tf-companion-v4 :where(.tf-pixel-pet:not(.is-mini).is-kind-robo-bird) .tf-pixel-eyes-open {
     transform-origin: 50% 70%;
     animation: tf-living-blink 6.4s steps(1, end) infinite, tf-robo-eye-pulse 2.2s steps(3, end) infinite;
 }
@@ -10615,6 +10615,186 @@ button.tf-avatar {
     #tavern-forum-root .tf-companion-v4 .tf-pixel-eyes,
     #tavern-forum-root .tf-companion-v4 .tf-pixel-mouth,
     #tavern-forum-root .tf-companion-v4 .tf-pet-character-shadow {
+        animation: none !important;
+    }
+}
+
+/* Companion performance v3: visible facial frames, pupil tracking and articulated species motion. */
+#tavern-forum-root .tf-companion-v4 .tf-pixel-pupils,
+#tavern-forum-root .tf-companion-v4 .tf-pixel-wearable-rig,
+#tavern-forum-root .tf-companion-v4 .tf-pixel-carry-rig {
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+#tavern-forum-root .tf-companion-v4 .tf-pixel-pupils { animation: tf-expression-idle-pupils 7.2s steps(1, end) infinite; }
+#tavern-forum-root .tf-companion-v4 .tf-pixel-mouth-default { animation: tf-expression-idle-mouth 5.8s steps(1, end) infinite; }
+#tavern-forum-root .tf-companion-v4 :is(.tf-pixel-wearable-rig,.tf-pixel-carry-rig) { transform-origin: 50% 82%; animation: tf-living-idle-body 5.8s steps(1, end) infinite; }
+#tavern-forum-root .tf-companion-v4.is-mood-hungry :is(.tf-pixel-wearable-rig,.tf-pixel-carry-rig) { animation: tf-living-hungry-body 3.8s steps(1, end) infinite; }
+#tavern-forum-root .tf-companion-v4.is-mood-sleepy :is(.tf-pixel-wearable-rig,.tf-pixel-carry-rig) { animation: tf-living-sleepy-body 4.8s steps(1, end) infinite; }
+#tavern-forum-root .tf-companion-v4.is-mood-joyful :is(.tf-pixel-wearable-rig,.tf-pixel-carry-rig) { animation: tf-living-joyful-body 3.2s steps(1, end) infinite; }
+
+/* An active interaction owns the face frames. No action is represented by one permanent smile. */
+#tavern-forum-root .tf-companion-v4:is(.is-action-feed,.is-action-pet,.is-action-play,.is-action-rest,.is-action-brush,.is-action-dance,.is-action-train,.is-action-hide,.is-action-talk,.is-action-dress) :is(.tf-pixel-eyes-open,.tf-pixel-eyes-happy,.tf-pixel-eyes-sleep,.tf-pixel-mouth-default,.tf-pixel-mouth-feed,.tf-pixel-mouth-sleep) {
+    display: none;
+    opacity: 0;
+}
+
+/* Feed: watch the food, chew, then briefly smile in satisfaction. */
+#tavern-forum-root .tf-companion-v4.is-action-feed :is(.tf-pixel-eyes-open,.tf-pixel-eyes-happy,.tf-pixel-mouth-feed) { display: block; }
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-pixel-eyes-open { animation: tf-expression-feed-open 2.3s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-pixel-eyes-happy { animation: tf-expression-feed-happy 2.3s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-pixel-pupils { animation: tf-expression-pupils-down 2.3s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-feed .tf-pixel-mouth-feed { animation: tf-expression-frame-visible 2.3s steps(1, end) both, tf-living-chew .34s steps(2, end) .55s 4; }
+
+/* Pet: curious at first, eyes soften into a smile, then reopen. */
+#tavern-forum-root .tf-companion-v4.is-action-pet :is(.tf-pixel-eyes-open,.tf-pixel-eyes-happy,.tf-pixel-mouth-default) { display: block; }
+#tavern-forum-root .tf-companion-v4.is-action-pet .tf-pixel-eyes-open { animation: tf-expression-soft-open 2.3s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-pet .tf-pixel-eyes-happy { animation: tf-expression-soft-happy 2.3s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-pet .tf-pixel-pupils { animation: tf-expression-pupils-soft 2.3s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-pet .tf-pixel-mouth-default { opacity: 1; animation: tf-expression-pet-mouth 2.3s steps(1, end) both; }
+
+/* Play: eyes track the moving toy and the mouth alternates between focus and excitement. */
+#tavern-forum-root .tf-companion-v4.is-action-play :is(.tf-pixel-eyes-open,.tf-pixel-mouth-default,.tf-pixel-mouth-feed) { display: block; }
+#tavern-forum-root .tf-companion-v4.is-action-play .tf-pixel-eyes-open { opacity: 1; animation: tf-expression-play-eyes 2.7s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-play .tf-pixel-pupils { animation: tf-expression-pupils-chase 1.35s steps(1, end) 2; }
+#tavern-forum-root .tf-companion-v4.is-action-play .tf-pixel-mouth-default { animation: tf-expression-play-mouth-closed 2.7s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-play .tf-pixel-mouth-feed { animation: tf-expression-play-mouth-open 2.7s steps(1, end) both; }
+
+/* Rest: eyes and mouth switch to their dedicated sleep frames. */
+#tavern-forum-root .tf-companion-v4.is-action-rest :is(.tf-pixel-eyes-sleep,.tf-pixel-mouth-sleep) { display: block; opacity: 1; }
+
+/* Brush alternates between alert and relaxed; dance alternates open and smiling frames. */
+#tavern-forum-root .tf-companion-v4.is-action-brush :is(.tf-pixel-eyes-open,.tf-pixel-eyes-sleep,.tf-pixel-mouth-default) { display: block; }
+#tavern-forum-root .tf-companion-v4.is-action-brush .tf-pixel-eyes-open { animation: tf-expression-brush-open 2.2s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-brush .tf-pixel-eyes-sleep { animation: tf-expression-brush-relaxed 2.2s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-brush .tf-pixel-mouth-default { opacity: 1; }
+#tavern-forum-root .tf-companion-v4.is-action-dance :is(.tf-pixel-eyes-open,.tf-pixel-eyes-happy,.tf-pixel-mouth-default,.tf-pixel-mouth-feed) { display: block; }
+#tavern-forum-root .tf-companion-v4.is-action-dance .tf-pixel-eyes-open { animation: tf-expression-dance-open 2.4s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-dance .tf-pixel-eyes-happy { animation: tf-expression-dance-happy 2.4s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-dance .tf-pixel-mouth-default { animation: tf-expression-dance-mouth-a 2.4s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-dance .tf-pixel-mouth-feed { animation: tf-expression-dance-mouth-b 2.4s steps(1, end) both; }
+
+/* Train is focused, hide peeks sideways, talk uses real mouth frames, dress ends proudly. */
+#tavern-forum-root .tf-companion-v4.is-action-train :is(.tf-pixel-eyes-open,.tf-pixel-mouth-default) { display: block; opacity: 1; }
+#tavern-forum-root .tf-companion-v4.is-action-train .tf-pixel-eyes-open { transform-origin: center; animation: tf-expression-focus-eyes 2.3s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-train .tf-pixel-pupils { animation: tf-expression-pupils-focus .75s steps(1, end) 3; }
+#tavern-forum-root .tf-companion-v4.is-action-train .tf-pixel-mouth-default { animation: tf-expression-focus-mouth 2.3s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-hide :is(.tf-pixel-eyes-open,.tf-pixel-mouth-default) { display: block; opacity: 1; }
+#tavern-forum-root .tf-companion-v4.is-action-hide .tf-pixel-eyes-open { transform-origin: center; animation: tf-expression-peek-eyes 2.4s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-hide .tf-pixel-pupils { animation: tf-expression-pupils-peek 2.4s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-talk :is(.tf-pixel-eyes-open,.tf-pixel-mouth-default,.tf-pixel-mouth-feed) { display: block; }
+#tavern-forum-root .tf-companion-v4.is-action-talk .tf-pixel-eyes-open { opacity: 1; animation: tf-expression-talk-eyes 2.3s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-talk .tf-pixel-pupils { animation: tf-expression-pupils-talk 2.3s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-talk .tf-pixel-mouth-default { animation: tf-expression-talk-mouth-a .46s steps(1, end) 5; }
+#tavern-forum-root .tf-companion-v4.is-action-talk .tf-pixel-mouth-feed { animation: tf-expression-talk-mouth-b .46s steps(1, end) 5; }
+#tavern-forum-root .tf-companion-v4.is-action-dress :is(.tf-pixel-eyes-open,.tf-pixel-eyes-happy,.tf-pixel-mouth-default,.tf-pixel-mouth-feed) { display: block; }
+#tavern-forum-root .tf-companion-v4.is-action-dress .tf-pixel-eyes-open { animation: tf-expression-dress-open 2.1s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-dress .tf-pixel-eyes-happy { animation: tf-expression-dress-happy 2.1s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-dress .tf-pixel-mouth-default { animation: tf-expression-dress-mouth-a 2.1s steps(1, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-dress .tf-pixel-mouth-feed { animation: tf-expression-dress-mouth-b 2.1s steps(1, end) both; }
+
+/* Body, carried kit and wearables share one center of mass. */
+#tavern-forum-root .tf-companion-v4.is-action-feed :is(.tf-pixel-body-rig,.tf-pixel-wearable-rig,.tf-pixel-carry-rig) { animation: tf-living-feed-body-v3 2.3s steps(8, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-pet :is(.tf-pixel-body-rig,.tf-pixel-wearable-rig,.tf-pixel-carry-rig) { animation: tf-living-nuzzle-body-v3 2.3s steps(8, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-play :is(.tf-pixel-body-rig,.tf-pixel-wearable-rig,.tf-pixel-carry-rig) { animation: tf-living-play-body-v3 2.7s steps(10, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-rest :is(.tf-pixel-body-rig,.tf-pixel-wearable-rig,.tf-pixel-carry-rig) { animation: tf-living-rest-body 3.4s steps(4, end) infinite; }
+#tavern-forum-root .tf-companion-v4.is-action-brush :is(.tf-pixel-body-rig,.tf-pixel-wearable-rig,.tf-pixel-carry-rig) { animation: tf-living-brush-body 2.2s steps(7, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-dance :is(.tf-pixel-body-rig,.tf-pixel-wearable-rig,.tf-pixel-carry-rig) { animation: tf-living-dance-body-v3 2.4s steps(10, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-train :is(.tf-pixel-body-rig,.tf-pixel-wearable-rig,.tf-pixel-carry-rig) { animation: tf-living-train-body-v3 2.3s steps(9, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-hide :is(.tf-pixel-body-rig,.tf-pixel-wearable-rig,.tf-pixel-carry-rig) { animation: tf-living-hide-body-v3 2.4s steps(8, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-talk :is(.tf-pixel-body-rig,.tf-pixel-wearable-rig,.tf-pixel-carry-rig) { animation: tf-living-talk-body-v3 2.3s steps(9, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-dress :is(.tf-pixel-body-rig,.tf-pixel-wearable-rig,.tf-pixel-carry-rig) { animation: tf-living-dress-body 2.1s steps(7, end) both; }
+
+/* Rabbit motion is intentionally obvious because long ears and paws carry its personality. */
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-rabbit .tf-rabbit-ear.is-left { animation: tf-rabbit-play-ear-left .68s steps(4, end) 4; }
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-rabbit .tf-rabbit-ear.is-right { animation: tf-rabbit-play-ear-right .68s steps(4, end) .09s 4; }
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-rabbit .tf-pixel-paws { animation: tf-rabbit-play-paws .34s steps(2, end) 8; }
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-rabbit .tf-pixel-nose { animation: tf-rabbit-play-nose .24s steps(2, end) 10; }
+#tavern-forum-root .tf-companion-v4.is-action-pet.is-species-rabbit .tf-rabbit-ear.is-left { animation: tf-rabbit-pet-ear-left 2.3s steps(7, end) both; }
+#tavern-forum-root .tf-companion-v4.is-action-pet.is-species-rabbit .tf-rabbit-ear.is-right { animation: tf-rabbit-pet-ear-right 2.3s steps(7, end) both; }
+
+/* Other species answer play with their own anatomy instead of sharing one bounce. */
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-frog .tf-pixel-legs { animation: tf-species-frog-legs .34s steps(2, end) 8; }
+#tavern-forum-root .tf-companion-v4.is-action-play:is(.is-species-cat,.is-species-fox) .tf-pixel-tail { animation: tf-species-tail-play .52s steps(4, end) 5; }
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-fox .tf-fox-ear.is-left { animation: tf-species-ear-left .72s steps(4, end) 4; }
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-fox .tf-fox-ear.is-right { animation: tf-species-ear-right .72s steps(4, end) .08s 4; }
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-penguin .tf-penguin-wing.is-left { animation: tf-species-wing-left .48s steps(4, end) 6; }
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-penguin .tf-penguin-wing.is-right { animation: tf-species-wing-right .48s steps(4, end) 6; }
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-robo-bird .tf-robo-wing { animation: tf-species-wing-left .42s steps(4, end) 7; }
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-robo-bird .tf-pixel-antenna { animation: tf-species-robo-antenna .38s steps(3, end) 7; }
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-octopus .tf-octopus-arm.is-left,
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-octopus .tf-octopus-arm.is-front-right { animation: tf-species-tentacle-left .48s steps(4, end) 6; }
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-octopus .tf-octopus-arm.is-right,
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-octopus .tf-octopus-arm.is-front-left { animation: tf-species-tentacle-right .48s steps(4, end) 6; }
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-goldfish .tf-pixel-tail { animation: tf-species-fish-tail .4s steps(4, end) 7; }
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-goldfish .tf-betta-fin { animation: tf-species-fish-fin .46s steps(4, end) 6; }
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-soot .tf-pixel-legs { animation: tf-species-soot-feet .22s steps(2, end) 12; }
+#tavern-forum-root .tf-companion-v4.is-action-play.is-species-soot .tf-pixel-arms { animation: tf-species-soot-arms .44s steps(4, end) 6; }
+
+@keyframes tf-expression-idle-pupils { 0%,22%,56%,100% { transform: translate(0); } 28%,36% { transform: translateX(-1px); } 42%,50% { transform: translateX(1px); } 74%,80% { transform: translateY(-1px); } }
+@keyframes tf-expression-idle-mouth { 0%,42%,58%,100% { transform: translateY(0); } 48%,52% { transform: translateY(1px) scaleX(.94); } }
+@keyframes tf-expression-frame-visible { 0%,100% { opacity: 1; } }
+@keyframes tf-expression-feed-open { 0%,68% { opacity: 1; transform: scaleY(1); } 69%,88% { opacity: 0; } 89%,100% { opacity: 1; } }
+@keyframes tf-expression-feed-happy { 0%,68%,89%,100% { opacity: 0; } 69%,88% { opacity: 1; } }
+@keyframes tf-expression-pupils-down { 0%,16%,100% { transform: translate(0); } 25%,63% { transform: translateY(2px); } 40%,50% { transform: translate(-1px,2px); } 72%,88% { transform: translateY(0); } }
+@keyframes tf-expression-soft-open { 0%,14%,86%,100% { opacity: 1; } 15%,85% { opacity: 0; } }
+@keyframes tf-expression-soft-happy { 0%,14%,86%,100% { opacity: 0; } 15%,85% { opacity: 1; } }
+@keyframes tf-expression-pupils-soft { 0%,12%,88%,100% { transform: translate(0); } 20%,78% { transform: translateY(1px); } }
+@keyframes tf-expression-pet-mouth { 0%,14%,86%,100% { transform: scale(1); } 22%,78% { transform: translateY(1px) scale(1.06); } }
+@keyframes tf-expression-play-eyes { 0%,20%,45%,72%,100% { opacity: 1; transform: scaleY(1); } 22%,24%,74%,76% { transform: scaleY(.25); } }
+@keyframes tf-expression-pupils-chase { 0%,100% { transform: translate(-2px,1px); } 24% { transform: translate(2px,-1px); } 48% { transform: translate(-1px,-2px); } 72% { transform: translate(2px,1px); } }
+@keyframes tf-expression-play-mouth-closed { 0%,20%,42%,62%,82%,100% { opacity: 1; } 21%,41%,63%,81% { opacity: 0; } }
+@keyframes tf-expression-play-mouth-open { 0%,20%,42%,62%,82%,100% { opacity: 0; } 21%,41%,63%,81% { opacity: 1; transform: scaleY(1.08); } }
+@keyframes tf-expression-brush-open { 0%,24%,72%,100% { opacity: 1; } 25%,71% { opacity: 0; } }
+@keyframes tf-expression-brush-relaxed { 0%,24%,72%,100% { opacity: 0; } 25%,71% { opacity: 1; } }
+@keyframes tf-expression-dance-open { 0%,18%,38%,58%,78%,100% { opacity: 1; } 19%,37%,59%,77% { opacity: 0; } }
+@keyframes tf-expression-dance-happy { 0%,18%,38%,58%,78%,100% { opacity: 0; } 19%,37%,59%,77% { opacity: 1; } }
+@keyframes tf-expression-dance-mouth-a { 0%,28%,52%,76%,100% { opacity: 1; } 29%,51%,77%,88% { opacity: 0; } }
+@keyframes tf-expression-dance-mouth-b { 0%,28%,52%,76%,89%,100% { opacity: 0; } 29%,51%,77%,88% { opacity: 1; } }
+@keyframes tf-expression-focus-eyes { 0%,14%,86%,100% { transform: scaleY(1); } 20%,78% { transform: scaleY(.72); } }
+@keyframes tf-expression-pupils-focus { 0%,100% { transform: translateX(-1px); } 50% { transform: translateX(1px); } }
+@keyframes tf-expression-focus-mouth { 0%,14%,86%,100% { transform: scaleX(1); } 20%,78% { transform: scaleX(.72); } }
+@keyframes tf-expression-peek-eyes { 0%,16%,84%,100% { transform: scaleY(1); } 28%,70% { transform: scaleY(.7); } }
+@keyframes tf-expression-pupils-peek { 0%,18%,82%,100% { transform: translate(0); } 30%,68% { transform: translateX(-2px); } 54% { transform: translateX(2px); } }
+@keyframes tf-expression-talk-eyes { 0%,44%,48%,100% { transform: scaleY(1); } 45%,47% { transform: scaleY(.18); } }
+@keyframes tf-expression-pupils-talk { 0%,20%,74%,100% { transform: translate(0); } 28%,42% { transform: translateX(-1px); } 50%,66% { transform: translateX(1px); } }
+@keyframes tf-expression-talk-mouth-a { 0%,45%,100% { opacity: 1; } 46%,99% { opacity: 0; } }
+@keyframes tf-expression-talk-mouth-b { 0%,45%,100% { opacity: 0; } 46%,99% { opacity: 1; transform: scaleY(1.12); } }
+@keyframes tf-expression-dress-open { 0%,48%,82%,100% { opacity: 1; } 49%,81% { opacity: 0; } }
+@keyframes tf-expression-dress-happy { 0%,48%,82%,100% { opacity: 0; } 49%,81% { opacity: 1; } }
+@keyframes tf-expression-dress-mouth-a { 0%,20%,48%,82%,100% { opacity: 1; } 21%,47%,49%,81% { opacity: 0; } }
+@keyframes tf-expression-dress-mouth-b { 0%,20%,48%,82%,100% { opacity: 0; } 21%,47% { opacity: 1; } }
+
+@keyframes tf-living-feed-body-v3 { 0%,12%,100% { transform: translateY(0) scale(1); } 24% { transform: translateY(3px) scale(1.025,.965); } 38%,58% { transform: translate(-2px,4px) scale(1.035,.955); } 48%,68% { transform: translate(2px,3px) scale(1.02,.97); } 82% { transform: translateY(-3px) scale(.99,1.02); } }
+@keyframes tf-living-nuzzle-body-v3 { 0%,100% { transform: translate(0) rotate(0); } 18%,34% { transform: translate(-3px,1px) rotate(-2deg); } 48%,66% { transform: translate(3px,0) rotate(2deg); } 80% { transform: translateY(-3px) scale(.99,1.015); } 90% { transform: translateY(1px) scale(1.015,.985); } }
+@keyframes tf-living-play-body-v3 { 0%,100% { transform: translate(0) scale(1); } 12% { transform: translate(-3px,-5px) rotate(-2deg); } 24% { transform: translate(1px,2px) scale(1.035,.96); } 38% { transform: translate(3px,-6px) rotate(2deg); } 52% { transform: translate(-2px,2px) scale(1.04,.955); } 66% { transform: translate(2px,-5px) rotate(1deg); } 80% { transform: translate(-1px,1px) scale(1.025,.975); } 91% { transform: translateY(-2px); } }
+@keyframes tf-living-dance-body-v3 { 0%,100% { transform: translate(0) rotate(0); } 16% { transform: translate(-3px,-3px) rotate(-3deg); } 32% { transform: translate(0,2px) scale(1.03,.97); } 48% { transform: translate(3px,-4px) rotate(3deg); } 64% { transform: translate(-2px,1px) rotate(-2deg); } 80% { transform: translate(2px,-3px) rotate(2deg); } 92% { transform: translateY(1px); } }
+@keyframes tf-living-train-body-v3 { 0%,100% { transform: translateX(0) scale(1); } 16% { transform: translateX(-4px) skewX(-2deg); } 32% { transform: translate(2px,-2px); } 48% { transform: translateX(-3px); } 64% { transform: translate(4px,-2px) skewX(2deg); } 80% { transform: translateX(-1px); } 90% { transform: translateY(1px) scale(1.02,.98); } }
+@keyframes tf-living-hide-body-v3 { 0%,100% { opacity: 1; transform: translateY(0) scale(1); } 24%,56% { opacity: .48; transform: translateY(6px) scale(.96,.88); } 42% { opacity: .3; transform: translate(-3px,7px) scale(.94,.86); } 70% { opacity: .72; transform: translate(4px,2px) scale(.98); } 86% { opacity: 1; transform: translateY(-2px); } }
+@keyframes tf-living-talk-body-v3 { 0%,100% { transform: translate(0) scale(1); } 18%,34% { transform: translate(-1px,-2px) scale(.99,1.02); } 50%,68% { transform: translate(1px,1px) scale(1.015,.985); } 82% { transform: translateY(-1px); } }
+@keyframes tf-rabbit-play-ear-left { 0%,100% { transform: rotate(0); } 25% { transform: rotate(10deg) translateY(-2px); } 50% { transform: rotate(-5deg) translateY(1px); } 75% { transform: rotate(6deg); } }
+@keyframes tf-rabbit-play-ear-right { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-9deg) translateY(-1px); } 50% { transform: rotate(5deg) translateY(1px); } 75% { transform: rotate(-6deg); } }
+@keyframes tf-rabbit-play-paws { 0%,100% { transform: translate(-1px,-2px) rotate(-2deg); } 50% { transform: translate(1px,1px) rotate(2deg); } }
+@keyframes tf-rabbit-play-nose { 0%,100% { transform: scaleX(1); } 50% { transform: scaleX(.55) translateY(1px); } }
+@keyframes tf-rabbit-pet-ear-left { 0%,100% { transform: rotate(0); } 22%,68% { transform: rotate(13deg) translateY(2px); } 42% { transform: rotate(8deg) translateY(3px); } 84% { transform: rotate(4deg); } }
+@keyframes tf-rabbit-pet-ear-right { 0%,100% { transform: rotate(0); } 22%,68% { transform: rotate(-9deg) translateY(2px); } 42% { transform: rotate(-5deg) translateY(3px); } 84% { transform: rotate(-3deg); } }
+@keyframes tf-species-frog-legs { 0%,100% { transform: translate(-2px,1px) scaleX(1.05); } 50% { transform: translate(2px,-1px) scaleX(.95); } }
+@keyframes tf-species-tail-play { 0%,100% { transform: rotate(-7deg); } 35% { transform: rotate(13deg) translateY(-2px); } 68% { transform: rotate(-12deg) translateY(1px); } }
+@keyframes tf-species-ear-left { 0%,100% { transform: rotate(0); } 35% { transform: rotate(-10deg); } 68% { transform: rotate(7deg); } }
+@keyframes tf-species-ear-right { 0%,100% { transform: rotate(0); } 35% { transform: rotate(10deg); } 68% { transform: rotate(-7deg); } }
+@keyframes tf-species-wing-left { 0%,100% { transform: rotate(0); } 35% { transform: rotate(-16deg) translateY(-2px); } 68% { transform: rotate(8deg); } }
+@keyframes tf-species-wing-right { 0%,100% { transform: rotate(0); } 35% { transform: rotate(16deg) translateY(-2px); } 68% { transform: rotate(-8deg); } }
+@keyframes tf-species-robo-antenna { 0%,100% { transform: rotate(0); filter: brightness(1); } 40% { transform: rotate(-10deg); filter: brightness(1.5); } 70% { transform: rotate(8deg); } }
+@keyframes tf-species-tentacle-left { 0%,100% { transform: rotate(0) translateY(0); } 35% { transform: rotate(-13deg) translateY(-3px); } 70% { transform: rotate(8deg) translateY(1px); } }
+@keyframes tf-species-tentacle-right { 0%,100% { transform: rotate(0) translateY(0); } 35% { transform: rotate(13deg) translateY(-3px); } 70% { transform: rotate(-8deg) translateY(1px); } }
+@keyframes tf-species-fish-tail { 0%,100% { transform: skewY(-7deg) scaleX(.88); } 50% { transform: skewY(9deg) scaleX(1.06); } }
+@keyframes tf-species-fish-fin { 0%,100% { transform: rotate(-5deg) scaleY(.92); } 50% { transform: rotate(6deg) scaleY(1.08); } }
+@keyframes tf-species-soot-feet { 0%,100% { transform: translateX(-2px); } 50% { transform: translateX(2px) scaleY(.85); } }
+@keyframes tf-species-soot-arms { 0%,100% { transform: rotate(-7deg); } 50% { transform: rotate(9deg) translateY(-2px); } }
+
+@media (prefers-reduced-motion: reduce) {
+    #tavern-forum-root .tf-companion-v4 :is(.tf-pixel-pupils,.tf-pixel-wearable-rig,.tf-pixel-carry-rig,.tf-rabbit-ear,.tf-pixel-paws,.tf-pixel-nose) {
         animation: none !important;
     }
 }

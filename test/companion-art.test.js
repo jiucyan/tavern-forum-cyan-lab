@@ -13,6 +13,8 @@ test('every built-in companion uses the shared body, expression and action layer
         assert.match(artwork, /class="tf-pixel-back-rig"/, `${kind} has no independently animated rear layer`);
         assert.match(artwork, /class="tf-pixel-body-rig"/, `${kind} has no independently animated body layer`);
         assert.match(artwork, /class="tf-pixel-face-rig"/, `${kind} has no independently animated face layer`);
+        assert.match(artwork, /class="tf-pixel-pupils"/, `${kind} has no independently animated pupil layer`);
+        assert.match(artwork, /class="tf-pixel-wearable-rig is-front-rig"/, `${kind} has no wearable motion layer`);
         assert.match(artwork, /class="tf-pixel-body"/, `${kind} has no body color layer`);
         assert.match(artwork, /tf-pixel-eyes-open/, `${kind} has no open-eye frame`);
         assert.match(artwork, /tf-pixel-eyes-happy/, `${kind} has no happy-eye frame`);

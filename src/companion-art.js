@@ -32,8 +32,7 @@ const SPECIES_ART = Object.freeze({
         eyesMarkup: `
             <g class="tf-pixel-eyes tf-pixel-eyes-open">
                 <path class="tf-pixel-accent" d="M15 27h9v3h2v8h-2v3h-9v-3h-2v-8h2zM32 27h9v3h2v8h-2v3h-9v-3h-2v-8h2z"/>
-                <path class="tf-pixel-ink" d="M18 30h5v8h-5zM35 30h5v8h-5z"/>
-                <path class="tf-pixel-light" d="M18 29h3v3h-3zM35 29h3v3h-3z"/>
+                <g class="tf-pixel-pupils"><path class="tf-pixel-ink" d="M18 30h5v8h-5zM35 30h5v8h-5z"/><path class="tf-pixel-light" d="M18 29h3v3h-3zM35 29h3v3h-3z"/></g>
             </g>
             <g class="tf-pixel-eyes tf-pixel-eyes-happy"><path class="tf-pixel-light" d="M14 34h3v-3h7v3h3v3h-3v-2h-7v2h-3zM30 34h3v-3h7v3h3v3h-3v-2h-7v2h-3z"/></g>
             <g class="tf-pixel-eyes tf-pixel-eyes-sleep"><rect class="tf-pixel-light" x="14" y="35" width="12" height="2"/><rect class="tf-pixel-light" x="31" y="35" width="12" height="2"/></g>
@@ -375,7 +374,7 @@ const SPECIES_ACCESSORIES = Object.freeze({
 function renderEyes({ left, right, y, robot = false, soot = false, cat = false, rabbit = false, fox = false, bird = false, octopus = false, fish = false }) {
     if (soot) {
         return `
-            <g class="tf-pixel-eyes tf-pixel-eyes-open"><rect class="tf-pixel-light" x="${left}" y="${y}" width="11" height="11"/><rect class="tf-pixel-light" x="${right}" y="${y}" width="11" height="11"/><rect class="tf-pixel-ink" x="${left + 4}" y="${y + 3}" width="4" height="6"/><rect class="tf-pixel-ink" x="${right + 3}" y="${y + 3}" width="4" height="6"/></g>
+            <g class="tf-pixel-eyes tf-pixel-eyes-open"><rect class="tf-pixel-light" x="${left}" y="${y}" width="11" height="11"/><rect class="tf-pixel-light" x="${right}" y="${y}" width="11" height="11"/><g class="tf-pixel-pupils"><rect class="tf-pixel-ink" x="${left + 4}" y="${y + 3}" width="4" height="6"/><rect class="tf-pixel-ink" x="${right + 3}" y="${y + 3}" width="4" height="6"/></g></g>
             <g class="tf-pixel-eyes tf-pixel-eyes-happy"><path class="tf-pixel-light" d="M${left} ${y + 6}h2v-3h7v3h2v4h-3V${y + 7}h-5v3h-3zM${right} ${y + 6}h2v-3h7v3h2v4h-3V${y + 7}h-5v3h-3z"/></g>
             <g class="tf-pixel-eyes tf-pixel-eyes-sleep"><rect class="tf-pixel-light" x="${left}" y="${y + 7}" width="11" height="3"/><rect class="tf-pixel-light" x="${right}" y="${y + 7}" width="11" height="3"/></g>
         `;
@@ -389,35 +388,35 @@ function renderEyes({ left, right, y, robot = false, soot = false, cat = false, 
     }
     if (rabbit) {
         return `
-            <g class="tf-pixel-eyes tf-pixel-eyes-open"><rect class="tf-pixel-ink" x="${left}" y="${y}" width="7" height="8"/><rect class="tf-pixel-ink" x="${right}" y="${y}" width="7" height="8"/><rect class="tf-pixel-light" x="${left + 1}" y="${y + 1}" width="2" height="2"/><rect class="tf-pixel-light" x="${right + 1}" y="${y + 1}" width="2" height="2"/></g>
+            <g class="tf-pixel-eyes tf-pixel-eyes-open"><g class="tf-pixel-pupils"><rect class="tf-pixel-ink" x="${left}" y="${y}" width="7" height="8"/><rect class="tf-pixel-ink" x="${right}" y="${y}" width="7" height="8"/><rect class="tf-pixel-light" x="${left + 1}" y="${y + 1}" width="2" height="2"/><rect class="tf-pixel-light" x="${right + 1}" y="${y + 1}" width="2" height="2"/></g></g>
             <g class="tf-pixel-eyes tf-pixel-eyes-happy"><path class="tf-pixel-ink" d="M${left - 1} ${y + 4}h2v-2h5v2h2v3h-2v-2h-5v2h-2zM${right - 1} ${y + 4}h2v-2h5v2h2v3h-2v-2h-5v2h-2z"/></g>
             <g class="tf-pixel-eyes tf-pixel-eyes-sleep"><rect class="tf-pixel-ink" x="${left - 1}" y="${y + 5}" width="9" height="2"/><rect class="tf-pixel-ink" x="${right - 1}" y="${y + 5}" width="9" height="2"/></g>
         `;
     }
     if (fox) {
         return `
-            <g class="tf-pixel-eyes tf-pixel-eyes-open"><path class="tf-pixel-ink" d="M${left - 1} ${y + 4}h2v-2h6v2h2v2h-2v-1h-6v1h-2zM${right - 1} ${y + 4}h2v-2h6v2h2v2h-2v-1h-6v1h-2z"/></g>
+            <g class="tf-pixel-eyes tf-pixel-eyes-open"><g class="tf-pixel-pupils"><path class="tf-pixel-ink" d="M${left - 1} ${y + 4}h2v-2h6v2h2v2h-2v-1h-6v1h-2zM${right - 1} ${y + 4}h2v-2h6v2h2v2h-2v-1h-6v1h-2z"/></g></g>
             <g class="tf-pixel-eyes tf-pixel-eyes-happy"><path class="tf-pixel-ink" d="M${left - 1} ${y + 5}h2v-3h6v3h2v2h-3v-2h-4v2h-3zM${right - 1} ${y + 5}h2v-3h6v3h2v2h-3v-2h-4v2h-3z"/></g>
             <g class="tf-pixel-eyes tf-pixel-eyes-sleep"><rect class="tf-pixel-ink" x="${left - 1}" y="${y + 5}" width="10" height="2"/><rect class="tf-pixel-ink" x="${right - 1}" y="${y + 5}" width="10" height="2"/></g>
         `;
     }
     if (bird) {
         return `
-            <g class="tf-pixel-eyes tf-pixel-eyes-open"><rect class="tf-pixel-ink" x="${left}" y="${y}" width="9" height="9"/><rect class="tf-pixel-robo-eye" x="${left + 2}" y="${y + 2}" width="5" height="5"/><rect class="tf-pixel-light" x="${left + 2}" y="${y + 2}" width="2" height="2"/></g>
+            <g class="tf-pixel-eyes tf-pixel-eyes-open"><rect class="tf-pixel-ink" x="${left}" y="${y}" width="9" height="9"/><g class="tf-pixel-pupils"><rect class="tf-pixel-robo-eye" x="${left + 2}" y="${y + 2}" width="5" height="5"/><rect class="tf-pixel-light" x="${left + 2}" y="${y + 2}" width="2" height="2"/></g></g>
             <g class="tf-pixel-eyes tf-pixel-eyes-happy"><path class="tf-pixel-robo-eye" d="M${left} ${y + 5}h2v-3h5v3h2v3h-2v-2h-5v2h-2z"/></g>
             <g class="tf-pixel-eyes tf-pixel-eyes-sleep"><rect class="tf-pixel-robo-eye" x="${left}" y="${y + 5}" width="9" height="2"/></g>
         `;
     }
     if (octopus) {
         return `
-            <g class="tf-pixel-eyes tf-pixel-eyes-open"><path class="tf-pixel-ink" d="M${left + 2} ${y}h5v2h2v7h-2v2h-5v-2h-2v-7h2zM${right + 2} ${y}h5v2h2v7h-2v2h-5v-2h-2v-7h2z"/><rect class="tf-pixel-light" x="${left + 2}" y="${y + 2}" width="3" height="3"/><rect class="tf-pixel-light" x="${right + 2}" y="${y + 2}" width="3" height="3"/></g>
+            <g class="tf-pixel-eyes tf-pixel-eyes-open"><g class="tf-pixel-pupils"><path class="tf-pixel-ink" d="M${left + 2} ${y}h5v2h2v7h-2v2h-5v-2h-2v-7h2zM${right + 2} ${y}h5v2h2v7h-2v2h-5v-2h-2v-7h2z"/><rect class="tf-pixel-light" x="${left + 2}" y="${y + 2}" width="3" height="3"/><rect class="tf-pixel-light" x="${right + 2}" y="${y + 2}" width="3" height="3"/></g></g>
             <g class="tf-pixel-eyes tf-pixel-eyes-happy"><path class="tf-pixel-ink" d="M${left} ${y + 6}h2v-3h7v3h2v3h-3v-2h-5v2h-3zM${right} ${y + 6}h2v-3h7v3h2v3h-3v-2h-5v2h-3z"/></g>
             <g class="tf-pixel-eyes tf-pixel-eyes-sleep"><path class="tf-pixel-ink" d="M${left} ${y + 6}h3v2h5v-2h3v4H${left}zM${right} ${y + 6}h3v2h5v-2h3v4H${right}z"/></g>
         `;
     }
     if (fish) {
         return `
-            <g class="tf-pixel-eyes tf-pixel-eyes-open"><path class="tf-pixel-ink" d="M${left + 2} ${y}h5v2h2v7h-2v2h-5v-2h-2v-7h2z"/><rect class="tf-pixel-light" x="${left + 2}" y="${y + 2}" width="3" height="3"/></g>
+            <g class="tf-pixel-eyes tf-pixel-eyes-open"><g class="tf-pixel-pupils"><path class="tf-pixel-ink" d="M${left + 2} ${y}h5v2h2v7h-2v2h-5v-2h-2v-7h2z"/><rect class="tf-pixel-light" x="${left + 2}" y="${y + 2}" width="3" height="3"/></g></g>
             <g class="tf-pixel-eyes tf-pixel-eyes-happy"><path class="tf-pixel-ink" d="M${left} ${y + 6}h2v-3h7v3h2v3h-3v-2h-5v2h-3z"/></g>
             <g class="tf-pixel-eyes tf-pixel-eyes-sleep"><rect class="tf-pixel-ink" x="${left}" y="${y + 7}" width="11" height="2"/></g>
         `;
@@ -427,7 +426,7 @@ function renderEyes({ left, right, y, robot = false, soot = false, cat = false, 
     const eyeClass = robot ? 'tf-pixel-accent' : 'tf-pixel-ink';
     const glint = robot ? '' : `<rect class="tf-pixel-light" x="${left}" y="${y}" width="2" height="2"/><rect class="tf-pixel-light" x="${right}" y="${y}" width="2" height="2"/>`;
     return `
-        <g class="tf-pixel-eyes tf-pixel-eyes-open"><rect class="${eyeClass}" x="${left}" y="${y}" width="${width}" height="${height}"/><rect class="${eyeClass}" x="${right}" y="${y}" width="${width}" height="${height}"/>${glint}</g>
+        <g class="tf-pixel-eyes tf-pixel-eyes-open"><g class="tf-pixel-pupils"><rect class="${eyeClass}" x="${left}" y="${y}" width="${width}" height="${height}"/><rect class="${eyeClass}" x="${right}" y="${y}" width="${width}" height="${height}"/>${glint}</g></g>
         <g class="tf-pixel-eyes tf-pixel-eyes-happy"><path class="${eyeClass}" d="M${left - 1} ${y + 3}h2v-2h${width - 1}v2h2v3h-2v-2h-${width - 1}v2h-2zM${right - 1} ${y + 3}h2v-2h${width - 1}v2h2v3h-2v-2h-${width - 1}v2h-2z"/></g>
         <g class="tf-pixel-eyes tf-pixel-eyes-sleep"><rect class="${eyeClass}" x="${left - 1}" y="${y + 4}" width="${width + 2}" height="2"/><rect class="${eyeClass}" x="${right - 1}" y="${y + 4}" width="${width + 2}" height="2"/></g>
     `;
@@ -449,5 +448,5 @@ export function renderCompanionArtwork(kind = 'mystery', accessory = 'none') {
     const eyes = species.eyesMarkup || renderEyes(species.eyes);
     const faces = `<g class="tf-pixel-mouth tf-pixel-mouth-default">${species.faces.default}</g><g class="tf-pixel-mouth tf-pixel-mouth-feed">${species.faces.feed}</g><g class="tf-pixel-mouth tf-pixel-mouth-sleep">${species.faces.sleep}</g>`;
     const travelKit = '<g class="tf-pixel-travel-kit"><path class="tf-pixel-body-shadow" d="M45 23h11v21H45z"/><path class="tf-pixel-accent" d="M43 21h12v21H43z"/><rect class="tf-pixel-light" x="46" y="25" width="6" height="5"/><rect class="tf-pixel-ink" x="41" y="27" width="4" height="12"/></g>';
-    return `${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'back'))}<g class="tf-pixel-character"><g class="tf-pixel-back-rig">${species.back}</g><g class="tf-pixel-body-rig">${species.body}</g><g class="tf-pixel-face-rig">${eyes}${faces}</g></g>${scaleLegacyLayer(travelKit)}${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'front'))}`;
+    return `<g class="tf-pixel-wearable-rig is-back-rig">${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'back'))}</g><g class="tf-pixel-character"><g class="tf-pixel-back-rig">${species.back}</g><g class="tf-pixel-body-rig">${species.body}</g><g class="tf-pixel-face-rig">${eyes}${faces}</g></g><g class="tf-pixel-carry-rig">${scaleLegacyLayer(travelKit)}</g><g class="tf-pixel-wearable-rig is-front-rig">${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'front'))}</g>`;
 }

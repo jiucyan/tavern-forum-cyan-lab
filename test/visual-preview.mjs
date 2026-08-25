@@ -350,7 +350,14 @@ try {
         face: getComputedStyle(node.querySelector('.tf-pixel-face-rig')).animationName,
         hasShadow: Boolean(node.querySelector('.tf-pet-character-shadow')),
     }));
-    if (feedMotionRig.control !== 'none' || !feedMotionRig.body.includes('tf-living-feed-body') || !feedMotionRig.face.includes('tf-living-feed-face') || !feedMotionRig.hasShadow) throw new Error(`companion feed still behaves as one moving image: ${JSON.stringify(feedMotionRig)}`);
+    if (feedMotionRig.control !== 'none' || !feedMotionRig.body.includes('tf-living-feed-body-v3') || !feedMotionRig.face.includes('tf-living-feed-face') || !feedMotionRig.hasShadow) throw new Error(`companion feed still behaves as one moving image: ${JSON.stringify(feedMotionRig)}`);
+    const feedFaceFrames = await desktop.locator('.tf-pet-sprite-control').evaluate(node => ({
+        open: getComputedStyle(node.querySelector('.tf-pixel-eyes-open')).animationName,
+        happy: getComputedStyle(node.querySelector('.tf-pixel-eyes-happy')).animationName,
+        pupils: getComputedStyle(node.querySelector('.tf-pixel-pupils')).animationName,
+        mouth: getComputedStyle(node.querySelector('.tf-pixel-mouth-feed')).animationName,
+    }));
+    if (!feedFaceFrames.open.includes('tf-expression-feed-open') || !feedFaceFrames.happy.includes('tf-expression-feed-happy') || !feedFaceFrames.pupils.includes('tf-expression-pupils-down') || !feedFaceFrames.mouth.includes('tf-living-chew')) throw new Error(`feeding has no facial performance: ${JSON.stringify(feedFaceFrames)}`);
     await desktop.waitForTimeout(620);
     await desktop.locator('.tf-pet-screen').screenshot({ path: 'preview-companion-feed-v2.png' });
     if (await desktop.locator('[data-action="choose-companion-species"][data-species-id="fox"]').getAttribute('aria-pressed') !== 'true') throw new Error('pixel companion selection did not update species');
@@ -361,9 +368,33 @@ try {
         body: getComputedStyle(node.querySelector('.tf-pixel-body-rig')).animationName,
         face: getComputedStyle(node.querySelector('.tf-pixel-face-rig')).animationName,
     }));
-    if (petMotionRig.control !== 'none' || !petMotionRig.body.includes('tf-living-nuzzle-body') || !petMotionRig.face.includes('tf-living-nuzzle-face')) throw new Error(`companion petting did not use the internal motion rig: ${JSON.stringify(petMotionRig)}`);
+    if (petMotionRig.control !== 'none' || !petMotionRig.body.includes('tf-living-nuzzle-body-v3') || !petMotionRig.face.includes('tf-living-nuzzle-face')) throw new Error(`companion petting did not use the internal motion rig: ${JSON.stringify(petMotionRig)}`);
     const namedReaction = await desktop.locator('.tf-pet-message').innerText();
     if (!/团子/.test(namedReaction) || /赤狐绕过/.test(namedReaction)) throw new Error(`companion interaction used the species instead of its name: ${namedReaction}`);
+    await desktop.waitForTimeout(2450);
+    if (!await desktop.locator('.tf-companion-v4.is-action-idle').count()) throw new Error('companion expression stayed locked after the interaction ended');
+    const idleFace = await desktop.locator('.tf-pet-sprite-control').evaluate(node => ({
+        open: getComputedStyle(node.querySelector('.tf-pixel-eyes-open')).display,
+        happy: getComputedStyle(node.querySelector('.tf-pixel-eyes-happy')).display,
+        pupils: getComputedStyle(node.querySelector('.tf-pixel-pupils')).animationName,
+    }));
+    if (idleFace.open === 'none' || idleFace.happy !== 'none' || !idleFace.pupils.includes('tf-expression-idle-pupils')) throw new Error(`companion did not return to an alert idle face: ${JSON.stringify(idleFace)}`);
+    await desktop.locator('[data-action="choose-companion-species"][data-species-id="rabbit"]').click();
+    await desktop.locator('[data-action="companion-care"][data-care="play"]').first().click();
+    await desktop.waitForTimeout(260);
+    const rabbitPlayFrameA = await desktop.locator('.tf-pet-sprite-control').evaluate(node => {
+        const value = selector => getComputedStyle(node.querySelector(selector)).transform;
+        return { body: value('.tf-pixel-body-rig'), pupils: value('.tf-pixel-pupils'), leftEar: value('.tf-rabbit-ear.is-left'), rightEar: value('.tf-rabbit-ear.is-right'), paws: value('.tf-pixel-paws') };
+    });
+    await desktop.waitForTimeout(430);
+    const rabbitPlayFrameB = await desktop.locator('.tf-pet-sprite-control').evaluate(node => {
+        const value = selector => getComputedStyle(node.querySelector(selector)).transform;
+        return { body: value('.tf-pixel-body-rig'), pupils: value('.tf-pixel-pupils'), leftEar: value('.tf-rabbit-ear.is-left'), rightEar: value('.tf-rabbit-ear.is-right'), paws: value('.tf-pixel-paws'), mouthOpen: getComputedStyle(node.querySelector('.tf-pixel-mouth-feed')).display };
+    });
+    if (!await desktop.locator('.tf-companion-v4.is-action-play').count() || rabbitPlayFrameB.mouthOpen === 'none' || Object.keys(rabbitPlayFrameA).filter(key => rabbitPlayFrameA[key] !== rabbitPlayFrameB[key]).length < 4) throw new Error(`rabbit play did not articulate body, face, ears and paws: ${JSON.stringify({ rabbitPlayFrameA, rabbitPlayFrameB })}`);
+    await desktop.waitForTimeout(2150);
+    if (!await desktop.locator('.tf-companion-v4.is-action-idle').count()) throw new Error('rabbit play expression did not return to idle');
+    await desktop.locator('[data-action="choose-companion-species"][data-species-id="fox"]').click();
     await desktop.locator('[data-action="choose-companion-device"][data-device-skin="terminal"]').click();
     if (!await desktop.locator('.tf-companion-v3.is-device-terminal').count()) throw new Error('device structure selection did not persist');
     if (!await desktop.locator('.tf-companion-profile-card').evaluate(node => node.hasAttribute('open'))) throw new Error('companion profile collapsed after changing a device');
