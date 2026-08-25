@@ -939,7 +939,7 @@ function renderServicesHub(data) {
     if (!cards.length) return `<section class="tf-services-page tf-world-hub is-layout-${layout}">${header}${empty}</section>`;
     if (layout === 'window') {
         const travelAction = settings.modules.travel?.enabled ? 'data-action="open-world-page" data-module-id="travel"' : 'disabled';
-        return `<section class="tf-services-page tf-world-hub is-layout-window is-weather-${escapeHtml(weatherClass)} is-time-${escapeHtml(time.id)}">${header}<section class="tf-world-window-shell"><div class="tf-world-window-scene"><span class="tf-window-scene-image"></span><span class="tf-window-time-tint"></span>${renderWorldWindowWeather()}<button class="tf-window-weather-chip" ${travelAction}>${weather.icon}<b>${escapeHtml(weather.label)}</b><small>${time.automatic && weather.automatic ? '自动环境' : '手动环境'}</small></button><button class="tf-window-pet-stage" ${travelAction} aria-label="打开旅伴">${renderPixelCompanion(companion.species, companion.status)}</button><button class="tf-window-reaction" ${travelAction}>${escapeHtml(companion.status === 'away' ? companion.message || '正在旅途中。' : getCompanionAmbientReaction(data))}</button><button class="tf-window-companion" ${travelAction}>${renderPixelCompanion(companion.species, companion.status, true)}<span><b>${escapeHtml(companion.name)}</b><small>${escapeHtml(companion.status === 'away' ? companion.destination || '旅途中' : `${companion.mood || '平静'} · 亲密 ${Number(companion.bond || 0)}`)}</small></span></button>${settings.modules.fortune?.enabled ? `<button class="tf-window-fortune" data-action="open-world-page" data-module-id="fortune"><i>${world.fortune?.sigil || '◇'}</i><span><small>今日运势</small><b>${escapeHtml(world.fortune?.label || '等待揭晓')}</b><em>${escapeHtml(world.fortune?.theme || '抽取一张今日签')}</em></span>${icon('chevron')}</button>` : ''}</div>${renderWorldAppDock(cards, companion, 'is-window-rail')}</section><footer class="tf-world-runtime-strip"><i></i><b>世界正在本地运行</b><span>所有功能均在本地执行，切换布局不会调用 API。</span></footer></section>`;
+        return `<section class="tf-services-page tf-world-hub is-layout-window is-weather-${escapeHtml(weatherClass)} is-time-${escapeHtml(time.id)}">${header}<section class="tf-world-window-shell"><div class="tf-world-window-scene"><span class="tf-window-scene-image"></span><span class="tf-window-time-tint"></span>${renderWorldWindowWeather()}<button class="tf-window-weather-chip" ${travelAction}>${weather.icon}<b>${escapeHtml(weather.label)}</b><small>${time.automatic && weather.automatic ? '自动环境' : '手动环境'}</small></button><button class="tf-window-pet-stage" ${travelAction} aria-label="打开旅伴">${renderPixelCompanion(companion.species, companion.status)}</button><button class="tf-window-reaction" ${travelAction}>${escapeHtml(companion.status === 'away' ? companion.message || '正在旅途中。' : getCompanionAmbientReaction(data))}</button><button class="tf-window-companion" ${travelAction}><i class="tf-window-status-dot" aria-hidden="true"></i><span><b>${escapeHtml(companion.name)}</b><small>${escapeHtml(companion.status === 'away' ? companion.destination || '旅途中' : `${companion.mood || '平静'} · 亲密 ${Number(companion.bond || 0)}`)}</small></span>${icon('chevron')}</button>${settings.modules.fortune?.enabled ? `<button class="tf-window-fortune" data-action="open-world-page" data-module-id="fortune"><i>${world.fortune?.sigil || '◇'}</i><span><small>今日运势</small><b>${escapeHtml(world.fortune?.label || '等待揭晓')}</b><em>${escapeHtml(world.fortune?.theme || '抽取一张今日签')}</em></span>${icon('chevron')}</button>` : ''}</div>${renderWorldAppDock(cards, companion, 'is-window-rail')}</section><footer class="tf-world-runtime-strip"><i></i><b>世界正在运行</b><span>天气、旅伴与今日状态都在继续变化</span></footer></section>`;
     }
     const travelAction = settings.modules.travel?.enabled ? 'data-action="open-world-page" data-module-id="travel"' : 'disabled';
     return `<section class="tf-services-page tf-world-hub is-layout-bento">${header}<section class="tf-world-bento"><button class="tf-world-bento-companion" ${travelAction}><header><div><small>我的旅伴</small><h2>${escapeHtml(companion.name)}</h2><em>${escapeHtml(companion.status === 'away' ? companion.destination || '旅途中' : `${companion.mood || '平静'} · 亲密 ${Number(companion.bond || 0)}`)}</em></div>${icon('chevron')}</header><span class="tf-bento-pet-stage">${renderPixelCompanion(companion.species, companion.status)}<i>♥</i></span><p class="tf-bento-reaction"><span>♡</span>${escapeHtml(companion.status === 'away' ? companion.message || '正在旅途中。' : getCompanionAmbientReaction(data))}</p></button><div class="tf-world-bento-side"><button class="tf-world-bento-weather" ${travelAction}><span>${weather.icon}</span><div><small>${time.automatic && weather.automatic ? '本地环境' : '手动环境'}</small><b>${escapeHtml(weather.label)}</b><p>${escapeHtml(weather.note)}</p></div>${icon('chevron')}</button>${settings.modules.fortune?.enabled ? `<button class="tf-world-bento-fortune" data-action="open-world-page" data-module-id="fortune"><span>${world.fortune?.sigil || '◇'}</span><div><small>今日运势</small><b>${escapeHtml(world.fortune?.label || '等待揭晓')}</b><p>${escapeHtml(world.fortune?.theme || '抽取一张今日签')}</p></div>${icon('chevron')}</button>` : ''}</div></section>${renderWorldAppDock(cards, companion, 'is-bento-dock')}</section>`;
@@ -1651,13 +1651,32 @@ function maybeCompanionSelfChangeAccessory(companion, { force = false } = {}) {
 function renderCompanionAppV4(data) {
     const companion = data.world.companion;
     const moodClass = Number(companion.energy || 0) < 22 ? 'sleepy' : Number(companion.satiety || 0) < 22 ? 'hungry' : Number(companion.happiness || 0) >= 82 ? 'joyful' : Number(companion.happiness || 0) < 35 ? 'lonely' : 'calm';
+    const primaryActions = COMPANION_CARE_ACTIONS.slice(0, 4);
+    const extraActions = COMPANION_CARE_ACTIONS.slice(4);
+    const moreMenuOpen = Boolean(viewState.companionMoreMenuOpen);
+    const visibleActions = moreMenuOpen ? extraActions : primaryActions;
+    const visibleItemCount = visibleActions.length + (moreMenuOpen ? 0 : 1);
+    const menuIndex = Math.max(0, Math.min(visibleItemCount - 1, Number(viewState.companionMenuIndex || 0)));
+    const renderMenuButton = (item, index) => `<button class="${index === menuIndex ? 'is-selected' : ''}" data-action="companion-care" data-care="${item.id}" title="${item.label}"><span>${item.symbol}</span><b>${item.label}</b></button>`;
+    const screenMenu = moreMenuOpen
+        ? `<div class="tf-pet-screen-menu is-extra"><header><b>更多互动</b><button data-action="companion-menu-more" aria-label="返回常用互动">返回</button></header><div>${extraActions.map(renderMenuButton).join('')}</div></div>`
+        : `<div class="tf-pet-screen-menu is-primary">${primaryActions.map(renderMenuButton).join('')}<button class="${menuIndex === primaryActions.length ? 'is-selected' : ''}" data-action="companion-menu-more" title="更多互动"><span>＋</span><b>更多</b></button></div>`;
     let html = renderCompanionAppV3(data)
         .replace('tf-companion-v3 ', `tf-companion-v3 tf-companion-v4 is-mood-${moodClass} is-habitat-${companion.habitat || 'meadow'} is-food-${companion.lastFood || 'bug-cookie'} `)
-        .replace(/<div class="tf-pet-message">[\s\S]*?<\/div><div class="tf-pet-vitals">/, `<div class="tf-pet-message"><span>LIVE REACTION · ${escapeHtml(companion.mood || '平静')}</span><p>${escapeHtml(getCompanionAmbientReaction(data))}</p><small>反应由种类、天气、时间与当前状态在本地计算</small></div><div class="tf-pet-vitals">`);
+        .replace(/<div class="tf-pet-screen-menu">[\s\S]*?<div class="tf-pet-screen-bottom">/, `${screenMenu}<div class="tf-pet-screen-bottom">`)
+        .replace('<span>PREV</span>', '<span>上一项<small>PREV</small></span>')
+        .replace('<span>OK</span>', '<span>确认<small>OK</small></span>')
+        .replace('<span>NEXT</span>', '<span>下一项<small>NEXT</small></span>')
+        .replace('<div class="tf-companion-status">', '<div class="tf-companion-status tf-companion-journal"><span class="tf-pet-journal-label"><i></i>TRAVEL NOTE · 01</span>')
+        .replace(/<div class="tf-pet-message">[\s\S]*?<\/div><div class="tf-pet-vitals">/, `<div class="tf-pet-message"><span>旅伴悄悄话 · ${escapeHtml(companion.mood || '平静')}</span><p>${escapeHtml(getCompanionAmbientReaction(data))}</p><small>它会随着天气、时间与心情做出不同回应</small></div><div class="tf-pet-vitals">`)
+        .replace('预生成行程', '本次旅程')
+        .replace('消息按时间在本地释放，不再调用 API', '旅途来信会按计划陆续抵达')
+        .replace('正在规划整趟旅行', '正在整理行囊')
+        .replace('出发 · 仅调用一次 API', '准备这次远行');
     if (viewState.companionFoodMenuOpen) {
         const selected = Math.max(0, Math.min(COMPANION_FOODS.length - 1, Number(viewState.companionFoodIndex || 0)));
         const menu = `<div class="tf-pet-screen-menu tf-pet-food-select"><header><b>CHOOSE FOOD</b><button data-action="companion-food-back">×</button></header><div>${COMPANION_FOODS.map((food, index) => `<button class="${index === selected ? 'is-selected' : ''}" data-action="companion-feed-food" data-food-id="${food.id}" title="${food.name}"><span>${food.symbol}</span><b>${food.name}</b></button>`).join('')}</div></div>`;
-        html = html.replace(/<div class="tf-pet-screen-menu">[\s\S]*?<\/div><div class="tf-pet-screen-bottom">/, `${menu}<div class="tf-pet-screen-bottom">`);
+        html = html.replace(/<div class="tf-pet-screen-menu[^\"]*">[\s\S]*?<div class="tf-pet-screen-bottom">/, `${menu}<div class="tf-pet-screen-bottom">`);
     }
     return html;
 }
@@ -3537,10 +3556,17 @@ async function handleRootClick(event) {
         return render({ preserveScroll: true });
     }
     if (action === 'companion-menu-nav') {
-        const total = viewState.companionFoodMenuOpen ? COMPANION_FOODS.length : COMPANION_CARE_ACTIONS.length;
+        const total = viewState.companionFoodMenuOpen
+            ? COMPANION_FOODS.length
+            : viewState.companionMoreMenuOpen ? COMPANION_CARE_ACTIONS.length - 4 : 5;
         const direction = Number(target.dataset.direction || 1);
         if (viewState.companionFoodMenuOpen) viewState.companionFoodIndex = (Number(viewState.companionFoodIndex || 0) + direction + total) % total;
         else viewState.companionMenuIndex = (Number(viewState.companionMenuIndex || 0) + direction + total) % total;
+        return render({ preserveScroll: true });
+    }
+    if (action === 'companion-menu-more') {
+        viewState.companionMoreMenuOpen = !viewState.companionMoreMenuOpen;
+        viewState.companionMenuIndex = 0;
         return render({ preserveScroll: true });
     }
     if (action === 'companion-menu-confirm') {
@@ -3549,7 +3575,13 @@ async function handleRootClick(event) {
             getRoot().querySelector(`[data-action="companion-feed-food"][data-food-id="${food.id}"]`)?.click();
             return;
         }
-        const care = COMPANION_CARE_ACTIONS[Math.max(0, Math.min(COMPANION_CARE_ACTIONS.length - 1, Number(viewState.companionMenuIndex || 0)))]?.id;
+        const selectedIndex = Number(viewState.companionMenuIndex || 0);
+        if (!viewState.companionMoreMenuOpen && selectedIndex === 4) {
+            getRoot().querySelector('[data-action="companion-menu-more"]')?.click();
+            return;
+        }
+        const careIndex = viewState.companionMoreMenuOpen ? selectedIndex + 4 : selectedIndex;
+        const care = COMPANION_CARE_ACTIONS[Math.max(0, Math.min(COMPANION_CARE_ACTIONS.length - 1, careIndex))]?.id;
         getRoot().querySelector(`[data-action="companion-care"][data-care="${care}"]`)?.click();
         return;
     }
@@ -3609,6 +3641,7 @@ async function handleRootClick(event) {
         const companion = data.world.companion;
         const care = target.dataset.care;
         if (care === 'feed') {
+            viewState.companionMoreMenuOpen = false;
             viewState.companionMenuIndex = 0;
             viewState.companionFoodIndex = 0;
             viewState.companionFoodMenuOpen = true;
@@ -3626,7 +3659,9 @@ async function handleRootClick(event) {
             dress: { satiety: 0, energy: -1, happiness: 10, bond: 2, mood: '得意' },
         }[care];
         if (!deltas) return;
-        viewState.companionMenuIndex = COMPANION_CARE_ACTIONS.findIndex(item => item.id === care);
+        const careIndex = COMPANION_CARE_ACTIONS.findIndex(item => item.id === care);
+        viewState.companionMoreMenuOpen = careIndex >= 4;
+        viewState.companionMenuIndex = careIndex >= 4 ? careIndex - 4 : careIndex;
         for (const field of ['satiety', 'energy', 'happiness', 'bond']) companion[field] = Math.max(0, Math.min(100, Number(companion[field] || 0) + deltas[field]));
         companion.mood = deltas.mood;
         companion.lastAction = care;
@@ -5360,7 +5395,7 @@ function updateLaunchers() {
     const settings = getSettings();
     const fab = document.getElementById(FAB_ID);
     if (fab) {
-        fab.toggleAttribute('hidden', !settings.ui.floatingButton);
+        fab.toggleAttribute('hidden', !settings.ui.floatingButton || viewState.open);
         const customImage = renderStoredImage({ url: settings.ui.floatingButtonImageUrl, imageKey: settings.ui.floatingButtonImageKey, alt: '打开论坛', className: 'tf-floating-button-image' });
         const content = fab.querySelector('span');
         if (content) content.innerHTML = customImage || icon('message');

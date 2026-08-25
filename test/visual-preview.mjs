@@ -226,6 +226,8 @@ try {
     await desktop.locator('.tf-topbar [data-tab="services"]').click();
     if (!await desktop.locator('.tf-world-hub.is-layout-window .tf-world-window-scene').count()) throw new Error('world window layout did not render');
     if (!await desktop.locator('.tf-world-window-scene .tf-window-companion').count()) throw new Error('world window lost its companion overlay');
+    if (await desktop.locator('.tf-window-companion .tf-pixel-avatar').count()) throw new Error('world window status strip repeated the scene companion');
+    if (!await desktop.locator('#tavern-forum-fab').isHidden()) throw new Error('floating launcher should hide while the app is open');
     if (await desktop.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-desktop') throw new Error('desktop layout switch replaced the app shell');
     const windowSceneBackground = await desktop.locator('.tf-window-scene-image').evaluate(node => getComputedStyle(node).backgroundImage);
     if (!/world-window-base\.png/.test(windowSceneBackground)) throw new Error(`world window did not load its bundled local scene: ${windowSceneBackground}`);
@@ -292,6 +294,9 @@ try {
     await desktop.locator('#tf-accessory-contact-sheet').evaluate(node => node.remove());
     await desktop.locator('[data-action="choose-companion-species"][data-species-id="goldfish"]').click();
     const callsBeforeBettaBubbles = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
+    if (await desktop.locator('[data-action="companion-care"][data-care="talk"]').count()) throw new Error('secondary care actions should stay behind the in-device more menu');
+    await desktop.locator('[data-action="companion-menu-more"]').click();
+    if (!await desktop.locator('[data-action="companion-care"][data-care="talk"]').count()) throw new Error('the in-device more menu did not reveal secondary care actions');
     await desktop.locator('[data-action="companion-care"][data-care="talk"]').click();
     if (await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls) !== callsBeforeBettaBubbles) throw new Error('local betta bubble interaction unexpectedly called the API');
     if (!await desktop.locator('.tf-companion-v3.is-species-goldfish.is-action-talk .tf-betta-bubbles').isVisible()) throw new Error('betta talk interaction did not reveal its local bubble trail');
@@ -315,6 +320,7 @@ try {
     await desktop.locator('.tf-service-card[data-module-id="travel"]').click();
     if (await desktop.locator('[data-companion-appearance-field="bodyColor"]').inputValue() !== '#2f6f9f') throw new Error('saved companion color disappeared after re-entering the app');
     if (await desktop.locator('[data-companion-appearance-field="accessory"]').inputValue() !== 'scarf') throw new Error('saved companion accessory disappeared after re-entering the app');
+    if (await desktop.locator('.tf-pet-screen-menu.is-extra').count()) await desktop.locator('[data-action="companion-menu-more"]').click();
     const callsBeforePet = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
     await desktop.locator('[data-action="companion-care"][data-care="feed"]').last().click();
     if (await desktop.locator('[data-action="companion-feed-food"]').count() !== 10) throw new Error('pet food selector did not expose all ten foods inside the device');
@@ -339,6 +345,7 @@ try {
     await desktop.locator('[data-companion-environment="timeOfDay"]').selectOption('night');
     if (!await desktop.locator('.tf-companion-v3.is-weather-rain.is-time-night').count()) throw new Error('manual weather and room time did not update the pet screen');
     if (await desktop.locator('[data-companion-environment="weather"]').inputValue() !== 'rain') throw new Error('manual weather did not persist');
+    await desktop.locator('[data-action="choose-companion-device"][data-device-skin="classic"]').click();
     await desktop.locator('.tf-companion-home').scrollIntoViewIfNeeded();
     await desktop.screenshot({ path: 'preview-companion.png' });
     await desktop.locator('.tf-companion-profile-card').scrollIntoViewIfNeeded();
@@ -484,6 +491,8 @@ try {
     await mobile.locator('.tf-mobile-main-nav [data-tab="services"]').click();
     if (!await mobile.locator('.tf-world-hub.is-layout-window .tf-world-window-scene').count()) throw new Error('mobile world window is missing');
     if (await mobile.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-mobile') throw new Error('mobile layout switch replaced the app shell');
+    const mobileReactionWidth = await mobile.locator('.tf-window-reaction').evaluate(node => node.getBoundingClientRect().width);
+    if (mobileReactionWidth < 220) throw new Error(`mobile companion reaction is too narrow (${mobileReactionWidth}px)`);
     const mobileWindowWidth = await mobile.locator('.tf-world-hub').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
     if (mobileWindowWidth.scroll > mobileWindowWidth.client + 2) throw new Error(`mobile world window overflowed horizontally (${mobileWindowWidth.scroll} > ${mobileWindowWidth.client})`);
     await mobile.screenshot({ path: 'preview-world-window-mobile.png', fullPage: true });
@@ -566,6 +575,11 @@ try {
     await mobile.waitForTimeout(80);
     const mobileScrollAfter = await mobile.locator('.tf-view').evaluate(node => node.scrollTop);
     if (mobileScrollBefore > 80 && Math.abs(mobileScrollAfter - mobileScrollBefore) > 8) throw new Error(`mobile interaction changed scroll from ${mobileScrollBefore} to ${mobileScrollAfter}`);
+    await mobile.locator('.tf-view').evaluate(node => { node.scrollTop = 0; });
+    await mobile.waitForTimeout(80);
+    const mobileConsoleAtTop = await mobile.locator('.tf-pet-console').boundingBox();
+    const mobileViewport = mobile.viewportSize();
+    if (!mobileConsoleAtTop || !mobileViewport || mobileConsoleAtTop.y < 90 || mobileConsoleAtTop.y + mobileConsoleAtTop.height > mobileViewport.height - 70) throw new Error('mobile companion console is not fully visible between the app header and bottom navigation');
     await mobile.screenshot({ path: 'preview-companion-mobile.png', fullPage: true });
     await mobile.locator('[data-action="back-world-home"]').click();
     await mobile.locator('.tf-mobile-main-nav [data-tab="home"]').click();
