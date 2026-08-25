@@ -246,15 +246,26 @@ try {
     if (await desktop.locator('[data-companion-field="avatarUrl"]').count()) throw new Error('companion avatar URL field should stay hidden');
     if (await desktop.getByText('寄回的见闻', { exact: true }).count()) throw new Error('companion travel log should stay hidden');
     await desktop.locator('[data-action="toggle-companion-profile"]').click();
-    if (await desktop.locator('[data-action="choose-companion-species"]').count() !== 6) throw new Error('expected six built-in pixel companions');
+    if (await desktop.locator('[data-action="choose-companion-species"]').count() !== 9) throw new Error('expected nine built-in pixel companions');
     if (await desktop.locator('[data-action="choose-companion-device"]').count() !== 5) throw new Error('expected five device structures');
     if (await desktop.locator('.tf-pet-appearance-controls input[type="color"]').count() !== 3) throw new Error('companion body, accent and accessory palettes are incomplete');
     if (await desktop.locator('.tf-pet-appearance-controls select[data-companion-appearance-field="accessory"]').count() !== 1) throw new Error('companion accessory control is missing');
     if (await desktop.locator('[data-action="save-companion-appearance"]').count() !== 1) throw new Error('companion appearance has no explicit save action');
     const speciesBodyColors = await desktop.locator('[data-action="choose-companion-species"] .tf-pixel-body').evaluateAll(nodes => [...new Set(nodes.map(node => getComputedStyle(node).fill))]);
     if (speciesBodyColors.length < 5) throw new Error(`companion species are still visually monochrome: ${JSON.stringify(speciesBodyColors)}`);
-    const companionSpecies = ['frog', 'cat', 'rabbit', 'fox', 'penguin', 'robo-bird'];
+    const companionSpecies = ['frog', 'cat', 'rabbit', 'fox', 'penguin', 'robo-bird', 'octopus', 'goldfish', 'soot'];
     const companionAccessories = ['scarf', 'satchel', 'flower', 'charm', 'ribbon', 'glasses', 'crown', 'leaf', 'headphones', 'cape', 'bell'];
+    const speciesPreviews = await desktop.locator('[data-action="choose-companion-species"] .tf-pixel-pet').evaluateAll((nodes, ids) => nodes.map((node, index) => ({ id: ids[index], svg: node.outerHTML })), companionSpecies);
+    await desktop.evaluate(previews => {
+        const sheet = document.createElement('section');
+        sheet.id = 'tf-species-contact-sheet';
+        sheet.style.cssText = 'position:fixed;inset:10px;z-index:99999;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:14px;background:#e9e3d9;color:#29352f;font:800 13px/1.2 sans-serif';
+        sheet.innerHTML = previews.map(item => `<article style="display:grid;grid-template-columns:150px 1fr;place-items:center;gap:12px;padding:12px 18px;background:#fff;border:1px solid #d2c8bb;border-radius:18px"><div>${item.svg}</div><div><b>${item.id}</b><small style="display:block;margin-top:7px;color:#7b756e;font-weight:600">统一 2px 网格 · 独立轮廓与动作部件</small></div></article>`).join('');
+        sheet.querySelectorAll('.tf-pixel-pet').forEach(node => { node.style.width = '145px'; node.style.height = '145px'; });
+        document.querySelector('#tavern-forum-root').append(sheet);
+    }, speciesPreviews);
+    await desktop.locator('#tf-species-contact-sheet').screenshot({ path: 'preview-companion-species-v3.png' });
+    await desktop.locator('#tf-species-contact-sheet').evaluate(node => node.remove());
     const accessoryPreviews = [];
     for (const speciesId of companionSpecies) {
         await desktop.locator(`[data-action="choose-companion-species"][data-species-id="${speciesId}"]`).click();
@@ -272,13 +283,22 @@ try {
     await desktop.evaluate(previews => {
         const sheet = document.createElement('section');
         sheet.id = 'tf-accessory-contact-sheet';
-        sheet.style.cssText = 'position:fixed;inset:12px;z-index:99999;display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:8px;padding:14px;background:#f4efe6;overflow:auto;color:#29352f;font:700 11px/1.2 sans-serif';
-        sheet.innerHTML = previews.map(item => `<article style="display:grid;place-items:center;gap:3px;min-height:128px;padding:7px;background:#fff;border:1px solid #d9d0c3;border-radius:10px"><span>${item.speciesId}<br>${item.accessoryId}</span>${item.svg}</article>`).join('');
-        sheet.querySelectorAll('.tf-pixel-pet').forEach(node => { node.style.width = '82px'; node.style.height = '82px'; });
+        sheet.style.cssText = 'position:fixed;inset:8px;z-index:99999;display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:4px;padding:7px;background:#f4efe6;overflow:hidden;color:#29352f;font:700 8px/1.05 sans-serif';
+        sheet.innerHTML = previews.map(item => `<article style="display:grid;place-items:center;gap:1px;min-height:96px;padding:3px;background:#fff;border:1px solid #d9d0c3;border-radius:7px"><span>${item.speciesId} · ${item.accessoryId}</span>${item.svg}</article>`).join('');
+        sheet.querySelectorAll('.tf-pixel-pet').forEach(node => { node.style.width = '61px'; node.style.height = '61px'; });
         document.querySelector('#tavern-forum-root').append(sheet);
     }, accessoryPreviews);
-    await desktop.locator('#tf-accessory-contact-sheet').screenshot({ path: 'preview-companion-accessories-v2.png' });
+    await desktop.locator('#tf-accessory-contact-sheet').screenshot({ path: 'preview-companion-accessories-v3.png' });
     await desktop.locator('#tf-accessory-contact-sheet').evaluate(node => node.remove());
+    await desktop.locator('[data-action="choose-companion-species"][data-species-id="goldfish"]').click();
+    const callsBeforeBettaBubbles = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
+    await desktop.locator('[data-action="companion-care"][data-care="talk"]').click();
+    if (await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls) !== callsBeforeBettaBubbles) throw new Error('local betta bubble interaction unexpectedly called the API');
+    if (!await desktop.locator('.tf-companion-v3.is-species-goldfish.is-action-talk .tf-betta-bubbles').isVisible()) throw new Error('betta talk interaction did not reveal its local bubble trail');
+    const bettaBubbleAnimation = await desktop.locator('.tf-betta-bubbles i').first().evaluate(node => getComputedStyle(node).animationName);
+    if (!bettaBubbleAnimation.includes('tf-betta-bubble')) throw new Error(`betta bubble animation is inactive: ${bettaBubbleAnimation}`);
+    await desktop.waitForTimeout(980);
+    await desktop.locator('.tf-pet-screen').screenshot({ path: 'preview-companion-betta-bubbles-v3.png' });
     await desktop.locator('[data-action="choose-companion-species"][data-species-id="fox"]').click();
     await desktop.locator('[data-companion-appearance-field="bodyColor"]').fill('#2f6f9f');
     await desktop.locator('[data-companion-appearance-field="accentColor"]').fill('#f1b54a');

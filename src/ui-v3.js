@@ -1,4 +1,5 @@
 import { fetchAvailableModels, generateForumImage, generateForumText, generateForumTextResult } from './api.js';
+import { renderCompanionArtwork } from './companion-art.js';
 import { DEFAULT_BUILTIN_PROMPTS, DEFAULT_SETTINGS, WORLD_MODULE_DEFINITIONS } from './constants.js';
 import {
     buildDirectMessageRequest,
@@ -109,14 +110,20 @@ const COMPANION_SPECIES = Object.freeze([
     { id: 'fox', name: '赤狐' },
     { id: 'penguin', name: '小企鹅' },
     { id: 'robo-bird', name: '机械鸟' },
+    { id: 'octopus', name: '小章鱼' },
+    { id: 'goldfish', name: '斗鱼' },
+    { id: 'soot', name: '煤球' },
 ]);
 const COMPANION_PALETTES = Object.freeze({
     frog: { body: '#63ad5c', accent: '#e7c65a' },
-    cat: { body: '#3f414d', accent: '#9b78ba' },
-    rabbit: { body: '#ded4c4', accent: '#d995a9' },
-    fox: { body: '#c96e3f', accent: '#713b3d' },
-    penguin: { body: '#354b62', accent: '#e6a94f' },
-    'robo-bird': { body: '#5c8f91', accent: '#e1b75a' },
+    cat: { body: '#292d35', accent: '#75c9f4' },
+    rabbit: { body: '#dcccad', accent: '#cf8fa0' },
+    fox: { body: '#ca6d3e', accent: '#6e3835' },
+    penguin: { body: '#344b61', accent: '#dfa24b' },
+    'robo-bird': { body: '#5f9192', accent: '#ddb257' },
+    octopus: { body: '#a779b5', accent: '#e2a0ba' },
+    goldfish: { body: '#f2eee6', accent: '#d5e2ec' },
+    soot: { body: '#292a2f', accent: '#d8cfab' },
     mystery: { body: '#74658b', accent: '#d1a7bd' },
 });
 const COMPANION_DEVICE_SKINS = Object.freeze([
@@ -181,6 +188,9 @@ const COMPANION_EXTRA_REACTIONS = Object.freeze({
     fox: { brush: '赤狐把蓬松尾巴铺开，允许你替它梳得更加漂亮。', dance: '它踏着狡黠的小碎步绕了半圈，尾巴像火焰一样扫过。', train: '它悄无声息地完成埋伏练习，最后突然从侧边现身。', hide: '它藏进阴影里，只留下一双亮晶晶的眼睛。', talk: '它侧耳辨认你的语气，再用尾巴轻扫屏幕作为回答。' },
     penguin: { brush: '小企鹅认真整理羽毛，还主动转身让你检查另一边。', dance: '它左右摇摆拍着短翅，跳出一段笨拙又可爱的舞。', train: '它练习滑行转弯，绕过障碍后开心地拍了拍肚皮。', hide: '它躲在冰块后面，却因为圆滚滚的肚子露出一大截。', talk: '它仰头听你说完，发出很有精神的回应。' },
     'robo-bird': { brush: '机械鸟展开清洁面板，允许你擦亮每一片翼板。', dance: '节拍灯依次亮起，它完成了一段精确的机械舞。', train: '它重新校准航线，连续完成三次悬停与急转。', hide: '它关闭指示灯进入隐身练习，只剩极轻的电流声。', talk: '语音灯随你的话闪烁，随后播放一串愉快确认音。' },
+    octopus: { brush: '小章鱼把触手一根根摊开，认真等你清理吸盘。', dance: '它像水波一样轮流卷起触手，原地转出一朵小漩涡。', train: '它用不同触手同时完成三个小任务，得意地鼓起脑袋。', hide: '它把身体缩成小小一团，还试图用一片海草挡住自己。', talk: '它安静听完，随后用触手在屏幕上画了一个圆。' },
+    goldfish: { brush: '斗鱼舒展开丝绸般的长鳍，让你顺着鳞片轻轻整理。', dance: '它张开层层尾鳍，在水中绕出一朵缓慢盛开的花。', train: '它收拢长鳍穿过三个水草环，停下时又骄傲地完全展开。', hide: '它藏进水草深处，但华丽的尾鳍仍从叶隙间轻轻飘动。', talk: '它停在你面前缓缓展鳍，又吐出一串细小泡泡。' },
+    soot: { brush: '煤球被梳得蓬松了一圈，抖落几颗亮晶晶的灰尘。', dance: '它用细细的脚快速踏拍，黑绒边缘跟着节奏颤动。', train: '它沿着窄窄的边缘跑了一圈，一次也没有掉下去。', hide: '它贴进屏幕角落，几乎和阴影融成了一体。', talk: '两只圆眼睛一眨不眨地望着你，随后轻轻蹦了一下。' },
     mystery: { brush: '它安静配合你的梳理，看起来舒服了不少。', dance: '它用独特的方式跟着节奏活动起来。', train: '它认真完成了今天的小练习。', hide: '它找了一个自以为隐蔽的位置躲起来。', talk: '它专心听完，并用自己的方式回应你。' },
 });
 const COMPANION_HABITS = Object.freeze({
@@ -190,6 +200,9 @@ const COMPANION_HABITS = Object.freeze({
     fox: { favorite: 'berry', likes: ['fish-flake'], pet: '赤狐绕过你的手，最后用尾巴轻轻扫了一下。', play: '它假装埋伏，突然扑向飞过的像素光点。', rest: '它用大尾巴盖住鼻尖，蜷成暖暖的一团。', weather: { sunny: ['它伏在阴影边缘，耐心观察来往动静。', '机敏'], cloudy: ['微暗的天色让它更愿意四处探索。', '活跃'], rain: ['它闻了闻潮湿空气，像发现了新的气味。', '好奇'], wind: ['顺风带来远处的味道，它的耳朵立了起来。', '专注'], snow: ['它在雪地里留下轻快脚印，尾巴像一团火。', '雀跃'] } },
     penguin: { favorite: 'fish-flake', likes: ['berry'], pet: '小企鹅挺起胸口，开心地拍了拍短翅。', play: '它用肚皮滑过屏幕，转了一圈才停下。', rest: '它把喙藏到翅膀下，稳稳站着睡着了。', weather: { sunny: ['它躲到凉快处，认真保护自己的冰块。', '怕热'], cloudy: ['温度刚刚好，它慢悠悠巡视小窝。', '舒适'], rain: ['它把雨点当成小游戏，啪嗒啪嗒踩水。', '开心'], wind: ['它迎着风张开翅膀，像一艘小帆船。', '勇敢'], snow: ['雪一落下来，它立刻精神十足地滑了出去！', '兴奋'] } },
     'robo-bird': { favorite: 'battery', likes: ['seed-mix'], pet: '触摸感应灯依次亮起，它回了一声清脆电子音。', play: '它展开小翼完成了一套精准的绕圈飞行。', rest: '机械鸟收起翼片，进入低功耗充电模式。', weather: { sunny: ['太阳能板充电效率提升，指示灯很明亮。', '满电'], cloudy: ['它调低屏幕亮度，平稳执行巡航程序。', '稳定'], rain: ['防水检测启动，它谨慎地收起外露接口。', '警戒'], wind: ['它校正陀螺仪，兴奋地测试逆风悬停。', '专注'], snow: ['除霜模块嗡嗡运转，机身冒出一点热气。', '忙碌'] } },
+    octopus: { favorite: 'ice-fish', likes: ['fish-flake', 'melon-jelly'], pet: '小章鱼用一根触手轻轻圈住你的手指，又害羞地松开。', play: '它同时抛接几颗像素贝壳，触手忙得很开心。', rest: '它把触手收拢成柔软的小窝，颜色也慢慢变淡。', weather: { sunny: ['它躲进水草阴影里，只伸出一根触手试探光线。', '避光'], cloudy: ['柔和的光线让它自在地舒展开触手。', '舒适'], rain: ['雨声像海面波纹，它跟着节奏轻轻摆动。', '放松'], wind: ['它牢牢吸住小窝底部，触手末端仍被风吹得晃动。', '稳重'], snow: ['它抱紧暖石，把所有触手都收到了身下。', '怕冷'] } },
+    goldfish: { favorite: 'fish-flake', likes: ['melon-jelly', 'berry'], pet: '斗鱼靠近水面，用额头轻轻碰了碰你的指尖，长鳍在身后安静舒展。', play: '它追着反光迅速转身，层叠尾鳍像一把忽然打开的小扇子。', rest: '它停在宽叶水草旁收拢长鳍，安静进入浅眠。', weather: { sunny: ['水面亮起来，它展开尾鳍，让鳞片在光下变换颜色。', '耀眼'], cloudy: ['柔和光线让它慢悠悠地舒展每一片长鳍。', '悠闲'], rain: ['雨点敲出细密波纹，它在水下好奇地跟随影子。', '好奇'], wind: ['水流加快，它收拢长鳍，稳稳停在喜欢的位置。', '认真'], snow: ['它靠近恒温灯，长鳍摆动得比平时慢了一些。', '怕冷'] } },
+    soot: { favorite: 'seed-mix', likes: ['honey-drop', 'berry'], pet: '煤球先缩成更小的一团，随后蓬松地贴住你的手心。', play: '它追着一粒光点满屏乱跑，细腿快得只剩残影。', rest: '它钻进最暗的角落，圆眼睛慢慢合成两条细线。', weather: { sunny: ['它躲开最亮的地方，在影子边缘探头探脑。', '藏光'], cloudy: ['灰蒙蒙的天色让它大胆地跑到小窝中央。', '自在'], rain: ['潮湿让绒毛有点塌，它认真地把自己抖圆。', '忙碌'], wind: ['它被吹得滚出半圈，又若无其事地站稳。', '顽强'], snow: ['白色背景衬得它格外显眼，它反而兴奋地到处蹦。', '雀跃'] } },
     mystery: { favorite: 'berry', likes: COMPANION_FOODS.map(item => item.id), pet: '它用自己的方式回应了你的触碰。', play: '它围着光点开心地转了一圈。', rest: '它找到舒服的位置，安静休息起来。', weather: { sunny: ['它享受着小窝里的光。', '舒适'], cloudy: ['它安静地看着云层变化。', '平静'], rain: ['它听着雨声，显得若有所思。', '好奇'], wind: ['它追踪着风吹动的影子。', '专注'], snow: ['它第一次认真观察这些白色小点。', '新奇'] } },
 });
 const CUSTOM_STYLE_ID = 'tavern-forum-custom-css';
@@ -1139,7 +1152,7 @@ function renderMeNav() {
     const groups = [
         ['世界', [['modules', 'sparkles', '功能与联动'], ['moderation', 'shield', '社区治理'], ['npcs', 'users', '角色与头像']]],
         ['生成', [['automation', 'settings', '自动化与安全'], ['prompts', 'book', '论坛设定'], ['builtinPrompts', 'settings', '内置提示词'], ['api', 'settings', 'API'], ['sources', 'shield', '正文联动']]],
-        ['隐私', [['boundaries', 'lock', '信息边界'], ['notifications', 'message', '通知设置']]],
+        ['隐私', [['boundaries', 'lock', '信息边界（待修改）'], ['notifications', 'message', '通知设置']]],
         ['外观', [['appearance', 'palette', '外观与主题']]],
         ['数据', [['runtime', 'database', '运行后台'], ['data', 'database', '数据管理']]],
     ];
@@ -1435,7 +1448,10 @@ function getCompanionSpecies(species) {
         || (item.id === 'rabbit' && /兔|rabbit|bunny/.test(value))
         || (item.id === 'fox' && /狐|fox/.test(value))
         || (item.id === 'penguin' && /企鹅|penguin/.test(value))
-        || (item.id === 'robo-bird' && /机械鸟|机器鸟|机巧鸟|bird|robo-bird/.test(value))) || null;
+        || (item.id === 'robo-bird' && /机械鸟|机器鸟|机巧鸟|bird|robo-bird/.test(value))
+        || (item.id === 'octopus' && /章鱼|八爪鱼|octopus/.test(value))
+        || (item.id === 'goldfish' && /斗鱼|暹罗斗鱼|betta|金鱼|小鱼|goldfish/.test(value))
+        || (item.id === 'soot' && /煤球|煤灰|灰尘精灵|soot/.test(value))) || null;
 }
 
 function getLocalCompanionTime(companion, date = new Date()) {
@@ -1496,82 +1512,14 @@ function renderPixelCompanion(species, status = 'home', mini = false, appearance
     const accentColor = safeColor(liveAppearance?.accentColor);
     const accessoryColor = safeColor(liveAppearance?.accessoryColor);
     const accessory = COMPANION_ACCESSORIES.some(item => item.id === liveAppearance?.accessory) ? liveAppearance.accessory : 'none';
-    const customStyle = [bodyColor ? `--pet-body-user:${bodyColor}` : '', accentColor ? `--pet-accent-user:${accentColor}` : '', accessoryColor ? `--pet-accessory-user:${accessoryColor}` : ''].filter(Boolean).join(';');
-    const shapes = {
-        frog: '<g class="tf-pixel-body"><rect x="15" y="21" width="34" height="26"/><rect x="11" y="15" width="15" height="14"/><rect x="38" y="15" width="15" height="14"/><rect x="8" y="44" width="21" height="6"/><rect x="35" y="44" width="21" height="6"/></g><rect class="tf-pixel-light" x="21" y="34" width="22" height="11"/><g class="tf-pixel-eyes"><rect class="tf-pixel-light" x="15" y="18" width="7" height="7"/><rect class="tf-pixel-light" x="42" y="18" width="7" height="7"/><rect class="tf-pixel-ink" x="18" y="19" width="4" height="5"/><rect class="tf-pixel-ink" x="42" y="19" width="4" height="5"/></g><rect class="tf-pixel-ink" x="25" y="37" width="4" height="3"/><rect class="tf-pixel-ink" x="35" y="37" width="4" height="3"/><rect class="tf-pixel-ink" x="28" y="42" width="8" height="2"/>',
-        cat: '<g class="tf-pixel-tail"><rect class="tf-pixel-body" x="48" y="31" width="7" height="18"/><rect class="tf-pixel-body" x="52" y="24" width="6" height="12"/><rect class="tf-pixel-accent" x="52" y="23" width="6" height="6"/></g><path class="tf-pixel-body" d="M14 21V9h5l8 9h10l8-9h5v32l-8 10H22L14 41z"/><rect class="tf-pixel-body" x="19" y="45" width="9" height="9"/><rect class="tf-pixel-body" x="36" y="45" width="9" height="9"/><path class="tf-pixel-accent" d="M18 13v9h8zM46 13v9h-8z"/><rect class="tf-pixel-light" x="23" y="27" width="6" height="7"/><rect class="tf-pixel-light" x="36" y="27" width="6" height="7"/><g class="tf-pixel-eyes"><rect class="tf-pixel-ink" x="25" y="28" width="3" height="5"/><rect class="tf-pixel-ink" x="37" y="28" width="3" height="5"/></g><rect class="tf-pixel-accent" x="30" y="35" width="5" height="4"/><path class="tf-pixel-ink" d="M25 41h6v2h3v-2h6v3H25z"/>',
-        rabbit: '<g class="tf-pixel-ears"><rect class="tf-pixel-body" x="17" y="5" width="11" height="26"/><rect class="tf-pixel-body" x="36" y="5" width="11" height="26"/><rect class="tf-pixel-accent" x="20" y="9" width="5" height="16"/><rect class="tf-pixel-accent" x="39" y="9" width="5" height="16"/></g><rect class="tf-pixel-body" x="14" y="24" width="36" height="27"/><rect class="tf-pixel-light" x="19" y="37" width="26" height="13"/><rect class="tf-pixel-body" x="9" y="33" width="9" height="14"/><rect class="tf-pixel-body" x="46" y="33" width="9" height="14"/><rect class="tf-pixel-body" x="18" y="48" width="11" height="7"/><rect class="tf-pixel-body" x="35" y="48" width="11" height="7"/><g class="tf-pixel-eyes"><rect class="tf-pixel-ink" x="22" y="30" width="5" height="6"/><rect class="tf-pixel-ink" x="37" y="30" width="5" height="6"/></g><rect class="tf-pixel-accent" x="30" y="37" width="5" height="4"/><path class="tf-pixel-ink" d="M27 43h5v2h3v-2h4v3H27z"/>',
-        fox: '<g class="tf-pixel-tail"><path class="tf-pixel-body" d="M42 36h12v4h6v12H45v-5h-9z"/><path class="tf-pixel-light" d="M53 40h7v12H48v-5h5z"/></g><path class="tf-pixel-body" d="M11 11h7l10 10h8l10-10h7v31l-10 11H21L11 42z"/><path class="tf-pixel-accent" d="M16 16h4l7 8H16zM48 16h-4l-7 8h11z"/><path class="tf-pixel-light" d="M20 35h7l5 4 5-4h8v11l-5 6H25l-5-6z"/><g class="tf-pixel-eyes"><rect class="tf-pixel-ink" x="20" y="28" width="6" height="6"/><rect class="tf-pixel-ink" x="39" y="28" width="6" height="6"/></g><rect class="tf-pixel-ink" x="30" y="38" width="5" height="5"/><rect class="tf-pixel-ink" x="27" y="46" width="11" height="3"/>',
-        penguin: '<g class="tf-pixel-wings"><rect class="tf-pixel-body" x="11" y="25" width="8" height="22"/><rect class="tf-pixel-body" x="45" y="25" width="8" height="22"/></g><rect class="tf-pixel-body" x="17" y="13" width="30" height="36"/><rect class="tf-pixel-body" x="23" y="8" width="18" height="7"/><path class="tf-pixel-light" d="M22 27h20v19H22z"/><rect class="tf-pixel-light" x="22" y="19" width="8" height="8"/><rect class="tf-pixel-light" x="35" y="19" width="8" height="8"/><g class="tf-pixel-eyes"><rect class="tf-pixel-ink" x="25" y="21" width="4" height="5"/><rect class="tf-pixel-ink" x="36" y="21" width="4" height="5"/></g><rect class="tf-pixel-accent" x="28" y="28" width="9" height="6"/><rect class="tf-pixel-accent" x="19" y="48" width="13" height="6"/><rect class="tf-pixel-accent" x="34" y="48" width="13" height="6"/>',
-        'robo-bird': '<g class="tf-pixel-wings"><rect class="tf-pixel-body" x="8" y="25" width="11" height="15"/><rect class="tf-pixel-body" x="45" y="25" width="11" height="15"/></g><rect class="tf-pixel-body" x="17" y="17" width="30" height="28"/><rect class="tf-pixel-light" x="22" y="12" width="20" height="7"/><g class="tf-pixel-antenna"><rect class="tf-pixel-accent" x="30" y="6" width="4" height="7"/><rect class="tf-pixel-accent" x="28" y="4" width="8" height="4"/></g><rect class="tf-pixel-screen" x="21" y="22" width="22" height="11"/><g class="tf-pixel-eyes"><rect class="tf-pixel-accent" x="24" y="24" width="6" height="6"/><rect class="tf-pixel-accent" x="35" y="24" width="6" height="6"/></g><rect class="tf-pixel-accent" x="27" y="36" width="12" height="4"/><rect class="tf-pixel-body" x="22" y="44" width="8" height="10"/><rect class="tf-pixel-body" x="36" y="44" width="8" height="10"/><rect class="tf-pixel-accent" x="47" y="26" width="10" height="7"/>',
-        mystery: '<rect class="tf-pixel-body" x="18" y="17" width="28" height="32"/><rect class="tf-pixel-accent" x="13" y="24" width="7" height="18"/><rect class="tf-pixel-accent" x="44" y="24" width="7" height="18"/><rect class="tf-pixel-body" x="22" y="47" width="8" height="7"/><rect class="tf-pixel-body" x="36" y="47" width="8" height="7"/><g class="tf-pixel-eyes"><rect class="tf-pixel-light" x="23" y="26" width="5" height="6"/><rect class="tf-pixel-light" x="36" y="26" width="5" height="6"/></g><rect class="tf-pixel-accent" x="30" y="36" width="4" height="4"/><rect class="tf-pixel-ink" x="27" y="42" width="10" height="2"/>',
-    };
-    const accessoryArt = {
-        scarf: {
-            slot: 'neck',
-            front: '<path class="tf-pixel-accessory-shadow" d="M17 43h30v5H17z"/><path d="M18 42h28v4H18zM41 45h8v7h-3v8h-6v-12h-4v-3z"/><rect class="tf-pixel-accessory-light" x="43" y="48" width="3" height="2"/>',
-        },
-        satchel: {
-            slot: 'side',
-            back: '<path class="tf-pixel-accessory-line" d="M20 25l23 27"/>',
-            front: '<path class="tf-pixel-accessory-shadow" d="M37 42h16v14H37z"/><rect x="36" y="40" width="16" height="14"/><rect class="tf-pixel-accessory-light" x="38" y="42" width="12" height="3"/><rect class="tf-pixel-accessory-shadow" x="43" y="46" width="3" height="4"/>',
-        },
-        flower: {
-            slot: 'head',
-            front: '<rect class="tf-pixel-accessory-stem" x="48" y="14" width="2" height="9"/><rect x="44" y="8" width="5" height="5"/><rect x="50" y="8" width="5" height="5"/><rect x="47" y="5" width="5" height="5"/><rect x="47" y="12" width="5" height="5"/><rect class="tf-pixel-accessory-light" x="48" y="9" width="3" height="3"/>',
-        },
-        charm: {
-            slot: 'neck',
-            front: '<path class="tf-pixel-accessory-line" d="M23 45h18"/><rect class="tf-pixel-accessory-shadow" x="30" y="46" width="5" height="4"/><path d="M27 49h11v8H27z"/><rect class="tf-pixel-accessory-light" x="30" y="51" width="5" height="3"/>',
-        },
-        ribbon: {
-            slot: 'head',
-            front: '<path class="tf-pixel-accessory-shadow" d="M13 14h9l5 4v-4h9l5 5-5 6h-9v-4l-5 4h-9l-4-6z"/><path d="M13 12h9l5 4v-4h9l5 5-5 6h-9v-4l-5 4h-9l-4-6z"/><rect class="tf-pixel-accessory-light" x="23" y="15" width="7" height="6"/>',
-        },
-        glasses: {
-            slot: 'face',
-            front: '<path class="tf-pixel-accessory-line is-thin" d="M13 27h5m12 2h5m13-2h4"/><rect class="tf-pixel-accessory-frame" x="17" y="25" width="14" height="12" rx="1"/><rect class="tf-pixel-accessory-frame" x="34" y="25" width="14" height="12" rx="1"/><rect class="tf-pixel-accessory-glint" x="20" y="28" width="4" height="2"/><rect class="tf-pixel-accessory-glint" x="37" y="28" width="4" height="2"/>',
-        },
-        crown: {
-            slot: 'head',
-            front: '<path class="tf-pixel-accessory-shadow" d="M22 9l6 5 4-9 5 9 7-5v13H22z"/><path d="M22 7l6 5 4-9 5 9 7-5v13H22z"/><rect class="tf-pixel-accessory-light" x="26" y="15" width="14" height="3"/><rect class="tf-pixel-accessory-jewel" x="31" y="12" width="4" height="4"/>',
-        },
-        leaf: {
-            slot: 'head',
-            front: '<path class="tf-pixel-accessory-shadow" d="M32 16c3-9 12-12 18-8-2 9-9 13-18 11z"/><path d="M31 14c3-9 12-12 18-8-2 9-9 13-18 11z"/><path class="tf-pixel-accessory-line is-thin" d="M31 16l14-7"/>',
-        },
-        headphones: {
-            slot: 'head',
-            back: '<path class="tf-pixel-accessory-line is-wide" d="M14 30V20C14 10 22 5 32 5s18 5 18 15v10"/>',
-            front: '<rect class="tf-pixel-accessory-shadow" x="9" y="25" width="10" height="18"/><rect x="10" y="23" width="9" height="18"/><rect class="tf-pixel-accessory-light" x="13" y="27" width="3" height="9"/><rect class="tf-pixel-accessory-shadow" x="46" y="25" width="10" height="18"/><rect x="45" y="23" width="9" height="18"/><rect class="tf-pixel-accessory-light" x="48" y="27" width="3" height="9"/>',
-        },
-        cape: {
-            slot: 'back',
-            back: '<path class="tf-pixel-accessory-shadow" d="M18 28h12l4 7-8 22H6l7-23z"/><path d="M18 26h11l4 7-8 22H7l7-23z"/><path class="tf-pixel-accessory-light" d="M18 27h9l3 5-17 4 2-6z"/>',
-        },
-        bell: {
-            slot: 'neck',
-            front: '<path class="tf-pixel-accessory-line" d="M21 45h23"/><path class="tf-pixel-accessory-shadow" d="M29 48h8v2h3v6h2v2H24v-2h2v-6h3z"/><path d="M29 46h8v2h3v6h2v2H24v-2h2v-6h3z"/><rect class="tf-pixel-accessory-light" x="29" y="49" width="4" height="3"/><rect class="tf-pixel-accessory-shadow" x="31" y="56" width="5" height="3"/>',
-        },
-    };
-    const accessoryOffsets = {
-        frog: { scarf: 'translate(0 3)', flower: 'translate(-2 1)', charm: 'translate(0 3)', ribbon: 'translate(2 4) scale(.72)', glasses: 'translate(0 -7)', crown: 'translate(0 -1) scale(.72)', leaf: 'translate(-1 1) scale(.82)', headphones: 'translate(0 0)', cape: 'translate(0 2)', bell: 'translate(0 3)' },
-        cat: { ribbon: 'translate(-1 1) scale(.72)', crown: 'translate(0 -3) scale(.86)', leaf: 'translate(0 0) scale(.88)' },
-        rabbit: { scarf: 'translate(0 3)', flower: 'translate(-3 9) scale(.82)', charm: 'translate(0 3)', ribbon: 'translate(-2 10) scale(.68)', glasses: 'translate(0 4)', crown: 'translate(0 9) scale(.72)', leaf: 'translate(-2 9) scale(.78)', headphones: 'translate(0 7)', cape: 'translate(0 2)', bell: 'translate(0 3)' },
-        fox: { scarf: 'translate(0 5)', charm: 'translate(0 5)', ribbon: 'translate(-1 1) scale(.72)', glasses: 'translate(0 2)', crown: 'translate(0 -2) scale(.86)', leaf: 'translate(0 0) scale(.88)', bell: 'translate(0 5)' },
-        penguin: { scarf: 'translate(0 -7)', flower: 'translate(-1 -2)', charm: 'translate(0 -5)', ribbon: 'translate(-1 -1) scale(.72)', glasses: 'translate(0 -6)', crown: 'translate(0 -6) scale(.82)', leaf: 'translate(0 -4) scale(.86)', headphones: 'translate(0 -3)', bell: 'translate(0 -5)' },
-        'robo-bird': { scarf: 'translate(0 -1)', flower: 'translate(1 -1) scale(.82)', charm: 'translate(0 -2)', ribbon: 'translate(-2 0) scale(.68)', glasses: 'translate(0 -2)', crown: 'translate(-10 2) rotate(-8 32 14) scale(.72)', leaf: 'translate(2 -1) scale(.78)', headphones: 'translate(0 1)', bell: 'translate(0 -2)' },
-        mystery: {},
-    };
-    const selectedAccessory = accessoryArt[accessory];
-    const accessoryTransform = accessoryOffsets[kind]?.[accessory] || '';
-    const renderAccessoryLayer = (layer) => selectedAccessory?.[layer]
-        ? `<g class="tf-pixel-accessory is-${accessory} is-slot-${selectedAccessory.slot} is-layer-${layer}" data-accessory="${accessory}" data-slot="${selectedAccessory.slot}"${accessoryTransform ? ` transform="${accessoryTransform}"` : ''}><g class="tf-pixel-accessory-art">${selectedAccessory[layer]}</g></g>`
-        : '';
-    const accessoryBack = renderAccessoryLayer('back');
-    const accessoryFront = renderAccessoryLayer('front');
-    const travelKit = '<g class="tf-pixel-travel-kit"><rect class="tf-pixel-accent" x="45" y="23" width="11" height="20"/><rect class="tf-pixel-light" x="48" y="27" width="5" height="5"/><rect class="tf-pixel-ink" x="42" y="28" width="4" height="11"/></g>';
-    return `<svg class="tf-pixel-pet is-kind-${kind} is-${safeStatus} is-accessory-${accessory}${mini ? ' is-mini' : ''}" ${customStyle ? `style="${customStyle}"` : ''} viewBox="0 0 64 64" aria-hidden="true" shape-rendering="crispEdges">${accessoryBack}<g class="tf-pixel-character">${shapes[kind]}</g>${travelKit}${accessoryFront}</svg>`;
+    const customStyle = [
+        bodyColor ? `--pet-body-user:${bodyColor}` : '',
+        accentColor ? `--pet-accent-user:${accentColor}` : '',
+        accessoryColor ? `--pet-accessory-user:${accessoryColor}` : '',
+    ].filter(Boolean).join(';');
+    const artwork = renderCompanionArtwork(kind, accessory);
+    const artViewBox = kind === 'cat' ? '0 0 72 64' : '0 0 64 64';
+    return `<svg class="tf-pixel-pet is-kind-${kind} is-${safeStatus} is-accessory-${accessory}${mini ? ' is-mini' : ''}" ${customStyle ? `style="${customStyle}"` : ''} viewBox="${artViewBox}" aria-hidden="true" shape-rendering="crispEdges">${artwork}</svg>`;
 }
 
 function renderCompanionAvatar(data, large = false) {
@@ -1648,7 +1596,7 @@ function renderCompanionAppV3(data) {
     deviceOptions = `${appearanceControls}${environmentControls}${deviceOptions}`;
     const stat = (label, value) => `<div><span>${label}<b>${Number(value)}</b></span><progress max="100" value="${Number(value)}"></progress></div>`;
     const lastFood = COMPANION_FOODS.find(item => item.id === companion.lastFood) || COMPANION_FOODS[0];
-    const animationLayer = `<span class="tf-pet-animation-layer" aria-hidden="true"><span class="tf-feed-drop" data-food-animation="${escapeHtml(lastFood.id)}"><i class="tf-food-offering"><b>${escapeHtml(lastFood.symbol)}</b><em></em></i><i class="tf-food-crumb is-one"></i><i class="tf-food-crumb is-two"></i><i class="tf-food-crumb is-three"></i><i class="tf-food-species-fx"></i></span><span class="tf-pet-hearts"><i>♥</i><i>♥</i><i>♥</i><i>♥</i></span><span class="tf-play-ball">◆</span><span class="tf-play-trail"><i></i><i></i><i></i></span><span class="tf-sleep-cloud"><i>Z</i><i>z</i><i>z</i></span><span class="tf-touch-rings"><i></i><i></i><i></i></span><span class="tf-pet-stars"><i>✦</i><i>·</i><i>✦</i><i>·</i></span><span class="tf-action-lines"><i></i><i></i><i></i></span></span>`;
+    const animationLayer = `<span class="tf-pet-animation-layer" aria-hidden="true"><span class="tf-feed-drop" data-food-animation="${escapeHtml(lastFood.id)}"><i class="tf-food-offering"><b>${escapeHtml(lastFood.symbol)}</b><em></em></i><i class="tf-food-crumb is-one"></i><i class="tf-food-crumb is-two"></i><i class="tf-food-crumb is-three"></i><i class="tf-food-species-fx"></i></span><span class="tf-pet-hearts"><i>♥</i><i>♥</i><i>♥</i><i>♥</i></span><span class="tf-play-ball">◆</span><span class="tf-play-trail"><i></i><i></i><i></i></span><span class="tf-sleep-cloud"><i>Z</i><i>z</i><i>z</i></span><span class="tf-touch-rings"><i></i><i></i><i></i></span><span class="tf-pet-stars"><i>✦</i><i>·</i><i>✦</i><i>·</i></span><span class="tf-care-action-fx"><i></i><i></i><i></i></span><span class="tf-betta-bubbles"><i></i><i></i><i></i><i></i><i></i><i></i></span></span>`;
     const weatherLayer = `<span class="tf-pet-weather" aria-hidden="true"><span class="tf-weather-sun"><i></i></span><span class="tf-weather-moon">☾<i>·</i><i>·</i><i>·</i></span><span class="tf-weather-cloud"><i></i><i></i></span><span class="tf-weather-rain">${'<i></i>'.repeat(8)}</span><span class="tf-weather-snow"><i>✣</i><i>·</i><i>✣</i><i>·</i><i>✣</i><i>·</i></span><span class="tf-weather-wind"><i></i><i></i><i></i><b>◆</b></span></span>`;
     const tripSchedule = activeTrip ? `<section class="tf-companion-trip-schedule"><header><span>${icon('message')}预生成行程</span><b>${deliveredSignals}/${tripSignals.length} 则来信</b></header><progress max="100" value="${tripProgress}"></progress><footer><span>预计 ${formatTimeUntil(activeTrip.returnAt)} 后返家</span><small>消息按时间在本地释放，不再调用 API</small></footer></section>` : '';
     return `<div class="tf-companion-page tf-companion-v3 is-species-${speciesId} is-device-${skin.id} is-action-${escapeHtml(companion.lastAction || 'idle')} is-weather-${weather.id}"><section class="tf-card tf-companion-home"><div class="tf-pet-console-wrap"><div class="tf-pet-console"><div class="tf-pet-console-brand"><span>${skin.id === 'terminal' ? 'FIELD UNIT' : skin.id === 'arcane' ? 'FAMILIAR LINK' : 'POCKET TRAVELER'}</span><b>${escapeHtml(skin.name)}</b></div><div class="tf-pet-screen-bezel"><div class="tf-pet-screen"><div class="tf-pet-screen-top"><b>${statusCode}</b><span>${escapeHtml(companion.mood || '好奇')}</span><span class="tf-pet-signal"><i></i><i></i><i></i></span></div><div class="tf-pet-stage">${portrait}${animationLayer}${weatherLayer}<span class="tf-pet-cloud is-one"></span><span class="tf-pet-cloud is-two"></span><span class="tf-pet-ground"></span></div><div class="tf-pet-screen-menu">${menuItems.map((item, index) => `<button class="${index === menuIndex ? 'is-selected' : ''}" data-action="companion-care" data-care="${item.id}" title="${item.label}"><span>${item.symbol}</span><b>${item.label}</b></button>`).join('')}</div><div class="tf-pet-screen-bottom"><span>${escapeHtml(companion.species)}</span><span title="${escapeHtml(weather.note)}">${weather.icon} ${escapeHtml(weather.label)}</span><span>♥ ${String(bond).padStart(3, '0')}</span></div></div></div><div class="tf-pet-device-controls"><button type="button" data-action="companion-menu-nav" data-direction="-1" aria-label="上一个功能"><i></i><span>PREV</span></button><button type="button" data-action="companion-menu-confirm" aria-label="确认当前功能"><i></i><span>OK</span></button><button type="button" data-action="companion-menu-nav" data-direction="1" aria-label="下一个功能"><i></i><span>NEXT</span></button></div></div></div><div class="tf-companion-status"><span class="tf-pet-kicker">MY LITTLE TRAVELER · ${statusCode}</span><div class="tf-companion-title"><div><h2>${escapeHtml(companion.name)}</h2><small>${escapeHtml(companion.species)}</small></div><b>${escapeHtml(statusLabel)}</b></div><div class="tf-pet-message"><span>${companion.lastAction ? 'REACTION LOG' : 'MESSAGE'}</span><p>${escapeHtml(companion.lastAction ? actionCopy[companion.lastAction] || companion.message : companion.message || '它正安静地看着你。')}</p><small>直接在左侧宠物机内操作 · 本地运行</small></div><div class="tf-pet-vitals">${stat('饱腹', companion.satiety ?? 75)}${stat('体力', companion.energy ?? 80)}${stat('快乐', companion.happiness ?? 70)}</div><div class="tf-pet-info-strip"><span><small>亲密</small><b>${bond}</b></span><span><small>行囊</small><b>${escapeHtml(companion.carrying || '未准备')}</b></span><span class="tf-weather-summary" title="${escapeHtml(weather.note)}"><small>天气</small><b>${weather.icon} ${escapeHtml(weather.label)}</b></span>${luckyDirection ? `<span><small>幸运方向</small><b>${escapeHtml(luckyDirection)}</b></span>` : ''}</div>${luckyDirection ? `<div class="tf-pet-luck-note">${icon('sparkles')}<span>运势会影响旅途见闻、绕路与纪念品概率。</span></div>` : ''}${tripSchedule}<footer class="tf-pet-trip-actions"><button class="tf-primary-button tf-pet-main-action" data-action="${companion.status === 'away' ? 'companion-signal-local' : 'companion-depart-ai'}" ${viewState.moduleBusy.has('travel') ? 'disabled' : ''}>${viewState.moduleBusy.has('travel') ? '<span class="tf-spinner"></span>正在规划整趟旅行' : `${icon(companion.status === 'away' ? 'message' : 'repost')}${companion.status === 'away' ? '查看行程进度' : '出发 · 仅调用一次 API'}`}</button>${companion.status === 'away' ? '<button class="tf-secondary-button" data-action="companion-return">立即召回</button>' : ''}</footer></div></section><details class="tf-card tf-companion-profile-card" ${viewState.companionProfileOpen ? 'open' : ''}><summary data-action="toggle-companion-profile"><span class="tf-companion-profile-avatar">${renderPixelCompanion(companion.species, 'home', true)}</span><div><small>TRAVELER PROFILE</small><h3>${escapeHtml(companion.name)} · ${escapeHtml(companion.species)}</h3><p>${escapeHtml(skin.name)} · 点击展开更换旅伴或设备</p></div><span class="tf-profile-expand">编辑档案⌄</span></summary><div class="tf-companion-profile-content"><section><header><div><h3>旅伴图鉴</h3><p>更换形象不会清除亲密度、行囊和旅行记录。</p></div></header><div class="tf-pet-species-grid tf-pet-species-compact">${speciesOptions}<button type="button" class="tf-pet-species-option is-custom ${customSelected ? 'is-selected' : ''}" data-action="choose-companion-custom"><span>＋</span><b>自定义</b></button></div><div class="tf-companion-profile-grid"><label><span>名字</span><input data-companion-field="name" value="${escapeHtml(companion.name)}" maxlength="32"></label>${customSelected ? `<label><span>自定义种类</span><input data-companion-field="species" value="${escapeHtml(companion.species === '自定义旅伴' ? '' : companion.species)}" placeholder="例如：史莱姆、龙、机械犬"></label>` : ''}<label class="is-wide"><span>准备的行囊</span><input data-companion-field="carrying" value="${escapeHtml(companion.carrying)}" placeholder="食物、护符、地图……"></label></div></section><section class="tf-device-skin-section"><header><div><h3>设备外观</h3><p>只改变机身结构、屏幕色调和动画风格，不改变宠物数据。</p></div></header><div class="tf-device-skin-grid">${deviceOptions}</div></section></div></details></div>`;
@@ -2147,7 +2095,7 @@ const SETTINGS_SEARCH_INDEX = [
     ['私信 主动私信 安静时段 概率 剧情 禁区 死亡 重病 骗局', 'automation', '自动化与剧情安全', '我 → 自动化与安全'],
     ['私信 通知 回复 关注 任务 旅伴 举报', 'notifications', '通知设置', '我 → 通知设置'],
         ['世界书 预设 正文 user char 注入 token', 'sources', '正文联动', '设置中心 → 正文联动'],
-    ['世界书 信息边界 知道 秘密', 'boundaries', '信息边界', '我 → 信息边界'],
+    ['世界书 信息边界 知道 秘密 待修改', 'boundaries', '信息边界（待修改）', '我 → 信息边界（待修改）'],
     ['提示词 role 系统 用户 助手 论坛设定', 'prompts', '论坛设定', '我 → 论坛设定'],
     ['内置提示词 私信 任务 运势 旅伴 健康', 'builtinPrompts', '内置提示词', '我 → 内置提示词'],
         ['api 参数 模型 生图', 'api', 'API', '我 → API'],
@@ -2161,17 +2109,8 @@ function renderSettingsSearch() {
     return `<section class="tf-section-page tf-settings-search-page"><header><div><h2>设置搜索</h2><p>“${escapeHtml(viewState.settingsSearch)}”的相关配置</p></div><button class="tf-secondary-button" data-action="clear-settings-search">清除搜索</button></header><div>${results.length ? results.map(([, section, title, path]) => `<button class="tf-card" data-action="settings-search-result" data-section="${section}"><b>${escapeHtml(title)}</b><span>${escapeHtml(path)}</span>${icon('chevron')}</button>`).join('') : '<div class="tf-card tf-empty"><h3>没有找到相关设置</h3></div>'}</div></section>`;
 }
 
-function renderBoundarySettings(data) {
-    const settings = getSettings();
-    const boundary = settings.informationBoundary;
-    const visibilityOptions = selected => [['public', '公开：所有角色可知'], ['restricted', '指定角色可知'], ['private', '仅私信可使用'], ['forbidden', '任何生成都不可读']].map(([value, label]) => `<option value="${value}" ${selected === value ? 'selected' : ''}>${label}</option>`).join('');
-    const roleChecks = fact => `<div class="tf-boundary-roles">${data.npcs.map(npc => `<label><input type="checkbox" data-fact-known-role="${escapeHtml(fact.id)}" data-role-id="${escapeHtml(npc.id)}" ${(fact.knownBy || []).includes(npc.id) ? 'checked' : ''}>${escapeHtml(npc.name)}</label>`).join('') || '<small>暂无角色</small>'}</div>`;
-    const activeWorldBooks = viewState.worldCatalog.filter(book => book.enabled && book.entries.some(entry => entry.selected));
-    const world = activeWorldBooks.length ? `<div class="tf-world-boundaries">${activeWorldBooks.map(book => `<details><summary><span>${escapeHtml(book.name)}${book.characterBound ? ' · 角色绑定' : ' · 手动添加'}</span><small>${book.entries.filter(entry => entry.selected).length} 条正在读取</small></summary>${book.entries.filter(entry => entry.selected).map(entry => {
-        const policy = boundary.worldInfoEntries[entry.key] || { visibility: 'public', knownBy: [] };
-        return `<div class="tf-world-boundary-row"><div><b>${escapeHtml(entry.title)}</b><small>${escapeHtml(entry.content.slice(0, 80))}</small></div><select data-world-boundary="${escapeHtml(entry.key)}">${visibilityOptions(policy.visibility)}</select><input data-world-boundary-roles="${escapeHtml(entry.key)}" value="${escapeHtml((policy.knownBy || []).map(id => data.npcs.find(npc => npc.id === id)?.handle || id).join(', '))}" placeholder="指定角色账号，逗号分隔"></div>`;
-        }).join('')}</details>`).join('')}</div>` : '<p class="tf-empty-mini">当前没有正在读取的世界书条目。请先在“正文联动”里打开角色绑定或手动添加的世界书。</p>';
-    return `<section class="tf-section-page"><header><div><h2>信息边界</h2><p>控制每条事实由谁知道；角色之间私信默认关闭且永不注入公共正文。</p></div><button class="tf-secondary-button" data-action="refresh-world-info">刷新正在读取的条目</button></header><section class="tf-card tf-settings-card"><header><div><h3>总开关</h3><p>关闭信息边界只建议用于测试。</p></div></header><div class="tf-notification-settings"><div>${renderSwitch({ checked: boundary.enabled, action: 'toggle-information-boundary', label: '启用角色知识隔离' })}<small>公开生成只读取公开事实；私信按参与者过滤。</small></div><div>${renderSwitch({ checked: settings.social.roleDirectMessages, action: 'toggle-role-direct-messages', label: '允许角色之间私信' })}<small>开启后，用户可创建 A ↔ B 私密会话并决定下一位发言者。</small></div></div></section><section class="tf-card tf-settings-card"><header><div><h3>事实库</h3><p>把容易泄露的秘密或认知差异拆成单独事实。</p></div></header><div class="tf-boundary-add"><input id="tf-new-fact" placeholder="例如：A 已经知道钥匙藏在书房"><select id="tf-new-fact-visibility">${visibilityOptions('restricted')}</select><button class="tf-primary-button" data-action="add-fact">新增事实</button></div><div class="tf-fact-list">${data.facts.length ? data.facts.map(fact => `<article class="tf-fact" data-fact-id="${escapeHtml(fact.id)}"><textarea data-fact-content rows="2">${escapeHtml(fact.content)}</textarea><div><select data-fact-visibility>${visibilityOptions(fact.visibility)}</select>${renderSwitch({ checked: fact.publishable, action: 'toggle-fact-publishable', label: '允许公开发布' })}<button class="tf-icon-button" data-action="delete-fact" data-fact-id="${escapeHtml(fact.id)}">${icon('trash')}</button></div>${['restricted', 'private'].includes(fact.visibility) ? roleChecks(fact) : ''}</article>`).join('') : '<p class="tf-empty-mini">还没有手动事实。公开正文仍按原有读取开关工作。</p>'}</div></section><section class="tf-card tf-settings-card"><header><div><h3>正在读取的世界书知识边界</h3><p>只显示角色绑定或你手动添加、且条目开关已打开的世界书。</p></div></header>${world}</section></section>`;
+function renderBoundarySettings() {
+    return `<section class="tf-section-page"><header><div><h2>信息边界（待修改）</h2><p>该功能正在重新整理，当前暂时锁定。</p></div></header><section class="tf-card tf-settings-card"><header><div><h3>功能已锁定</h3><p>现有配置和边界数据已保留，不会在锁定期间被清除或改写。</p></div></header><p class="tf-empty-mini">待修改完成前，无法新增、删除或调整事实、角色权限及世界书知识边界。</p></section></section>`;
 }
 
 function renderMe(data) {

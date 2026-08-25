@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>蓝眼小黑猫结构定稿候选</title>
+<style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; color: #302d35; font-family: "Microsoft YaHei", sans-serif; background: radial-gradient(circle at 35% 0%, #fff 0 20%, transparent 54%), #e9dfe3; }
+    main { width: min(1220px, calc(100% - 48px)); margin: auto; padding: 42px 0 56px; }
+    header { display: flex; justify-content: space-between; align-items: end; gap: 30px; margin-bottom: 25px; }
+    h1 { margin: 0; font-size: 38px; letter-spacing: -.04em; }
+    header p { margin: 8px 0 0; color: #756c74; font-size: 16px; }
+    .badge { padding: 10px 15px; border: 1px solid #cab8c1; border-radius: 999px; color: #75616e; background: #fff9; }
+    .layout { display: grid; grid-template-columns: minmax(460px, 1.08fr) minmax(360px, .92fr); gap: 24px; align-items: stretch; }
+    .device-card, .spec { border: 1px solid #cbbbc2; border-radius: 32px; background: rgb(255 252 253 / 88%); box-shadow: 0 22px 60px rgb(71 48 60 / 10%); }
+    .device-card { padding: 24px; }
+    .device { padding: 24px 26px 20px; border: 2px solid #957287; border-radius: 54px; background: linear-gradient(145deg, #ddb5cd, #c99ab8); box-shadow: inset 0 -10px 0 rgb(105 63 89 / 12%); }
+    .brand { display: flex; justify-content: space-between; padding: 0 10px 14px; color: #6f5166; font: 700 12px ui-monospace, monospace; letter-spacing: .14em; }
+    .frame { padding: 14px; border: 8px solid #5d5960; border-radius: 30px; background: #777178; box-shadow: inset 0 0 0 3px #39373c; }
+    .screen { position: relative; aspect-ratio: 1.08; overflow: hidden; border-radius: 13px; background: #b8c9ad; box-shadow: inset 0 0 24px rgb(44 65 45 / 18%); }
+    .screen::after { content: ""; position: absolute; inset: 0; z-index: 5; pointer-events: none; opacity: .11; background: repeating-linear-gradient(0deg, transparent 0 3px, #486047 3px 4px); }
+    .status { position: absolute; z-index: 6; inset: 10px 12px auto; display: flex; justify-content: space-between; color: #27372e; font: 700 12px ui-monospace, monospace; }
+    svg.hero { display: block; width: 82%; height: 82%; margin: 11% auto 7%; overflow: visible; }
+    .fur { fill: #282c34; }
+    .fur-shadow { fill: #1d2027; }
+    .fur-soft { fill: #435063; }
+    .tail { fill: none; stroke: #282c34; stroke-width: 11; stroke-linecap: round; stroke-linejoin: round; }
+    .iris { fill: #70c9f7; }
+    .iris-deep { fill: #1f638d; }
+    .pupil { fill: #102331; }
+    .glint { fill: #f8fdff; }
+    .nose { fill: #9ebdcc; }
+    .face-line { fill: none; stroke: #e8edf0; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .paw-line { fill: none; stroke: #68778a; stroke-width: 1.5; stroke-linecap: round; }
+    .buttons { display: flex; justify-content: center; gap: 42px; padding-top: 20px; }
+    .buttons i { width: 64px; height: 25px; border: 2px solid #947087; border-radius: 50%; background: linear-gradient(#fae7f0, #ddb3c9); box-shadow: 0 6px 0 #8e6981; }
+    .spec { padding: 30px; display: flex; flex-direction: column; }
+    .spec small { color: #a27890; font: 800 11px ui-monospace, monospace; letter-spacing: .15em; }
+    .spec h2 { margin: 9px 0 9px; font-size: 29px; }
+    .lead { margin: 0 0 24px; color: #70666f; font-size: 16px; line-height: 1.7; }
+    .rules { display: grid; gap: 10px; margin-bottom: 28px; }
+    .rule { display: grid; grid-template-columns: 38px 1fr; gap: 12px; align-items: center; padding: 13px 14px; border: 1px solid #ded2d7; border-radius: 16px; background: #fff9; }
+    .rule b { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 13px; color: #26729c; background: #dff3fd; }
+    .rule span { color: #5f5860; line-height: 1.45; }
+    .frames { margin-top: auto; padding-top: 22px; border-top: 1px solid #ddd1d6; }
+    .frames h3 { margin: 0 0 13px; font-size: 16px; }
+    .mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .mini { padding: 13px 8px 10px; border: 1px solid #d9ccd2; border-radius: 17px; text-align: center; background: #f7f2f4; }
+    .mini svg { width: 74px; height: 62px; overflow: visible; }
+    .mini span { display: block; margin-top: 6px; color: #796d76; font-size: 12px; }
+    @media (max-width: 900px) { main { width: min(560px, calc(100% - 28px)); padding-top: 28px; } header { align-items: start; flex-direction: column; } .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+    <header><div><h1>蓝眼小黑猫 · 结构定稿候选</h1><p>不再把“圆润”画成一颗球；先让它是一只猫，再让它可爱。</p></div><span class="badge">仅预览 · 尚未接入插件</span></header>
+    <section class="layout">
+        <div class="device-card">
+            <div class="device"><div class="brand"><span>POCKET TRAVELER</span><span>CAT 04</span></div><div class="frame"><div class="screen"><div class="status"><span>HOME</span><span>好奇 ▮▮▮</span></div>
+                <svg class="hero" viewBox="0 0 120 104" aria-label="坐姿蓝眼小黑猫">
+                    <path class="tail" d="M83 76c24 6 33-9 28-23-3-9-13-11-19-5-4 4-2 10 3 12"/>
+                    <ellipse class="fur-shadow" cx="61" cy="76" rx="31" ry="25"/>
+                    <ellipse class="fur" cx="61" cy="72" rx="28" ry="28"/>
+                    <ellipse class="fur" cx="39" cy="82" rx="17" ry="14"/><ellipse class="fur" cx="83" cy="82" rx="17" ry="14"/>
+                    <path class="fur-soft" d="M50 59c7-4 15-4 22 0l-3 11H53z"/>
+                    <rect class="fur" x="49" y="65" width="11" height="27" rx="5.5"/><rect class="fur" x="63" y="65" width="11" height="27" rx="5.5"/>
+                    <ellipse class="fur-soft" cx="53" cy="91" rx="9" ry="5"/><ellipse class="fur-soft" cx="70" cy="91" rx="9" ry="5"/>
+                    <path class="fur" d="M27 31c0-9 4-17 11-22L39 1c8 2 15 7 20 13 8-1 14 0 20 3 5-6 12-10 20-11l-1 17c5 6 7 13 6 21-1 20-18 31-43 31S20 62 21 43c0-5 2-9 6-12z"/>
+                    <path class="fur-soft" d="M39 8c6 2 11 6 15 10l-15 3zM83 19c4-4 9-7 14-9l-2 13z"/>
+                    <ellipse class="iris" cx="47" cy="38" rx="8" ry="10"/><ellipse class="iris" cx="76" cy="38" rx="8" ry="10"/>
+                    <path class="iris-deep" d="M43 38c0-6 2-9 5-9 4 0 6 4 6 9s-2 9-6 9c-3 0-5-3-5-9zM72 38c0-6 2-9 5-9 4 0 6 4 6 9s-2 9-6 9c-3 0-5-3-5-9z"/>
+                    <ellipse class="pupil" cx="49" cy="39" rx="3.2" ry="6.4"/><ellipse class="pupil" cx="78" cy="39" rx="3.2" ry="6.4"/>
+                    <circle class="glint" cx="45" cy="34" r="2.6"/><circle class="glint" cx="74" cy="34" r="2.6"/>
+                    <path class="nose" d="M58 52h7l-3.5 4z"/><path class="face-line" d="M61.5 56c0 5-5 6-7 2m7-2c0 5 5 6 7 2"/>
+                    <path class="paw-line" d="M53 87v5m17-5v5M34 83c4 2 8 2 12 0m31 0c4 2 8 2 12 0"/>
+                </svg>
+            </div></div><div class="buttons"><i></i><i></i><i></i></div></div>
+        </div>
+        <aside class="spec">
+            <small>CAT ANATOMY · ROUND 04</small><h2>圆润，但仍然是一只猫</h2>
+            <p class="lead">头和身体分开，前爪从胸口垂下，后腿形成坐姿支撑；尾巴从右后方伸出，没有封闭成圆环。</p>
+            <div class="rules">
+                <div class="rule"><b>头</b><span>圆脸配两侧耳朵，耳根与头顶连接自然。</span></div>
+                <div class="rule"><b>身</b><span>胸口、前爪、后腿都有独立轮廓，不做人形。</span></div>
+                <div class="rule"><b>尾</b><span>开放式弧线，从臀部向外卷，不像杯子把手。</span></div>
+                <div class="rule"><b>眼</b><span>冰蓝椭圆眼缩小，保留深蓝瞳孔与白色高光。</span></div>
+            </div>
+            <div class="frames"><h3>互动时只改变表情与姿势</h3><div class="mini-grid">
+                <div class="mini"><svg viewBox="0 0 80 65"><ellipse class="fur" cx="40" cy="43" rx="20" ry="17"/><circle class="fur" cx="40" cy="26" r="21"/><path class="fur" d="M20 17l3-15 13 11zM45 12L59 3l1 16z"/><ellipse class="iris" cx="32" cy="25" rx="5" ry="7"/><ellipse class="iris" cx="49" cy="25" rx="5" ry="7"/><circle class="glint" cx="30" cy="23" r="1.5"/><circle class="glint" cx="47" cy="23" r="1.5"/></svg><span>待机</span></div>
+                <div class="mini"><svg viewBox="0 0 80 65"><ellipse class="fur" cx="40" cy="43" rx="20" ry="17"/><g transform="rotate(-7 40 26)"><circle class="fur" cx="40" cy="26" r="21"/><path class="fur" d="M20 17l3-15 13 11zM45 12L59 3l1 16z"/><path class="face-line" d="M26 28c4-6 9-6 13 0m5 0c4-6 9-6 13 0"/></g></svg><span>摸摸</span></div>
+                <div class="mini"><svg viewBox="0 0 80 65"><ellipse class="fur" cx="40" cy="44" rx="27" ry="16"/><circle class="fur" cx="31" cy="31" r="19"/><path class="fur" d="M14 24l3-14 11 9zM33 16l13-8v15z"/><path class="face-line" d="M19 32c4-5 8-5 11 0m4 0c4-5 8-5 11 0"/></svg><span>休息</span></div>
+            </div></div>
+        </aside>
+    </section>
+</main>
+</body>
+</html>

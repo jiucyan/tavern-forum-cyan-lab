@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>小黑猫方向候选</title>
+<style>
+    :root { color-scheme: light; font-family: "Microsoft YaHei", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; color: #342f38; background: radial-gradient(circle at 50% 0%, #fff9fb 0 22%, transparent 55%), #eadfe2; }
+    main { width: min(1380px, calc(100% - 48px)); margin: 0 auto; padding: 54px 0 64px; }
+    header { display: flex; align-items: end; justify-content: space-between; gap: 30px; margin-bottom: 30px; }
+    h1 { margin: 0; font-size: 40px; letter-spacing: -.04em; }
+    header p { margin: 8px 0 0; color: #766d77; font-size: 17px; }
+    .tag { flex: none; padding: 10px 16px; border: 1px solid #cbbbc2; border-radius: 999px; color: #756772; background: #fff8; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+    article { min-width: 0; padding: 20px; border: 1px solid #cdbfc4; border-radius: 30px; background: rgb(255 252 252 / 82%); box-shadow: 0 18px 50px rgb(69 49 61 / 10%); }
+    .device { padding: 22px 22px 18px; border: 2px solid #99788c; border-radius: 42px; background: linear-gradient(145deg, #d8acc8, #c799b8); box-shadow: inset 0 -8px 0 rgb(112 70 96 / 12%); }
+    .brand { display: flex; justify-content: space-between; padding: 0 8px 12px; color: #72566b; font: 700 11px/1.2 ui-monospace, monospace; letter-spacing: .13em; }
+    .screen-frame { padding: 12px; border: 7px solid #5d5960; border-radius: 25px; background: #767078; box-shadow: inset 0 0 0 3px #3d3b40; }
+    .screen { position: relative; aspect-ratio: 1.15; overflow: hidden; border-radius: 10px; background: #b8c9ad; box-shadow: inset 0 0 20px rgb(52 70 52 / 18%); }
+    .screen::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .15; background: repeating-linear-gradient(0deg, transparent 0 3px, #4b614a 3px 4px); }
+    .status { position: absolute; z-index: 2; inset: 8px 10px auto; display: flex; justify-content: space-between; color: #29352f; font: 700 11px ui-monospace, monospace; }
+    svg { display: block; width: 78%; height: 78%; margin: 11% auto; shape-rendering: crispEdges; }
+    .body { fill: #292d35; }
+    .shadow { fill: #1d2027; }
+    .soft { fill: #46576a; }
+    .eye { fill: #75c9f4; }
+    .ink { fill: #142332; }
+    .glint { fill: #f5fcff; }
+    .pink { fill: #a9c4d5; }
+    .line { fill: #e7e2d8; }
+    .cat-tail { fill: none; stroke: #292d35; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+    .buttons { display: flex; justify-content: center; gap: 34px; padding-top: 17px; }
+    .buttons i { display: block; width: 54px; height: 22px; border: 2px solid #947088; border-radius: 50%; background: linear-gradient(#f8e4ee, #dab1c7); box-shadow: 0 5px 0 #8e6981; }
+    .copy { padding: 21px 7px 4px; }
+    .copy small { color: #a07b92; font: 800 11px ui-monospace, monospace; letter-spacing: .14em; }
+    .copy h2 { margin: 7px 0 6px; font-size: 24px; }
+    .copy p { min-height: 46px; margin: 0; color: #786f77; line-height: 1.6; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } header { align-items: start; flex-direction: column; } main { width: min(520px, calc(100% - 28px)); padding-top: 30px; } }
+</style>
+</head>
+<body>
+<main>
+    <header>
+        <div><h1>蓝眼小黑猫，重新选方向</h1><p>参考圆软、极简和大眼的可爱逻辑，不复刻现成角色；三只采用不同姿态。</p></div>
+        <span class="tag">仅预览 · 尚未接入插件</span>
+    </header>
+    <section class="grid">
+        <article>
+            <div class="device"><div class="brand"><span>POCKET CAT</span><span>TYPE A</span></div><div class="screen-frame"><div class="screen"><div class="status"><span>HOME</span><span>好奇 ▮▮▮</span></div>
+                <svg viewBox="0 0 72 64" aria-label="圆滚滚煤球猫">
+                    <path class="shadow" d="M49 38h7v-7h7v-7h6v24h-4v7h-8v4H45v-7h11v-4h6V37h-5v6h-8z"/>
+                    <path class="body" d="M14 22V8h8l7 8h14l7-8h8v15h4v21h-5v7h-8v6H23v-6h-8v-7h-5V23z"/>
+                    <path class="soft" d="M19 12v9h9zM53 12v9h-9z"/>
+                    <path class="eye" d="M20 25h10v3h2v9h-2v3H20v-3h-2v-9h2zM43 25h10v3h2v9h-2v3H43v-3h-2v-9h2z"/>
+                    <path class="ink" d="M23 28h6v9h-6zM46 28h6v9h-6z"/>
+                    <path class="glint" d="M23 27h4v4h-4zM46 27h4v4h-4z"/>
+                    <path class="pink" d="M34 40h5v4h-5z"/>
+                    <path class="line" d="M29 45h5v2h2v-2h5v3h-3v3h-4v-3h-5z"/>
+                    <path class="soft" d="M25 51h8v7H22v-4h3zM40 51h8v3h3v4H40z"/>
+                </svg>
+            </div></div><div class="buttons"><i></i><i></i><i></i></div></div>
+            <div class="copy"><small>TYPE A · ROUND</small><h2>圆滚滚煤球猫</h2><p>最大眼睛、最圆轮廓、短手短脚。重点是软乎乎和一眼可爱。</p></div>
+        </article>
+        <article>
+            <div class="device"><div class="brand"><span>POCKET CAT</span><span>TYPE B</span></div><div class="screen-frame"><div class="screen"><div class="status"><span>HOME</span><span>撒娇 ▮▮▮</span></div>
+                <svg viewBox="0 0 72 64" aria-label="趴着伸爪的小奶猫">
+                    <path class="shadow" d="M47 38h9v-6h7v-8h6v22h-4v5H54v-5h8v-9h-5v6H47z"/>
+                    <path class="body" d="M27 35h28v5h6v12H48v4H24v-8h3z"/>
+                    <path class="body" d="M8 24V10h8l7 8h8l7-8h8v14h4v18h-5v6h-8v4H17v-4H9v-6H5V24z"/>
+                    <path class="soft" d="M13 14v8h8zM41 14v8h-8z"/>
+                    <path class="eye" d="M15 27h9v3h2v8h-2v3h-9v-3h-2v-8h2zM32 27h9v3h2v8h-2v3h-9v-3h-2v-8h2z"/>
+                    <path class="ink" d="M18 30h5v8h-5zM35 30h5v8h-5z"/>
+                    <path class="glint" d="M18 29h3v3h-3zM35 29h3v3h-3z"/>
+                    <path class="pink" d="M26 40h5v3h-5z"/>
+                    <path class="line" d="M22 44h4v2h2v-2h4v3h-3v3h-4v-3h-3z"/>
+                    <path class="soft" d="M15 50h18v7H12v-4h3zM34 50h17v4h3v3H34z"/>
+                    <path class="glint" d="M17 53h9v2h-9zM37 53h9v2h-9z"/>
+                </svg>
+            </div></div><div class="buttons"><i></i><i></i><i></i></div></div>
+            <div class="copy"><small>TYPE B · LAY</small><h2>趴着伸爪的小奶猫</h2><p>身体横向趴下，前爪伸出来，更像正在屏幕里等你摸它。</p></div>
+        </article>
+        <article>
+            <div class="device"><div class="brand"><span>POCKET CAT</span><span>TYPE C</span></div><div class="screen-frame"><div class="screen"><div class="status"><span>HOME</span><span>安静 ▮▮▮</span></div>
+                <svg viewBox="0 0 72 64" aria-label="侧坐卷尾小黑猫">
+                    <path class="cat-tail" d="M43 50c13 4 21-2 21-11 0-7-1-12-4-17"/>
+                    <path class="body" d="M27 33h20v4h5v17h-5v5H24v-5h-4V40h7z"/>
+                    <path class="body" d="M12 22V8h8l7 8h12l7-8h8v15h4v17h-5v6h-8v4H20v-4h-8v-6H8V23z"/>
+                    <path class="soft" d="M17 12v9h8zM49 12v9h-8z"/>
+                    <path class="eye" d="M18 26h9v2h2v9h-2v3h-9v-3h-2v-9h2zM39 25h10v3h2v9h-2v3H39v-3h-2v-9h2z"/>
+                    <path class="ink" d="M21 29h5v8h-5zM42 28h6v9h-6z"/>
+                    <path class="glint" d="M21 28h3v3h-3zM42 27h4v4h-4z"/>
+                    <path class="pink" d="M31 39h5v3h-5z"/>
+                    <path class="line" d="M27 43h4v2h2v-2h4v3h-3v3h-4v-3h-3z"/>
+                    <path class="soft" d="M26 49h7v9h-8v-4h1zM38 48h8v6h3v4H38z"/>
+                </svg>
+            </div></div><div class="buttons"><i></i><i></i><i></i></div></div>
+            <div class="copy"><small>TYPE C · SIT</small><h2>侧坐卷尾小黑猫</h2><p>猫态最明确，轮廓较修长，眼睛略微不对称，更有活物感。</p></div>
+        </article>
+    </section>
+</main>
+</body>
+</html>
