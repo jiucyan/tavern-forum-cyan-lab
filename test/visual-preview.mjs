@@ -510,8 +510,45 @@ try {
     await desktop.locator('[data-action="choose-companion-device"][data-device-skin="classic"]').click();
     await desktop.locator('.tf-companion-home').scrollIntoViewIfNeeded();
     await desktop.screenshot({ path: 'preview-companion.png' });
-    await desktop.locator('.tf-companion-profile-card').scrollIntoViewIfNeeded();
-    await desktop.screenshot({ path: 'preview-companion-profile.png' });
+    const profileLayout = await desktop.locator('.tf-companion-profile-card').evaluate(node => {
+        const box = selector => {
+            const rect = node.querySelector(selector).getBoundingClientRect();
+            return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        };
+        const content = node.querySelector('.tf-companion-profile-content');
+        const deviceRows = [...node.querySelectorAll('.tf-device-skin-option')].map(item => Math.round(item.getBoundingClientRect().y));
+        const habitatRows = [...node.querySelectorAll('.tf-environment-group.is-habitat .tf-environment-option')].map(item => Math.round(item.getBoundingClientRect().y));
+        return {
+            directSections: [...content.children].map(item => item.className),
+            gridColumns: getComputedStyle(content).gridTemplateColumns.split(' ').length,
+            identity: box('.tf-companion-identity-section'),
+            appearance: box('.tf-pet-appearance-controls'),
+            environment: box('.tf-pet-environment-controls'),
+            weather: box('.tf-environment-group.is-weather'),
+            time: box('.tf-environment-group.is-timeOfDay'),
+            devices: box('.tf-device-skin-section'),
+            deviceRows: [...new Set(deviceRows)],
+            habitatRows: [...new Set(habitatRows)],
+            autoAccessoryWidth: node.querySelector('.tf-pet-auto-accessory input').getBoundingClientRect().width,
+            cardHeight: node.getBoundingClientRect().height,
+        };
+    });
+    if (profileLayout.directSections.length !== 4 || !profileLayout.directSections[0].includes('tf-companion-identity-section') || !profileLayout.directSections[1].includes('tf-pet-appearance-controls') || !profileLayout.directSections[2].includes('tf-pet-environment-controls') || !profileLayout.directSections[3].includes('tf-device-skin-section')) throw new Error(`desktop companion profile has the wrong information order: ${JSON.stringify(profileLayout.directSections)}`);
+    if (profileLayout.gridColumns !== 12 || Math.abs(profileLayout.identity.y - profileLayout.appearance.y) > 2 || profileLayout.identity.width <= profileLayout.appearance.width) throw new Error(`desktop profile header zones are not balanced: ${JSON.stringify(profileLayout)}`);
+    if (Math.abs(profileLayout.weather.y - profileLayout.time.y) > 2 || profileLayout.environment.y <= profileLayout.identity.y || profileLayout.devices.y <= profileLayout.environment.y) throw new Error(`desktop profile sections do not follow the intended hierarchy: ${JSON.stringify(profileLayout)}`);
+    if (profileLayout.deviceRows.length !== 2 || profileLayout.habitatRows.length !== 1) throw new Error(`desktop profile choices are not compact: ${JSON.stringify({ deviceRows: profileLayout.deviceRows, habitatRows: profileLayout.habitatRows })}`);
+    if (profileLayout.autoAccessoryWidth > 20 || profileLayout.cardHeight > 1450) throw new Error(`desktop profile controls or height are oversized: ${JSON.stringify(profileLayout)}`);
+    await desktop.evaluate(() => {
+        const page = document.querySelector('.tf-companion-v4');
+        const stage = document.createElement('section');
+        stage.id = 'tf-profile-qa-stage';
+        stage.className = page.className;
+        stage.style.cssText = 'position:absolute;top:0;left:50%;z-index:99999;display:block;width:900px;padding:12px;background:#eee9e1;transform:translateX(-50%)';
+        stage.append(document.querySelector('.tf-companion-profile-card').cloneNode(true));
+        document.querySelector('#tavern-forum-root').append(stage);
+    });
+    await desktop.locator('#tf-profile-qa-stage').screenshot({ path: 'preview-companion-profile-v2.png' });
+    await desktop.locator('#tf-profile-qa-stage').evaluate(node => node.remove());
 
     await desktop.evaluate(() => { Math.random = () => 0; });
     const callsBeforeJourney = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);

@@ -11543,3 +11543,157 @@ button.tf-avatar {
 @media (prefers-reduced-motion: reduce) {
     #tavern-forum-root .tf-companion-v4.is-action-feed :is(.tf-food-tray,.tf-food-offering,.tf-food-crumb,.tf-food-species-fx,.tf-pixel-body-rig,.tf-pixel-face-rig,.tf-pixel-pupils,.tf-pixel-mouth-feed,.tf-pet-character-shadow) { animation: none !important; }
 }
+
+/* Desktop profile studio v2 — balanced editing zones instead of one overloaded narrow column. */
+#tavern-forum-root .tf-companion-v4 .tf-companion-profile-card[open] {
+    border-color: color-mix(in srgb, var(--pet-case-edge) 15%, rgb(255 255 255 / 76%));
+    background: color-mix(in srgb, var(--tf-card) 94%, #fffaf3);
+    box-shadow: 0 18px 46px rgb(56 44 51 / 8%);
+}
+
+#tavern-forum-root .tf-companion-v4 .tf-companion-profile-card > summary {
+    position: relative;
+    min-height: 82px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--pet-case) 7%, transparent), transparent 46%);
+}
+
+#tavern-forum-root .tf-companion-v4 .tf-companion-profile-card[open] > summary { border-bottom: 0; }
+#tavern-forum-root .tf-companion-v4 .tf-companion-profile-card[open] > summary::after {
+    position: absolute;
+    right: 22px;
+    bottom: 0;
+    left: 22px;
+    height: 1px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--pet-case-edge) 22%, var(--tf-line)), transparent);
+    content: '';
+}
+
+#tavern-forum-root .tf-companion-v4 .tf-companion-profile-content {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    align-items: start;
+    gap: 15px;
+    padding: 18px 20px 22px;
+    border-top: 0;
+    background:
+        linear-gradient(rgb(100 83 88 / 2.5%) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(100 83 88 / 2.5%) 1px, transparent 1px);
+    background-size: 28px 28px;
+}
+
+#tavern-forum-root .tf-companion-v4 .tf-companion-identity-section,
+#tavern-forum-root .tf-companion-v4 .tf-pet-appearance-controls,
+#tavern-forum-root .tf-companion-v4 .tf-pet-environment-controls,
+#tavern-forum-root .tf-companion-v4 .tf-device-skin-section {
+    min-width: 0;
+    margin: 0;
+    border: 1px solid color-mix(in srgb, var(--pet-case-edge) 13%, var(--tf-line));
+    border-radius: 17px;
+    background: rgb(255 255 255 / 65%);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 82%), 0 9px 24px rgb(70 55 63 / 4%);
+}
+
+#tavern-forum-root .tf-companion-v4 .tf-companion-identity-section {
+    grid-column: 1 / span 7;
+    padding: 17px;
+}
+
+#tavern-forum-root .tf-companion-v4 .tf-pet-appearance-controls {
+    grid-column: 8 / -1;
+    align-self: stretch;
+    gap: 12px;
+    padding: 17px;
+    background:
+        radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--pet-case) 14%, transparent) 0 42px, transparent 43px),
+        rgb(255 255 255 / 65%);
+}
+
+#tavern-forum-root .tf-companion-v4 .tf-pet-environment-controls { grid-column: 1 / -1; }
+#tavern-forum-root .tf-companion-v4 .tf-device-skin-section { grid-column: 1 / -1; padding: 17px; }
+
+#tavern-forum-root .tf-companion-v4 .tf-companion-profile-content > section > header,
+#tavern-forum-root .tf-companion-v4 .tf-pet-appearance-controls > header,
+#tavern-forum-root .tf-companion-v4 .tf-device-skin-section > header { min-height: 47px; }
+
+#tavern-forum-root .tf-companion-v4 .tf-companion-profile-content > section > header small,
+#tavern-forum-root .tf-companion-v4 .tf-device-skin-section > header small {
+    display: block;
+    margin-bottom: 4px;
+    color: color-mix(in srgb, var(--pet-case-edge), var(--tf-muted) 45%);
+    font: 760 8px/1 ui-monospace, monospace;
+    letter-spacing: .13em;
+}
+
+#tavern-forum-root .tf-companion-v4 .tf-companion-profile-content header h3 { font-size: 15px; }
+#tavern-forum-root .tf-companion-v4 .tf-companion-profile-content header p { margin-bottom: 11px; font-size: 9px; line-height: 1.5; }
+
+#tavern-forum-root .tf-companion-v4 .tf-companion-identity-section .tf-pet-species-compact { gap: 8px; }
+#tavern-forum-root .tf-companion-v4 .tf-companion-identity-section .tf-pet-species-option {
+    min-height: 88px;
+    border-color: color-mix(in srgb, var(--pet-case-edge) 16%, var(--tf-line));
+    background: rgb(255 255 255 / 48%);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 70%);
+}
+
+#tavern-forum-root .tf-companion-v4 .tf-companion-identity-section .tf-pet-species-option:hover { transform: translateY(-2px); box-shadow: 0 7px 14px rgb(63 50 57 / 7%); }
+#tavern-forum-root .tf-companion-v4 .tf-companion-identity-section .tf-pet-species-option.is-selected { background: color-mix(in srgb, var(--pet-case) 12%, white); }
+#tavern-forum-root .tf-companion-v4 .tf-companion-identity-section .tf-companion-profile-grid { grid-template-columns: minmax(150px, .42fr) minmax(0, 1fr); margin-top: 13px; padding-top: 13px; border-top: 1px dashed color-mix(in srgb, var(--pet-case-edge) 14%, var(--tf-line)); }
+#tavern-forum-root .tf-companion-v4 .tf-companion-identity-section .tf-companion-profile-grid label.is-wide { grid-column: auto; }
+
+#tavern-forum-root .tf-companion-v4 .tf-pet-appearance-controls > div { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#tavern-forum-root .tf-companion-v4 .tf-pet-appearance-controls > div label:last-child { grid-column: 1 / -1; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-appearance-controls input[type="color"] { min-width: 0; padding: 3px; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-auto-accessory { min-height: 38px; margin: 0; border: 1px dashed color-mix(in srgb, var(--pet-case-edge) 16%, var(--tf-line)); background: rgb(255 255 255 / 42%); }
+#tavern-forum-root .tf-companion-v4 .tf-pet-auto-accessory input { flex: 0 0 16px; width: 16px !important; height: 16px !important; min-height: 0; margin: 0; accent-color: var(--tf-accent); }
+#tavern-forum-root .tf-companion-v4 .tf-pet-auto-accessory span { color: var(--tf-muted); font-size: 9px; line-height: 1.4; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-appearance-controls > footer { align-self: end; padding-top: 0; }
+
+#tavern-forum-root .tf-companion-v4 .tf-pet-environment-controls {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 14px;
+    padding: 17px;
+}
+
+#tavern-forum-root .tf-companion-v4 .tf-environment-title { grid-column: 1 / -1; }
+#tavern-forum-root .tf-companion-v4 .tf-environment-group.is-habitat { grid-column: 1 / -1; padding-bottom: 13px; border-bottom: 1px dashed color-mix(in srgb, var(--pet-case-edge) 13%, var(--tf-line)); }
+#tavern-forum-root .tf-companion-v4 .tf-environment-group.is-weather { grid-column: 1 / span 7; }
+#tavern-forum-root .tf-companion-v4 .tf-environment-group.is-timeOfDay { grid-column: 8 / -1; }
+#tavern-forum-root .tf-companion-v4 .tf-environment-group.is-habitat .tf-environment-options { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+#tavern-forum-root .tf-companion-v4 .tf-environment-option { min-height: 61px; background: rgb(255 255 255 / 52%); }
+#tavern-forum-root .tf-companion-v4 .tf-environment-group.is-habitat .tf-environment-option { min-height: 72px; grid-template-columns: 46px minmax(0, 1fr); justify-items: start; text-align: left; }
+#tavern-forum-root .tf-companion-v4 .tf-environment-group.is-habitat .tf-environment-preview { width: 43px; height: 41px; }
+#tavern-forum-root .tf-companion-v4 .tf-environment-group.is-habitat .tf-environment-option > span small { display: none; }
+
+#tavern-forum-root .tf-companion-v4 .tf-device-skin-section > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+#tavern-forum-root .tf-companion-v4 .tf-device-skin-section > header p { max-width: 430px; text-align: right; }
+#tavern-forum-root .tf-companion-v4 .tf-device-skin-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; }
+#tavern-forum-root .tf-companion-v4 .tf-device-skin-option { min-height: 76px; }
+
+@container (max-width: 900px) {
+    #tavern-forum-root .tf-companion-v4 .tf-companion-profile-content { grid-template-columns: 1fr; }
+    #tavern-forum-root .tf-companion-v4 .tf-companion-profile-content > :is(.tf-companion-identity-section,.tf-pet-appearance-controls,.tf-pet-environment-controls,.tf-device-skin-section) { grid-column: 1; }
+    #tavern-forum-root .tf-companion-v4 .tf-device-skin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@container (max-width: 720px) {
+    #tavern-forum-root .tf-companion-v4 .tf-pet-environment-controls { grid-template-columns: 1fr; }
+    #tavern-forum-root .tf-companion-v4 .tf-pet-environment-controls > * { grid-column: 1 !important; }
+    #tavern-forum-root .tf-companion-v4 .tf-environment-group.is-habitat .tf-environment-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    #tavern-forum-root .tf-companion-v4 .tf-environment-group.is-weather .tf-environment-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@container (max-width: 640px) {
+    #tavern-forum-root .tf-companion-v4 .tf-companion-profile-content { gap: 11px; padding: 12px; }
+    #tavern-forum-root .tf-companion-v4 .tf-companion-identity-section,
+    #tavern-forum-root .tf-companion-v4 .tf-pet-appearance-controls,
+    #tavern-forum-root .tf-companion-v4 .tf-pet-environment-controls,
+    #tavern-forum-root .tf-companion-v4 .tf-device-skin-section { padding: 13px; border-radius: 14px; }
+    #tavern-forum-root .tf-companion-v4 .tf-companion-identity-section .tf-pet-species-compact { display: flex; }
+    #tavern-forum-root .tf-companion-v4 .tf-companion-identity-section .tf-companion-profile-grid { grid-template-columns: 1fr; }
+    #tavern-forum-root .tf-companion-v4 .tf-companion-identity-section .tf-companion-profile-grid label.is-wide { grid-column: auto; }
+    #tavern-forum-root .tf-companion-v4 .tf-pet-appearance-controls > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #tavern-forum-root .tf-companion-v4 .tf-pet-appearance-controls > div label:last-child { grid-column: 1 / -1; }
+    #tavern-forum-root .tf-companion-v4 .tf-pet-appearance-controls > footer { flex-direction: column-reverse; }
+    #tavern-forum-root .tf-companion-v4 .tf-device-skin-section > header { display: block; }
+    #tavern-forum-root .tf-companion-v4 .tf-device-skin-section > header p { max-width: none; text-align: left; }
+    #tavern-forum-root .tf-companion-v4 .tf-device-skin-grid { grid-template-columns: 1fr; }
+}
