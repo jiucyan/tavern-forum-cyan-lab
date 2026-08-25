@@ -909,7 +909,22 @@ function renderWorldAppDock(cards, companion, className = '') {
 }
 
 function renderWorldWindowWeather() {
-    return `<span class="tf-window-weather-layer" aria-hidden="true"><i class="tf-window-sun"></i><i class="tf-window-moon">☾</i><i class="tf-window-cloud is-one"></i><i class="tf-window-cloud is-two"></i><i class="tf-window-rain">${'<b></b>'.repeat(12)}</i><i class="tf-window-snow">${'<b>✦</b>'.repeat(10)}</i><i class="tf-window-wind"><b></b><b></b><b></b></i></span>`;
+    const rain = Array.from({ length: 28 }, (_, index) => {
+        const x = (index * 37 + 7) % 101;
+        const delay = -((index % 13) * 0.11).toFixed(2);
+        const duration = (0.82 + (index % 5) * 0.1).toFixed(2);
+        const length = 18 + (index % 4) * 8;
+        return `<b style="--weather-x:${x}%;--weather-delay:${delay}s;--weather-duration:${duration}s;--weather-length:${length}px"></b>`;
+    }).join('');
+    const snow = Array.from({ length: 30 }, (_, index) => {
+        const x = (index * 43 + 5) % 101;
+        const delay = -((index % 15) * 0.47).toFixed(2);
+        const duration = (5.2 + (index % 7) * 0.58).toFixed(2);
+        const size = 3 + (index % 5);
+        const drift = -32 + (index * 19) % 65;
+        return `<b style="--weather-x:${x}%;--weather-delay:${delay}s;--weather-duration:${duration}s;--weather-size:${size}px;--weather-drift:${drift}px"></b>`;
+    }).join('');
+    return `<span class="tf-window-weather-layer" aria-hidden="true"><i class="tf-window-atmosphere"></i><i class="tf-window-sun"><b></b></i><i class="tf-window-moon">☾</i><i class="tf-window-cloud is-one"></i><i class="tf-window-cloud is-two"></i><i class="tf-window-cloud is-three"></i><i class="tf-window-cloud is-four"></i><i class="tf-window-rain">${rain}</i><i class="tf-window-snow">${snow}</i><i class="tf-window-wind"><b></b><b></b><b></b><b></b></i><i class="tf-window-weather-ground">${'<b></b>'.repeat(7)}</i></span>`;
 }
 
 function renderServicesHub(data) {
@@ -939,7 +954,7 @@ function renderServicesHub(data) {
     if (!cards.length) return `<section class="tf-services-page tf-world-hub is-layout-${layout}">${header}${empty}</section>`;
     if (layout === 'window') {
         const travelAction = settings.modules.travel?.enabled ? 'data-action="open-world-page" data-module-id="travel"' : 'disabled';
-        return `<section class="tf-services-page tf-world-hub is-layout-window is-weather-${escapeHtml(weatherClass)} is-time-${escapeHtml(time.id)}">${header}<section class="tf-world-window-shell"><div class="tf-world-window-scene"><span class="tf-window-scene-image"></span><span class="tf-window-time-tint"></span>${renderWorldWindowWeather()}<button class="tf-window-weather-chip" ${travelAction}>${weather.icon}<b>${escapeHtml(weather.label)}</b><small>${time.automatic && weather.automatic ? '自动环境' : '手动环境'}</small></button><button class="tf-window-pet-stage" ${travelAction} aria-label="打开旅伴">${renderPixelCompanion(companion.species, companion.status)}</button><button class="tf-window-reaction" ${travelAction}>${escapeHtml(companion.status === 'away' ? companion.message || '正在旅途中。' : getCompanionAmbientReaction(data))}</button><button class="tf-window-companion" ${travelAction}><i class="tf-window-status-dot" aria-hidden="true"></i><span><b>${escapeHtml(companion.name)}</b><small>${escapeHtml(companion.status === 'away' ? companion.destination || '旅途中' : `${companion.mood || '平静'} · 亲密 ${Number(companion.bond || 0)}`)}</small></span>${icon('chevron')}</button>${settings.modules.fortune?.enabled ? `<button class="tf-window-fortune" data-action="open-world-page" data-module-id="fortune"><i>${world.fortune?.sigil || '◇'}</i><span><small>今日运势</small><b>${escapeHtml(world.fortune?.label || '等待揭晓')}</b><em>${escapeHtml(world.fortune?.theme || '抽取一张今日签')}</em></span>${icon('chevron')}</button>` : ''}</div>${renderWorldAppDock(cards, companion, 'is-window-rail')}</section><footer class="tf-world-runtime-strip"><i></i><b>世界正在运行</b><span>天气、旅伴与今日状态都在继续变化</span></footer></section>`;
+        return `<section class="tf-services-page tf-world-hub is-layout-window is-weather-${escapeHtml(weatherClass)} is-time-${escapeHtml(time.id)}">${header}<section class="tf-world-window-shell"><div class="tf-world-window-scene"><span class="tf-window-scene-image"></span><span class="tf-window-time-tint"></span>${renderWorldWindowWeather()}<button class="tf-window-weather-chip" ${travelAction}><span class="tf-window-weather-icon" aria-hidden="true">${weather.icon}</span><span class="tf-window-weather-copy"><b>${escapeHtml(weather.conditionLabel || weather.label)}</b><small>${escapeHtml(time.label)} · ${time.automatic && weather.automatic ? '自动环境' : '手动环境'}</small></span></button><button class="tf-window-pet-stage" ${travelAction} aria-label="打开旅伴">${renderPixelCompanion(companion.species, companion.status)}</button><button class="tf-window-reaction" ${travelAction}>${escapeHtml(companion.status === 'away' ? companion.message || '正在旅途中。' : getCompanionAmbientReaction(data))}</button><button class="tf-window-companion" ${travelAction}><i class="tf-window-status-dot" aria-hidden="true"></i><span><b>${escapeHtml(companion.name)}</b><small>${escapeHtml(companion.status === 'away' ? companion.destination || '旅途中' : `${companion.mood || '平静'} · 亲密 ${Number(companion.bond || 0)}`)}</small></span>${icon('chevron')}</button>${settings.modules.fortune?.enabled ? `<button class="tf-window-fortune" data-action="open-world-page" data-module-id="fortune"><i>${world.fortune?.sigil || '◇'}</i><span><small>今日运势</small><b>${escapeHtml(world.fortune?.label || '等待揭晓')}</b><em>${escapeHtml(world.fortune?.theme || '抽取一张今日签')}</em></span>${icon('chevron')}</button>` : ''}</div>${renderWorldAppDock(cards, companion, 'is-window-rail')}</section><footer class="tf-world-runtime-strip"><i></i><b>世界正在运行</b><span>天气、旅伴与今日状态都在继续变化</span></footer></section>`;
     }
     const travelAction = settings.modules.travel?.enabled ? 'data-action="open-world-page" data-module-id="travel"' : 'disabled';
     return `<section class="tf-services-page tf-world-hub is-layout-bento">${header}<section class="tf-world-bento"><button class="tf-world-bento-companion" ${travelAction}><header><div><small>我的旅伴</small><h2>${escapeHtml(companion.name)}</h2><em>${escapeHtml(companion.status === 'away' ? companion.destination || '旅途中' : `${companion.mood || '平静'} · 亲密 ${Number(companion.bond || 0)}`)}</em></div>${icon('chevron')}</header><span class="tf-bento-pet-stage">${renderPixelCompanion(companion.species, companion.status)}<i>♥</i></span><p class="tf-bento-reaction"><span>♡</span>${escapeHtml(companion.status === 'away' ? companion.message || '正在旅途中。' : getCompanionAmbientReaction(data))}</p></button><div class="tf-world-bento-side"><button class="tf-world-bento-weather" ${travelAction}><span>${weather.icon}</span><div><small>${time.automatic && weather.automatic ? '本地环境' : '手动环境'}</small><b>${escapeHtml(weather.label)}</b><p>${escapeHtml(weather.note)}</p></div>${icon('chevron')}</button>${settings.modules.fortune?.enabled ? `<button class="tf-world-bento-fortune" data-action="open-world-page" data-module-id="fortune"><span>${world.fortune?.sigil || '◇'}</span><div><small>今日运势</small><b>${escapeHtml(world.fortune?.label || '等待揭晓')}</b><p>${escapeHtml(world.fortune?.theme || '抽取一张今日签')}</p></div>${icon('chevron')}</button>` : ''}</div></section>${renderWorldAppDock(cards, companion, 'is-bento-dock')}</section>`;
@@ -1490,6 +1505,7 @@ function getLocalCompanionWeather(data, time, date = new Date()) {
         ...selected,
         id: `${selected.id} is-time-${time.id}`,
         label: `${time.label} · ${selected.label}`,
+        conditionLabel: selected.label,
         automatic: manualId === 'auto' || !manualId,
         slot,
         dateKey,

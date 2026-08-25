@@ -221,10 +221,18 @@ try {
     await desktop.screenshot({ path: 'preview-inventory-empty-v2.png' });
     await desktop.locator('[data-action="back-world-home"]').click();
     const callsBeforeLayoutSwitch = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
-    await desktop.evaluate(() => { globalThis.SillyTavern.getContext().extensionSettings.tavern_forum.ui.worldHomeLayout = 'window'; });
+    await desktop.evaluate(() => {
+        const context = globalThis.SillyTavern.getContext();
+        context.extensionSettings.tavern_forum.ui.worldHomeLayout = 'window';
+        context.chatMetadata.tavern_forum_data.world.companion.weather = 'snow';
+        context.chatMetadata.tavern_forum_data.world.companion.timeOfDay = 'dusk';
+    });
     await desktop.locator('.tf-topbar .tf-main-nav [data-tab="home"]').click();
     await desktop.locator('.tf-topbar [data-tab="services"]').click();
     if (!await desktop.locator('.tf-world-hub.is-layout-window .tf-world-window-scene').count()) throw new Error('world window layout did not render');
+    if (!await desktop.locator('.tf-world-hub.is-weather-snow.is-time-dusk').count()) throw new Error('world window did not apply weather and time to the full scene');
+    if (await desktop.locator('.tf-window-snow b').count() !== 30) throw new Error('world window snow does not expose the complete depth field');
+    if (/✦/.test(await desktop.locator('.tf-window-snow').innerText())) throw new Error('world window snow fell back to decorative star glyphs');
     if (!await desktop.locator('.tf-world-window-scene .tf-window-companion').count()) throw new Error('world window lost its companion overlay');
     if (await desktop.locator('.tf-window-companion .tf-pixel-avatar').count()) throw new Error('world window status strip repeated the scene companion');
     if (!await desktop.locator('#tavern-forum-fab').isHidden()) throw new Error('floating launcher should hide while the app is open');
@@ -237,7 +245,12 @@ try {
     if (!await desktop.locator('.tf-fortune-ritual, .tf-fortune-reveal, .tf-fortune-app').count()) throw new Error('window fortune overlay opened the wrong world app');
     await desktop.locator('[data-action="back-world-home"]').click();
     if (!await desktop.locator('.tf-world-hub.is-layout-window').count()) throw new Error('returning from a window overlay lost the selected layout');
-    await desktop.evaluate(() => { globalThis.SillyTavern.getContext().extensionSettings.tavern_forum.ui.worldHomeLayout = 'bento'; });
+    await desktop.evaluate(() => {
+        const context = globalThis.SillyTavern.getContext();
+        context.extensionSettings.tavern_forum.ui.worldHomeLayout = 'bento';
+        context.chatMetadata.tavern_forum_data.world.companion.weather = 'auto';
+        context.chatMetadata.tavern_forum_data.world.companion.timeOfDay = 'auto';
+    });
     await desktop.locator('.tf-topbar .tf-main-nav [data-tab="home"]').click();
     await desktop.locator('.tf-topbar [data-tab="services"]').click();
     if (!await desktop.locator('.tf-world-hub.is-layout-bento').count()) throw new Error('world home did not switch back to bento');
@@ -486,17 +499,29 @@ try {
     const mobileWorldWidth = await mobile.locator('.tf-world-hub').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
     if (mobileWorldWidth.scroll > mobileWorldWidth.client + 2) throw new Error(`mobile world launcher overflowed horizontally (${mobileWorldWidth.scroll} > ${mobileWorldWidth.client})`);
     await mobile.screenshot({ path: 'preview-world-mobile.png' });
-    await mobile.evaluate(() => { globalThis.SillyTavern.getContext().extensionSettings.tavern_forum.ui.worldHomeLayout = 'window'; });
+    await mobile.evaluate(() => {
+        const context = globalThis.SillyTavern.getContext();
+        context.extensionSettings.tavern_forum.ui.worldHomeLayout = 'window';
+        context.chatMetadata.tavern_forum_data.world.companion.weather = 'rain';
+        context.chatMetadata.tavern_forum_data.world.companion.timeOfDay = 'day';
+    });
     await mobile.locator('.tf-mobile-main-nav [data-tab="home"]').click();
     await mobile.locator('.tf-mobile-main-nav [data-tab="services"]').click();
     if (!await mobile.locator('.tf-world-hub.is-layout-window .tf-world-window-scene').count()) throw new Error('mobile world window is missing');
+    if (!await mobile.locator('.tf-world-hub.is-weather-rain.is-time-day').count()) throw new Error('mobile world window did not apply its weather scene');
+    if (await mobile.locator('.tf-window-rain b').count() !== 28) throw new Error('mobile world window lost its rain depth field');
     if (await mobile.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-mobile') throw new Error('mobile layout switch replaced the app shell');
     const mobileReactionWidth = await mobile.locator('.tf-window-reaction').evaluate(node => node.getBoundingClientRect().width);
     if (mobileReactionWidth < 220) throw new Error(`mobile companion reaction is too narrow (${mobileReactionWidth}px)`);
     const mobileWindowWidth = await mobile.locator('.tf-world-hub').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
     if (mobileWindowWidth.scroll > mobileWindowWidth.client + 2) throw new Error(`mobile world window overflowed horizontally (${mobileWindowWidth.scroll} > ${mobileWindowWidth.client})`);
     await mobile.screenshot({ path: 'preview-world-window-mobile.png', fullPage: true });
-    await mobile.evaluate(() => { globalThis.SillyTavern.getContext().extensionSettings.tavern_forum.ui.worldHomeLayout = 'bento'; });
+    await mobile.evaluate(() => {
+        const context = globalThis.SillyTavern.getContext();
+        context.extensionSettings.tavern_forum.ui.worldHomeLayout = 'bento';
+        context.chatMetadata.tavern_forum_data.world.companion.weather = 'auto';
+        context.chatMetadata.tavern_forum_data.world.companion.timeOfDay = 'auto';
+    });
     await mobile.locator('.tf-mobile-main-nav [data-tab="home"]').click();
     await mobile.locator('.tf-mobile-main-nav [data-tab="services"]').click();
     if (await mobile.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-mobile') throw new Error('mobile return to the card layout replaced the app shell');
