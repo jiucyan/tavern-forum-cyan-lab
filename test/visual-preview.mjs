@@ -354,10 +354,36 @@ try {
     await desktop.locator('[data-action="choose-companion-device"][data-device-skin="terminal"]').click();
     if (!await desktop.locator('.tf-companion-v3.is-device-terminal').count()) throw new Error('device structure selection did not persist');
     if (!await desktop.locator('.tf-companion-profile-card').evaluate(node => node.hasAttribute('open'))) throw new Error('companion profile collapsed after changing a device');
-    await desktop.locator('[data-companion-environment="weather"]').selectOption('rain');
-    await desktop.locator('[data-companion-environment="timeOfDay"]').selectOption('night');
+    if (await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="habitat"]').count() !== 8) throw new Error('visual habitat picker does not expose all eight scenes');
+    if (await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="weather"]').count() !== 6) throw new Error('visual weather picker does not expose all weather modes');
+    if (await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="timeOfDay"]').count() !== 5) throw new Error('visual time picker does not expose all time modes');
+    const nativeHabitatControl = await desktop.locator('[data-companion-environment="habitat"]').evaluate(node => ({ width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height, pointerEvents: getComputedStyle(node).pointerEvents, tabIndex: node.tabIndex }));
+    if (nativeHabitatControl.width > 1 || nativeHabitatControl.height > 1 || nativeHabitatControl.pointerEvents !== 'none' || nativeHabitatControl.tabIndex !== -1) throw new Error(`native habitat dropdown is still interactive: ${JSON.stringify(nativeHabitatControl)}`);
+    await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="weather"][data-environment-value="sunny"]').click();
+    await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="timeOfDay"][data-environment-value="day"]').click();
+    const habitatPreviews = [];
+    for (const habitat of [['meadow', '风吹草地'], ['pond', '荷叶池塘'], ['bedroom', '暖灯卧室'], ['forest', '林间树屋'], ['snowfield', '雪原营地'], ['city', '城市天台'], ['space', '星际舷窗'], ['arcade', '像素街机厅']]) {
+        await desktop.locator(`[data-action="choose-companion-environment"][data-environment-field="habitat"][data-environment-value="${habitat[0]}"]`).click();
+        habitatPreviews.push({ id: habitat[0], name: habitat[1], stage: await desktop.locator('.tf-pet-stage').evaluate(node => node.outerHTML) });
+    }
+    await desktop.evaluate(previews => {
+        const sheet = document.createElement('section');
+        sheet.id = 'tf-habitat-contact-sheet';
+        sheet.style.cssText = 'position:fixed;inset:10px;z-index:99999;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:10px;padding:12px;background:#e8e1d6;color:#29352f;font:800 12px/1.2 sans-serif';
+        sheet.innerHTML = previews.map(item => `<article class="tf-companion-v3 tf-companion-v4 is-device-classic is-weather-sunny is-time-day is-habitat-${item.id}" style="display:grid;grid-template-rows:auto 1fr;gap:7px;min-width:0;padding:9px;background:#fff;border:1px solid #d3c9bc;border-radius:15px"><header style="display:flex;justify-content:space-between"><b>${item.name}</b><small style="color:#8b8278">${item.id}</small></header>${item.stage}</article>`).join('');
+        document.querySelector('#tavern-forum-root').append(sheet);
+    }, habitatPreviews);
+    await desktop.locator('#tf-habitat-contact-sheet').screenshot({ path: 'preview-companion-habitats-v2.png' });
+    await desktop.locator('#tf-habitat-contact-sheet').evaluate(node => node.remove());
+    await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="habitat"][data-environment-value="snowfield"]').click();
+    if (!await desktop.locator('.tf-companion-v4.is-habitat-snowfield').count()) throw new Error('visual habitat selection did not update the device scene');
+    if (await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="habitat"][data-environment-value="snowfield"]').getAttribute('aria-selected') !== 'true') throw new Error('visual habitat selection did not expose its selected state');
+    await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="weather"][data-environment-value="rain"]').click();
+    await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="timeOfDay"][data-environment-value="night"]').click();
     if (!await desktop.locator('.tf-companion-v3.is-weather-rain.is-time-night').count()) throw new Error('manual weather and room time did not update the pet screen');
     if (await desktop.locator('[data-companion-environment="weather"]').inputValue() !== 'rain') throw new Error('manual weather did not persist');
+    await desktop.locator('.tf-pet-environment-controls').screenshot({ path: 'preview-companion-environment-v2.png' });
+    await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="habitat"][data-environment-value="meadow"]').click();
     await desktop.locator('[data-action="choose-companion-device"][data-device-skin="classic"]').click();
     await desktop.locator('.tf-companion-home').scrollIntoViewIfNeeded();
     await desktop.screenshot({ path: 'preview-companion.png' });
