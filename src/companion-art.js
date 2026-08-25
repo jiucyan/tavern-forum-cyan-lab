@@ -25,9 +25,8 @@ const SPECIES_ART = Object.freeze({
         body: `
             <path class="tf-pixel-body" d="M27 35h28v5h6v12H48v4H24v-8h3z"/>
             <path class="tf-pixel-body" d="M8 24V10h8l7 8h8l7-8h8v14h4v18h-5v6h-8v4H17v-4H9v-6H5V24z"/>
-            <path class="tf-pixel-body-shadow" d="M13 14v8h8zM41 14v8h-8z"/>
-            <path class="tf-pixel-body-shadow" d="M15 50h18v7H12v-4h3zM34 50h17v4h3v3H34z"/>
-            <path class="tf-pixel-light" d="M17 53h9v2h-9zM37 53h9v2h-9z"/>
+            <g class="tf-cat-ear-details"><g class="tf-cat-ear is-left"><path class="tf-pixel-body-shadow" d="M13 14v8h8z"/></g><g class="tf-cat-ear is-right"><path class="tf-pixel-body-shadow" d="M41 14v8h-8z"/></g></g>
+            <g class="tf-pixel-legs"><path class="tf-pixel-body-shadow" d="M15 50h18v7H12v-4h3zM34 50h17v4h3v3H34z"/><path class="tf-pixel-light" d="M17 53h9v2h-9zM37 53h9v2h-9z"/></g>
         `,
         eyesMarkup: `
             <g class="tf-pixel-eyes tf-pixel-eyes-open">

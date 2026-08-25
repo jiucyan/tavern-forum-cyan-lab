@@ -5,6 +5,17 @@ import { renderCompanionArtwork } from '../src/companion-art.js';
 
 const species = ['frog', 'cat', 'rabbit', 'fox', 'penguin', 'robo-bird', 'octopus', 'goldfish', 'soot'];
 const accessories = ['scarf', 'satchel', 'flower', 'charm', 'ribbon', 'glasses', 'crown', 'leaf', 'headphones', 'cape', 'bell'];
+const articulatedParts = {
+    frog: 'tf-pixel-legs',
+    cat: 'tf-cat-ear',
+    rabbit: 'tf-rabbit-ear',
+    fox: 'tf-fox-ear',
+    penguin: 'tf-penguin-wing',
+    'robo-bird': 'tf-pixel-antenna',
+    octopus: 'tf-octopus-arm',
+    goldfish: 'tf-betta-fin',
+    soot: 'tf-pixel-arms',
+};
 
 test('every built-in companion uses the shared body, expression and action layers', () => {
     for (const kind of species) {
@@ -20,6 +31,7 @@ test('every built-in companion uses the shared body, expression and action layer
         assert.match(artwork, /tf-pixel-eyes-happy/, `${kind} has no happy-eye frame`);
         assert.match(artwork, /tf-pixel-eyes-sleep/, `${kind} has no sleep-eye frame`);
         assert.match(artwork, /tf-pixel-mouth-feed/, `${kind} has no feeding mouth frame`);
+        assert.match(artwork, new RegExp(articulatedParts[kind]), `${kind} has no species-specific articulated part`);
         assert.doesNotMatch(artwork, /data-accessory=/, `${kind} rendered an accessory while none was selected`);
     }
 });

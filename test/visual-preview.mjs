@@ -394,6 +394,34 @@ try {
     if (!await desktop.locator('.tf-companion-v4.is-action-play').count() || rabbitPlayFrameB.mouthOpen === 'none' || Object.keys(rabbitPlayFrameA).filter(key => rabbitPlayFrameA[key] !== rabbitPlayFrameB[key]).length < 4) throw new Error(`rabbit play did not articulate body, face, ears and paws: ${JSON.stringify({ rabbitPlayFrameA, rabbitPlayFrameB })}`);
     await desktop.waitForTimeout(2150);
     if (!await desktop.locator('.tf-companion-v4.is-action-idle').count()) throw new Error('rabbit play expression did not return to idle');
+    const articulatedSpecies = [
+        ['frog', '.tf-pixel-legs'],
+        ['cat', '.tf-cat-ear.is-left'],
+        ['fox', '.tf-fox-ear.is-left'],
+        ['penguin', '.tf-penguin-wing.is-left'],
+        ['robo-bird', '.tf-pixel-antenna'],
+        ['octopus', '.tf-octopus-arm.is-left'],
+        ['goldfish', '.tf-pixel-tail'],
+        ['soot', '.tf-pixel-arms'],
+    ];
+    for (const [speciesId, anatomySelector] of articulatedSpecies) {
+        await desktop.locator(`[data-action="choose-companion-species"][data-species-id="${speciesId}"]`).click();
+        await desktop.locator('[data-action="companion-care"][data-care="play"]').first().click();
+        await desktop.waitForTimeout(70);
+        const motion = await desktop.locator('.tf-pet-sprite-control').evaluate((node, selector) => ({
+            anatomy: getComputedStyle(node.querySelector(selector)).animationName,
+            body: getComputedStyle(node.querySelector('.tf-pixel-body-rig')).animationName,
+            pupils: getComputedStyle(node.querySelector('.tf-pixel-pupils')).animationName,
+            mouthOpen: getComputedStyle(node.querySelector('.tf-pixel-mouth-feed')).display,
+        }), anatomySelector);
+        if (motion.anatomy === 'none' || !motion.body.includes('tf-living-play-body-v3') || !motion.pupils.includes('tf-expression-pupils-chase') || motion.mouthOpen === 'none') throw new Error(`${speciesId} has no complete species play choreography: ${JSON.stringify(motion)}`);
+    }
+    await desktop.evaluate(() => {
+        const companion = globalThis.SillyTavern.getContext().chatMetadata.tavern_forum_data.world.companion;
+        companion.energy = 100;
+        companion.satiety = 100;
+    });
+    await desktop.waitForTimeout(2750);
     await desktop.locator('[data-action="choose-companion-species"][data-species-id="fox"]').click();
     await desktop.locator('[data-action="choose-companion-device"][data-device-skin="terminal"]').click();
     if (!await desktop.locator('.tf-companion-v3.is-device-terminal').count()) throw new Error('device structure selection did not persist');
