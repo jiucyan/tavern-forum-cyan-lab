@@ -1,6 +1,6 @@
 {
   "name": "tavern-forum-cyan",
-  "version": "0.10.11",
+  "version": "0.11.0-beta.1",
   "private": true,
   "type": "module",
   "description": "An immersive in-world social forum extension for SillyTavern.",
@@ -10,7 +10,7 @@
   },
   "scripts": {
     "check": "node --check index.js && node --check src/api.js && node --check src/companion-art.js && node --check src/forum.js && node --check src/prompt.js && node --check src/store.js && node --check src/world.js && node --check src/ui-v3.js",
-    "test": "node --test test/companion-art.test.js test/prompt.test.js test/store.test.js test/world.test.js",
+    "test": "node --test test/companion-art.test.js test/prompt.test.js test/store.test.js test/version.test.js test/world.test.js",
     "test:visual": "node test/visual-preview.mjs"
   },
   "devDependencies": {
