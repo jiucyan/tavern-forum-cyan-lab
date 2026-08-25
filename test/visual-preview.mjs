@@ -344,11 +344,24 @@ try {
     if (!await desktop.locator('.tf-food-offering').count() || await desktop.locator('.tf-food-crumb').count() !== 3) throw new Error('feed sequence is missing its offering or bite crumbs');
     const feedAnimationName = await desktop.locator('.tf-food-offering').evaluate(node => getComputedStyle(node).animationName);
     if (!feedAnimationName.includes('tf-food-offer')) throw new Error(`food offering animation is inactive: ${feedAnimationName}`);
+    const feedMotionRig = await desktop.locator('.tf-pet-sprite-control').evaluate(node => ({
+        control: getComputedStyle(node).animationName,
+        body: getComputedStyle(node.querySelector('.tf-pixel-body-rig')).animationName,
+        face: getComputedStyle(node.querySelector('.tf-pixel-face-rig')).animationName,
+        hasShadow: Boolean(node.querySelector('.tf-pet-character-shadow')),
+    }));
+    if (feedMotionRig.control !== 'none' || !feedMotionRig.body.includes('tf-living-feed-body') || !feedMotionRig.face.includes('tf-living-feed-face') || !feedMotionRig.hasShadow) throw new Error(`companion feed still behaves as one moving image: ${JSON.stringify(feedMotionRig)}`);
     await desktop.waitForTimeout(620);
     await desktop.locator('.tf-pet-screen').screenshot({ path: 'preview-companion-feed-v2.png' });
     if (await desktop.locator('[data-action="choose-companion-species"][data-species-id="fox"]').getAttribute('aria-pressed') !== 'true') throw new Error('pixel companion selection did not update species');
     if (!await desktop.locator('.tf-companion-v3.is-action-feed .tf-feed-drop').isVisible()) throw new Error('feed animation did not activate');
     await desktop.locator('[data-action="companion-care"][data-care="pet"]').first().click();
+    const petMotionRig = await desktop.locator('.tf-pet-sprite-control').evaluate(node => ({
+        control: getComputedStyle(node).animationName,
+        body: getComputedStyle(node.querySelector('.tf-pixel-body-rig')).animationName,
+        face: getComputedStyle(node.querySelector('.tf-pixel-face-rig')).animationName,
+    }));
+    if (petMotionRig.control !== 'none' || !petMotionRig.body.includes('tf-living-nuzzle-body') || !petMotionRig.face.includes('tf-living-nuzzle-face')) throw new Error(`companion petting did not use the internal motion rig: ${JSON.stringify(petMotionRig)}`);
     const namedReaction = await desktop.locator('.tf-pet-message').innerText();
     if (!/团子/.test(namedReaction) || /赤狐绕过/.test(namedReaction)) throw new Error(`companion interaction used the species instead of its name: ${namedReaction}`);
     await desktop.locator('[data-action="choose-companion-device"][data-device-skin="terminal"]').click();

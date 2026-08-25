@@ -10,6 +10,9 @@ test('every built-in companion uses the shared body, expression and action layer
     for (const kind of species) {
         const artwork = renderCompanionArtwork(kind, 'none');
         assert.match(artwork, /class="tf-pixel-character"/, `${kind} has no character layer`);
+        assert.match(artwork, /class="tf-pixel-back-rig"/, `${kind} has no independently animated rear layer`);
+        assert.match(artwork, /class="tf-pixel-body-rig"/, `${kind} has no independently animated body layer`);
+        assert.match(artwork, /class="tf-pixel-face-rig"/, `${kind} has no independently animated face layer`);
         assert.match(artwork, /class="tf-pixel-body"/, `${kind} has no body color layer`);
         assert.match(artwork, /tf-pixel-eyes-open/, `${kind} has no open-eye frame`);
         assert.match(artwork, /tf-pixel-eyes-happy/, `${kind} has no happy-eye frame`);

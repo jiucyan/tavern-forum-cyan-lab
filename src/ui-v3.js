@@ -1612,7 +1612,7 @@ function renderCompanionAppV3(data) {
     const menuItems = COMPANION_CARE_ACTIONS;
     const menuIndex = Math.max(0, Math.min(menuItems.length - 1, Number(viewState.companionMenuIndex || 0)));
     const actionCopy = { feed: companion.message || '吃得很香，满足地晃了晃。', pet: companion.message, play: companion.message, rest: companion.message, brush: companion.message, dance: companion.message, train: companion.message, hide: companion.message, talk: companion.message, dress: companion.message, depart: '带好行囊，朝新的方向出发了。', signal: '收到了一枚来自旅途的像素讯号。' };
-    const portrait = `<button class="tf-pet-sprite-control" data-action="companion-care" data-care="pet" title="摸摸${escapeHtml(companion.name)}"><span class="tf-pixel-avatar" role="img" aria-label="${escapeHtml(companion.species)}像素宠物">${renderPixelCompanion(companion.species, companion.status)}</span></button>`;
+    const portrait = `<button class="tf-pet-sprite-control" data-action="companion-care" data-care="pet" title="摸摸${escapeHtml(companion.name)}"><span class="tf-pet-character-shadow" aria-hidden="true"></span><span class="tf-pixel-avatar" role="img" aria-label="${escapeHtml(companion.species)}像素宠物">${renderPixelCompanion(companion.species, companion.status)}</span></button>`;
     const speciesOptions = COMPANION_SPECIES.map(species => {
         const selected = getCompanionSpecies(companion.species)?.id === species.id;
         return `<button type="button" class="tf-pet-species-option ${selected ? 'is-selected' : ''}" data-action="choose-companion-species" data-species-id="${species.id}" aria-pressed="${selected}"><span>${renderPixelCompanion(species.name, 'home', true)}</span><b>${species.name}</b></button>`;

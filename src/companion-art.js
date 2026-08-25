@@ -449,5 +449,5 @@ export function renderCompanionArtwork(kind = 'mystery', accessory = 'none') {
     const eyes = species.eyesMarkup || renderEyes(species.eyes);
     const faces = `<g class="tf-pixel-mouth tf-pixel-mouth-default">${species.faces.default}</g><g class="tf-pixel-mouth tf-pixel-mouth-feed">${species.faces.feed}</g><g class="tf-pixel-mouth tf-pixel-mouth-sleep">${species.faces.sleep}</g>`;
     const travelKit = '<g class="tf-pixel-travel-kit"><path class="tf-pixel-body-shadow" d="M45 23h11v21H45z"/><path class="tf-pixel-accent" d="M43 21h12v21H43z"/><rect class="tf-pixel-light" x="46" y="25" width="6" height="5"/><rect class="tf-pixel-ink" x="41" y="27" width="4" height="12"/></g>';
-    return `${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'back'))}<g class="tf-pixel-character">${species.back}${species.body}${eyes}${faces}</g>${scaleLegacyLayer(travelKit)}${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'front'))}`;
+    return `${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'back'))}<g class="tf-pixel-character"><g class="tf-pixel-back-rig">${species.back}</g><g class="tf-pixel-body-rig">${species.body}</g><g class="tf-pixel-face-rig">${eyes}${faces}</g></g>${scaleLegacyLayer(travelKit)}${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'front'))}`;
 }
