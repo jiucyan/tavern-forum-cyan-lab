@@ -108,7 +108,7 @@ export function normalizeWorldState(value) {
         happiness: integer(companion.happiness, 70, 0, 100),
         luckyDirection: text(companion.luckyDirection),
         lastAction: ['feed', 'pet', 'play', 'rest', 'brush', 'dance', 'train', 'hide', 'talk', 'dress', 'depart', 'signal', 'return', 'weather'].includes(companion.lastAction) ? companion.lastAction : '',
-        deviceSkin: ['classic', 'pocket', 'crystal', 'arcane', 'terminal'].includes(companion.deviceSkin) ? companion.deviceSkin : 'classic',
+        deviceSkin: ['classic', 'pocket', 'crystal', 'arcane', 'terminal', 'camp', 'marine', 'arcade', 'lunar', 'berry'].includes(companion.deviceSkin) ? companion.deviceSkin : 'classic',
         bodyColor: color(companion.bodyColor),
         accentColor: color(companion.accentColor),
         accessory: ['none', 'scarf', 'satchel', 'flower', 'charm', 'ribbon', 'glasses', 'crown', 'leaf', 'headphones', 'cape', 'bell'].includes(companion.accessory) ? companion.accessory : 'none',

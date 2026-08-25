@@ -10972,3 +10972,397 @@ button.tf-avatar {
         animation: none !important;
     }
 }
+
+/* Device atelier v2 — ten distinct shells with dedicated structure, material and miniature previews. */
+#tavern-forum-root .tf-companion-v4 .tf-pet-console > :not(.tf-device-ornaments) {
+    position: relative;
+    z-index: 2;
+}
+
+#tavern-forum-root .tf-companion-v4 .tf-device-ornaments {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: block;
+    overflow: hidden;
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+#tavern-forum-root .tf-companion-v4 .tf-device-ornaments > * {
+    position: absolute;
+    display: block;
+    margin: 0;
+    font-style: normal;
+    content: '';
+}
+
+/* Existing shells receive a second material pass instead of only a palette swap. */
+#tavern-forum-root .tf-companion-v4.is-device-classic .tf-pet-console {
+    border-color: #9d789a;
+    background:
+        radial-gradient(circle at 18% 13%, rgb(255 255 255 / 72%) 0 2px, transparent 3px),
+        radial-gradient(ellipse at 50% 108%, rgb(118 72 111 / 15%) 0 25%, transparent 26%),
+        linear-gradient(148deg, #edcee4 0, #d9adcf 43%, #c996be 100%);
+    box-shadow: inset 0 0 0 7px rgb(255 255 255 / 20%), inset 7px 8px 12px rgb(255 255 255 / 28%), inset -9px -11px 18px rgb(89 48 83 / 14%), 0 9px 0 #946e91, 0 22px 35px rgb(68 50 68 / 20%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-classic .tf-pet-screen-bezel {
+    border-color: #5c575e;
+    background: linear-gradient(145deg, #969099, #464348 58%, #78727b);
+    box-shadow: inset 0 0 0 3px #aaa4ac, inset 0 0 0 7px #656067, inset 0 0 16px #242226, 0 3px 0 rgb(255 255 255 / 28%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-classic .tf-device-ornaments > b {
+    right: 32px;
+    bottom: 73px;
+    width: 45px;
+    height: 12px;
+    opacity: .54;
+    background: radial-gradient(circle, #8f698b 0 2px, transparent 2.5px) 0 0 / 9px 6px;
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-classic .tf-device-ornaments > em {
+    bottom: 22px;
+    left: 50%;
+    width: 52px;
+    height: 5px;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 19%);
+    transform: translateX(-50%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-pocket .tf-pet-console {
+    border: 3px solid #506d86;
+    border-radius: 24px 24px 38px 24px;
+    background:
+        linear-gradient(90deg, transparent 0 18px, rgb(255 255 255 / 8%) 18px 20px, transparent 20px calc(100% - 20px), rgb(39 65 86 / 10%) calc(100% - 20px) calc(100% - 18px), transparent calc(100% - 18px)),
+        linear-gradient(145deg, #a4bfd3, #84a5c1 58%, #7395b2);
+    box-shadow: inset 0 0 0 6px rgb(255 255 255 / 12%), inset 0 -19px 24px rgb(39 64 84 / 13%), 0 9px 0 #48657e, 0 22px 34px rgb(46 65 79 / 23%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-pocket .tf-device-ornaments > i:first-child,
+#tavern-forum-root .tf-companion-v4.is-device-pocket .tf-device-ornaments > i:nth-child(2) {
+    bottom: 56px;
+    width: 10px;
+    height: 82px;
+    border: 1px solid rgb(49 77 99 / 25%);
+    border-radius: 8px;
+    background: repeating-linear-gradient(0deg, rgb(49 77 99 / 27%) 0 3px, transparent 3px 8px);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-pocket .tf-device-ornaments > i:first-child { left: 13px; }
+#tavern-forum-root .tf-companion-v4.is-device-pocket .tf-device-ornaments > i:nth-child(2) { right: 13px; }
+#tavern-forum-root .tf-companion-v4.is-device-pocket .tf-device-ornaments > b { top: 21px; right: 25px; width: 7px; height: 7px; border-radius: 50%; background: #e78983; box-shadow: 0 0 0 3px rgb(49 77 99 / 18%), 0 0 8px #ffd6c9; }
+#tavern-forum-root .tf-companion-v4.is-device-pocket .tf-device-ornaments > em { right: 29px; bottom: 24px; width: 76px; height: 4px; border-radius: 99px; background: repeating-linear-gradient(90deg, #587792 0 7px, transparent 7px 11px); transform: rotate(-6deg); }
+
+#tavern-forum-root .tf-companion-v4.is-device-crystal .tf-pet-console {
+    background:
+        linear-gradient(115deg, transparent 0 15%, rgb(255 255 255 / 40%) 15.5% 17%, transparent 17.5% 68%, rgb(255 255 255 / 20%) 69% 71%, transparent 72%),
+        linear-gradient(132deg, rgb(238 255 255 / 72%), rgb(115 217 223 / 66%) 35% 72%, rgb(58 161 177 / 68%));
+    box-shadow: inset 0 0 0 9px rgb(255 255 255 / 24%), inset 12px 7px 16px rgb(255 255 255 / 36%), inset -12px -12px 24px rgb(44 136 150 / 18%), 0 9px 0 rgb(70 151 161 / 72%), 0 0 38px rgb(111 235 239 / 34%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-crystal .tf-device-ornaments > i:first-child {
+    top: 42px;
+    right: 13px;
+    width: 7px;
+    height: 205px;
+    border: 1px solid rgb(224 255 255 / 54%);
+    border-radius: 99px;
+    background: linear-gradient(#d7ffff, #66c8d1);
+    box-shadow: -357px 58px 0 -1px rgb(202 252 252 / 48%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-crystal .tf-device-ornaments > i:nth-child(2) { top: 61px; left: 17px; width: 8px; height: 8px; border-radius: 50%; background: #d9ffff; box-shadow: 4px 146px 0 -1px #8bd8df, 363px 35px 0 #d9ffff, 354px 197px 0 1px #76cbd4; }
+#tavern-forum-root .tf-companion-v4.is-device-crystal .tf-device-ornaments > b { right: 34px; bottom: 69px; width: 57px; height: 23px; opacity: .42; background: linear-gradient(90deg, transparent 0 9px, #398f9c 9px 11px, transparent 11px 24px, #398f9c 24px 26px, transparent 26px), linear-gradient(0deg, transparent 0 10px, #398f9c 10px 12px, transparent 12px); }
+#tavern-forum-root .tf-companion-v4.is-device-crystal .tf-pet-screen-bezel { box-shadow: inset 0 0 0 3px rgb(194 246 248 / 36%), inset 0 0 14px #1e626d, 0 3px 0 rgb(255 255 255 / 42%), 0 0 17px rgb(103 237 244 / 30%); }
+
+#tavern-forum-root .tf-companion-v4.is-device-arcane .tf-pet-console {
+    background:
+        radial-gradient(circle at 50% -4%, #ffe5a2 0 5px, #c09c53 6px 9px, transparent 10px),
+        radial-gradient(circle at 50% 108%, rgb(238 190 255 / 18%) 0 26%, transparent 27%),
+        linear-gradient(150deg, #b093c5, #775590 62%, #65457c);
+    box-shadow: inset 0 0 0 5px rgb(248 221 164 / 10%), inset 0 0 0 10px rgb(67 38 83 / 12%), inset 0 -18px 28px rgb(50 27 68 / 24%), 0 9px 0 #49315c, 0 0 33px rgb(171 112 202 / 34%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-arcane .tf-device-ornaments > i:first-child,
+#tavern-forum-root .tf-companion-v4.is-device-arcane .tf-device-ornaments > i:nth-child(2) { top: 44%; width: 22px; height: 22px; border: 2px solid #d5b66f; border-radius: 50%; background: radial-gradient(circle, #e7d194 0 2px, transparent 3px); box-shadow: inset 0 0 0 4px rgb(74 44 90 / 42%); }
+#tavern-forum-root .tf-companion-v4.is-device-arcane .tf-device-ornaments > i:first-child { left: 4px; }
+#tavern-forum-root .tf-companion-v4.is-device-arcane .tf-device-ornaments > i:nth-child(2) { right: 4px; }
+#tavern-forum-root .tf-companion-v4.is-device-arcane .tf-device-ornaments > b { top: 10px; left: 50%; width: 30px; height: 16px; border: solid #e1c579; border-width: 0 0 2px 2px; border-radius: 50%; transform: translateX(-50%) rotate(-22deg); }
+#tavern-forum-root .tf-companion-v4.is-device-arcane .tf-device-ornaments > em { bottom: 14px; left: 50%; width: 110px; height: 18px; opacity: .7; background: repeating-radial-gradient(circle at 50% 100%, transparent 0 7px, #d7ba72 8px 9px, transparent 10px 17px); transform: translateX(-50%); }
+
+#tavern-forum-root .tf-companion-v4.is-device-terminal .tf-pet-console {
+    background:
+        repeating-linear-gradient(135deg, rgb(255 255 255 / 4%) 0 2px, transparent 2px 7px),
+        linear-gradient(135deg, transparent 12px, #778083 0) top left,
+        linear-gradient(225deg, transparent 12px, #626b6d 0) top right,
+        linear-gradient(45deg, transparent 12px, #4b5456 0) bottom left,
+        linear-gradient(315deg, transparent 12px, #677071 0) bottom right;
+    background-size: auto, 51% 51%, 51% 51%, 51% 51%, 51% 51%;
+    background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-terminal .tf-device-ornaments > i:first-child,
+#tavern-forum-root .tf-companion-v4.is-device-terminal .tf-device-ornaments > i:nth-child(2) { top: 72px; width: 12px; height: 168px; background: repeating-linear-gradient(0deg, #242c2e 0 4px, #7d8585 4px 7px); box-shadow: inset 0 0 0 2px #30383a; }
+#tavern-forum-root .tf-companion-v4.is-device-terminal .tf-device-ornaments > i:first-child { left: 7px; }
+#tavern-forum-root .tf-companion-v4.is-device-terminal .tf-device-ornaments > i:nth-child(2) { right: 7px; }
+#tavern-forum-root .tf-companion-v4.is-device-terminal .tf-device-ornaments > b { right: 31px; bottom: 67px; width: 75px; height: 8px; border: 1px solid #333a3b; background: repeating-linear-gradient(135deg, #d0a84c 0 7px, #313a3b 7px 14px); }
+#tavern-forum-root .tf-companion-v4.is-device-terminal .tf-device-ornaments > em { bottom: 18px; left: 24px; width: calc(100% - 48px); height: 1px; background: #303839; box-shadow: 0 -4px 0 rgb(255 255 255 / 10%); }
+
+/* New shell: a field radio with a handle, timber corners and a speaker grille. */
+#tavern-forum-root .tf-companion-v3.is-device-camp {
+    --pet-ink: #2d392a; --pet-screen: #bdc99c; --pet-screen-deep: #778360; --pet-case: #8f9b6d; --pet-case-edge: #515b42; --pet-button: #d5bc82; --pet-button-edge: #6e5635; --pet-glow: rgb(221 244 174 / 40%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-camp .tf-pet-console {
+    width: min(100%, 446px);
+    margin-top: 27px;
+    padding: 26px 31px 24px;
+    border: 4px solid #505943;
+    border-radius: 25px 25px 42px 42px;
+    background:
+        linear-gradient(90deg, rgb(90 57 34 / 43%) 0 17px, transparent 17px calc(100% - 17px), rgb(90 57 34 / 43%) calc(100% - 17px)),
+        repeating-linear-gradient(100deg, transparent 0 7px, rgb(255 255 255 / 3%) 7px 9px),
+        linear-gradient(145deg, #a8b283, #7f8c63 67%, #6d7854);
+    box-shadow: inset 0 0 0 6px rgb(242 232 190 / 10%), inset 0 -18px 24px rgb(44 55 35 / 17%), 0 9px 0 #454d39, 0 23px 34px rgb(45 55 38 / 25%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-camp .tf-device-ornaments { overflow: visible; }
+#tavern-forum-root .tf-companion-v4.is-device-camp .tf-device-ornaments > b { top: -25px; left: 50%; width: 154px; height: 36px; border: 7px solid #555d45; border-bottom: 0; border-radius: 23px 23px 0 0; box-shadow: inset 0 0 0 4px #a28a59; transform: translateX(-50%); }
+#tavern-forum-root .tf-companion-v4.is-device-camp .tf-device-ornaments > i:first-child,
+#tavern-forum-root .tf-companion-v4.is-device-camp .tf-device-ornaments > i:nth-child(2) { top: 80px; width: 15px; height: 210px; border: 2px solid #684c30; background: repeating-linear-gradient(75deg, #9c7447 0 7px, #7b5838 7px 9px); }
+#tavern-forum-root .tf-companion-v4.is-device-camp .tf-device-ornaments > i:first-child { left: 5px; border-radius: 0 8px 8px 0; }
+#tavern-forum-root .tf-companion-v4.is-device-camp .tf-device-ornaments > i:nth-child(2) { right: 5px; border-radius: 8px 0 0 8px; }
+#tavern-forum-root .tf-companion-v4.is-device-camp .tf-device-ornaments > em { right: 34px; bottom: 64px; width: 54px; height: 28px; background: radial-gradient(circle, #3e4939 0 2px, transparent 2.5px) 0 0 / 9px 9px; }
+#tavern-forum-root .tf-companion-v4.is-device-camp .tf-pet-screen-bezel { border-color: #4b4c3b; border-radius: 15px; background: linear-gradient(145deg, #746e55, #373a32); box-shadow: inset 0 0 0 3px #9d936c, inset 0 0 13px #22261f, 0 3px 0 rgb(255 247 214 / 17%); }
+#tavern-forum-root .tf-companion-v4.is-device-camp .tf-pet-screen { border-radius: 7px; }
+#tavern-forum-root .tf-companion-v4.is-device-camp .tf-pet-device-controls button i { border-color: #675133; border-radius: 6px; background: linear-gradient(#e0c78c, #ae8d55); }
+
+/* New shell: a brass-trimmed submarine observation unit. */
+#tavern-forum-root .tf-companion-v3.is-device-marine {
+    --pet-ink: #193d45; --pet-screen: #abd9d6; --pet-screen-deep: #528e94; --pet-case: #3e7f88; --pet-case-edge: #24555d; --pet-button: #d7b66f; --pet-button-edge: #75572d; --pet-glow: rgb(115 238 242 / 52%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-marine .tf-pet-console {
+    width: min(100%, 455px);
+    padding: 31px 34px 28px;
+    border: 5px double #c8a35e;
+    border-radius: 46% 46% 37% 37% / 25% 25% 34% 34%;
+    background:
+        radial-gradient(circle at 14% 17%, rgb(176 243 241 / 40%) 0 3px, transparent 4px),
+        radial-gradient(circle at 82% 23%, rgb(176 243 241 / 30%) 0 5px, transparent 6px),
+        linear-gradient(150deg, #559ba2, #32717b 62%, #275b64);
+    box-shadow: inset 0 0 0 7px rgb(13 68 76 / 18%), inset 0 -22px 30px rgb(12 50 57 / 25%), 0 9px 0 #1e4b53, 0 0 30px rgb(77 187 194 / 25%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-marine .tf-pet-console::before,
+#tavern-forum-root .tf-companion-v4.is-device-marine .tf-pet-console::after { width: 13px; height: 13px; border: 3px ridge #d2b46f; background: #6f5229; box-shadow: 0 290px 0 #6f5229; }
+#tavern-forum-root .tf-companion-v4.is-device-marine .tf-device-ornaments > i:first-child,
+#tavern-forum-root .tf-companion-v4.is-device-marine .tf-device-ornaments > i:nth-child(2) { top: 47%; width: 28px; height: 53px; border: 4px solid #b99452; background: #316d75; box-shadow: inset 0 0 0 3px #183f47; }
+#tavern-forum-root .tf-companion-v4.is-device-marine .tf-device-ornaments > i:first-child { left: -4px; border-radius: 0 16px 16px 0; }
+#tavern-forum-root .tf-companion-v4.is-device-marine .tf-device-ornaments > i:nth-child(2) { right: -4px; border-radius: 16px 0 0 16px; }
+#tavern-forum-root .tf-companion-v4.is-device-marine .tf-device-ornaments > b { top: 11px; left: 50%; width: 68px; height: 12px; border: 2px solid #c5a15c; border-radius: 50%; background: repeating-linear-gradient(90deg, transparent 0 7px, #d7bc7c 7px 10px); transform: translateX(-50%); }
+#tavern-forum-root .tf-companion-v4.is-device-marine .tf-device-ornaments > em { right: 42px; bottom: 52px; width: 35px; height: 35px; border: 3px solid #c5a15c; border-radius: 50%; background: conic-gradient(from 45deg, #245a62, #84c4c2, #245a62); box-shadow: inset 0 0 0 4px #2b6870; }
+#tavern-forum-root .tf-companion-v4.is-device-marine .tf-pet-screen-bezel { padding: 16px; border: 5px double #c7a45f; border-radius: 34% / 18%; background: #225660; box-shadow: inset 0 0 0 4px #163c43, inset 0 0 18px #0b272d, 0 0 14px rgb(111 228 232 / 20%); }
+#tavern-forum-root .tf-companion-v4.is-device-marine .tf-pet-device-controls button i { width: 36px; height: 36px; border: 3px ridge #76582d; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f0d690, #b98b42 62%, #7c592b); }
+
+/* New shell: a compact neon arcade cabinet. */
+#tavern-forum-root .tf-companion-v3.is-device-arcade {
+    --pet-ink: #e5e7ff; --pet-screen: #30335f; --pet-screen-deep: #171936; --pet-case: #d55387; --pet-case-edge: #652b65; --pet-button: #f3cf57; --pet-button-edge: #79582c; --pet-glow: rgb(90 246 255 / 58%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-arcade .tf-pet-console {
+    width: min(100%, 448px);
+    margin-top: 22px;
+    padding: 35px 30px 25px;
+    border: 4px solid #4b2759;
+    border-radius: 18px 18px 45px 45px;
+    background:
+        linear-gradient(90deg, #57d7dc 0 8px, transparent 8px calc(100% - 8px), #f0ca52 calc(100% - 8px)),
+        linear-gradient(145deg, #e46d9a, #b94479 60%, #8b376d);
+    box-shadow: inset 0 0 0 7px rgb(255 255 255 / 10%), inset 0 -26px 28px rgb(68 24 69 / 20%), 0 10px 0 #4e2456, 0 0 27px rgb(227 75 164 / 28%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-arcade .tf-device-ornaments { overflow: visible; }
+#tavern-forum-root .tf-companion-v4.is-device-arcade .tf-device-ornaments > b { top: -19px; left: 20px; width: calc(100% - 40px); height: 47px; border: 4px solid #4a2758; border-radius: 13px 13px 7px 7px; background: repeating-linear-gradient(135deg, #252651 0 12px, #383a78 12px 24px); box-shadow: inset 0 0 0 3px #61e1df, 0 5px 0 #4b2759; }
+#tavern-forum-root .tf-companion-v4.is-device-arcade .tf-device-ornaments > b::after { position: absolute; inset: 9px 21px; color: #ffdf64; text-align: center; text-shadow: 2px 2px #a73878; content: 'PIXEL TRIP'; font: 900 11px/1.5 ui-monospace, monospace; letter-spacing: .12em; }
+#tavern-forum-root .tf-companion-v4.is-device-arcade .tf-device-ornaments > i:first-child,
+#tavern-forum-root .tf-companion-v4.is-device-arcade .tf-device-ornaments > i:nth-child(2) { top: 60px; width: 6px; height: 230px; border-radius: 99px; box-shadow: 0 0 9px currentColor; }
+#tavern-forum-root .tf-companion-v4.is-device-arcade .tf-device-ornaments > i:first-child { left: 11px; color: #64e4df; background: #64e4df; }
+#tavern-forum-root .tf-companion-v4.is-device-arcade .tf-device-ornaments > i:nth-child(2) { right: 11px; color: #ffd85e; background: #ffd85e; }
+#tavern-forum-root .tf-companion-v4.is-device-arcade .tf-device-ornaments > em { left: 26px; bottom: 53px; width: 45px; height: 8px; border-radius: 50%; background: #482553; box-shadow: 0 5px 0 rgb(255 255 255 / 8%); }
+#tavern-forum-root .tf-companion-v4.is-device-arcade .tf-pet-screen-bezel { border-color: #25264d; border-radius: 13px 13px 26px 26px; background: linear-gradient(#3b3e79, #171934); box-shadow: inset 0 0 0 4px #62519a, inset 0 0 14px #0b0c1e, 0 0 13px #56e0e1; }
+#tavern-forum-root .tf-companion-v4.is-device-arcade .tf-pet-screen { border-color: #5bd9dc; border-radius: 5px 5px 14px 14px; }
+#tavern-forum-root .tf-companion-v4.is-device-arcade .tf-pet-device-controls { width: 84%; transform: perspective(100px) rotateX(4deg); }
+#tavern-forum-root .tf-companion-v4.is-device-arcade .tf-pet-device-controls button:first-child i { width: 29px; height: 29px; border: 5px solid #31214c; border-radius: 50%; background: #59d8dc; box-shadow: 0 0 0 5px #6e3374; }
+#tavern-forum-root .tf-companion-v4.is-device-arcade .tf-pet-device-controls button:not(:first-child) i { width: 34px; height: 34px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff09b, #e5b73f 65%, #9d6932); }
+
+/* New shell: a celestial pocket-watch instrument. */
+#tavern-forum-root .tf-companion-v3.is-device-lunar {
+    --pet-ink: #eee9d6; --pet-screen: #424964; --pet-screen-deep: #22283f; --pet-case: #d9d3be; --pet-case-edge: #777260; --pet-button: #ece5c8; --pet-button-edge: #77705b; --pet-glow: rgb(219 225 255 / 50%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-lunar .tf-pet-console {
+    width: min(100%, 438px);
+    margin-top: 38px;
+    padding: 34px 31px 27px;
+    border: 6px double #8c846b;
+    border-radius: 50% 50% 41% 41% / 29% 29% 43% 43%;
+    background:
+        radial-gradient(circle at 25% 17%, #fff9dc 0 2px, transparent 3px),
+        radial-gradient(circle at 78% 20%, #fff9dc 0 1px, transparent 2px),
+        radial-gradient(circle at 50% 47%, rgb(112 118 148 / 10%) 0 42%, transparent 43%),
+        linear-gradient(145deg, #f2edda, #d1c9ad 58%, #aaa28a);
+    box-shadow: inset 0 0 0 6px rgb(255 255 255 / 24%), inset 0 0 0 11px rgb(101 96 77 / 8%), inset 0 -20px 26px rgb(82 76 57 / 15%), 0 9px 0 #6e6855, 0 0 31px rgb(172 177 208 / 24%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-lunar .tf-device-ornaments { overflow: visible; }
+#tavern-forum-root .tf-companion-v4.is-device-lunar .tf-device-ornaments > b { top: -36px; left: 50%; width: 45px; height: 34px; border: 5px double #817a64; border-radius: 12px 12px 4px 4px; background: repeating-linear-gradient(90deg, #c6bea4 0 5px, #8c846e 5px 7px); transform: translateX(-50%); }
+#tavern-forum-root .tf-companion-v4.is-device-lunar .tf-device-ornaments > i:first-child,
+#tavern-forum-root .tf-companion-v4.is-device-lunar .tf-device-ornaments > i:nth-child(2) { top: -21px; width: 38px; height: 45px; border: 5px solid #91886f; border-radius: 50%; background: transparent; }
+#tavern-forum-root .tf-companion-v4.is-device-lunar .tf-device-ornaments > i:first-child { left: 114px; transform: rotate(-26deg); }
+#tavern-forum-root .tf-companion-v4.is-device-lunar .tf-device-ornaments > i:nth-child(2) { right: 114px; transform: rotate(26deg); }
+#tavern-forum-root .tf-companion-v4.is-device-lunar .tf-device-ornaments > em { right: 32px; bottom: 61px; width: 61px; height: 61px; border: 1px solid #837c68; border-radius: 50%; opacity: .55; background: radial-gradient(circle at 30% 30%, #77705f 0 2px, transparent 3px), radial-gradient(circle at 68% 44%, #77705f 0 2px, transparent 3px), radial-gradient(circle at 45% 72%, #77705f 0 2px, transparent 3px); box-shadow: inset 0 0 0 5px rgb(255 255 255 / 20%); }
+#tavern-forum-root .tf-companion-v4.is-device-lunar .tf-pet-screen-bezel { border: 4px double #91876d; border-radius: 42% / 18%; background: linear-gradient(145deg, #716d70, #34343f); box-shadow: inset 0 0 0 4px #aaa38f, inset 0 0 15px #23232d, 0 3px 0 #f8f2dc; }
+#tavern-forum-root .tf-companion-v4.is-device-lunar .tf-pet-screen { border-color: #bdb794; border-radius: 20% / 8%; background: radial-gradient(circle at 73% 25%, rgb(255 247 199 / 12%) 0 11%, transparent 12%), repeating-linear-gradient(0deg, rgb(231 230 212 / 4%) 0 2px, transparent 2px 4px), linear-gradient(150deg, #555d7c, #343a55); }
+#tavern-forum-root .tf-companion-v4.is-device-lunar .tf-pet-device-controls button i { width: 36px; height: 36px; border: 4px double #756e5b; border-radius: 50%; background: radial-gradient(circle, #faf3d7, #c8bea0 70%); }
+
+/* New shell: a playful two-tone clamshell. */
+#tavern-forum-root .tf-companion-v3.is-device-berry {
+    --pet-ink: #513144; --pet-screen: #ebc3d0; --pet-screen-deep: #af7188; --pet-case: #df8daf; --pet-case-edge: #934c72; --pet-button: #fff0d5; --pet-button-edge: #a25d77; --pet-glow: rgb(255 185 220 / 48%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-berry .tf-pet-console {
+    width: min(100%, 445px);
+    padding: 27px 29px 25px;
+    border: 3px solid #8e4e70;
+    border-radius: 42px 42px 62px 62px;
+    background:
+        linear-gradient(0deg, #f0b0c8 0 30%, #a85f86 30% 32%, #dc88aa 32% 100%);
+    box-shadow: inset 0 0 0 7px rgb(255 255 255 / 15%), inset 0 -15px 22px rgb(125 54 88 / 13%), 0 9px 0 #834465, 0 23px 34px rgb(103 48 76 / 22%);
+}
+
+#tavern-forum-root .tf-companion-v4.is-device-berry .tf-device-ornaments > b { top: 31%; left: 13px; width: calc(100% - 26px); height: 15px; border: 3px solid #8e4e70; border-radius: 99px; background: repeating-linear-gradient(90deg, #f1c5d5 0 20px, #ad6488 20px 25px); box-shadow: 0 3px 0 rgb(91 42 68 / 16%); }
+#tavern-forum-root .tf-companion-v4.is-device-berry .tf-device-ornaments > i:first-child,
+#tavern-forum-root .tf-companion-v4.is-device-berry .tf-device-ornaments > i:nth-child(2) { top: 32px; width: 11px; height: 11px; border: 2px solid #874564; border-radius: 50%; background: #ffdf95; box-shadow: 0 0 7px rgb(255 226 141 / 70%); }
+#tavern-forum-root .tf-companion-v4.is-device-berry .tf-device-ornaments > i:first-child { left: 18px; }
+#tavern-forum-root .tf-companion-v4.is-device-berry .tf-device-ornaments > i:nth-child(2) { right: 18px; }
+#tavern-forum-root .tf-companion-v4.is-device-berry .tf-device-ornaments > em { right: 38px; bottom: 54px; width: 46px; height: 13px; background: radial-gradient(circle, #9c5779 0 2px, transparent 2.5px) 0 0 / 9px 8px; }
+#tavern-forum-root .tf-companion-v4.is-device-berry .tf-pet-screen-bezel { border-color: #8e4b6c; border-radius: 27px 27px 15px 15px; background: linear-gradient(145deg, #f3b8cc, #a85e82); box-shadow: inset 0 0 0 4px rgb(255 255 255 / 23%), inset 0 0 14px #7d4666, 0 3px 0 rgb(255 255 255 / 27%); }
+#tavern-forum-root .tf-companion-v4.is-device-berry .tf-pet-screen { border-color: #975b74; border-radius: 13px 13px 7px 7px; }
+#tavern-forum-root .tf-companion-v4.is-device-berry .tf-pet-device-controls { width: 76%; padding: 9px 18px 5px; border: 1px solid rgb(139 70 101 / 25%); border-radius: 26px; background: rgb(255 240 245 / 15%); }
+#tavern-forum-root .tf-companion-v4.is-device-berry .tf-pet-device-controls button i { border-color: #a25d77; background: linear-gradient(#fff6df, #e9c8c0); }
+
+/* The selector now previews silhouette, screen, controls and one signature construction detail. */
+#tavern-forum-root .tf-companion-v3 .tf-device-skin-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+}
+
+#tavern-forum-root .tf-companion-v3 .tf-device-skin-grid > :is(.tf-pet-appearance-controls, .tf-pet-environment-controls) { grid-column: 1 / -1; }
+#tavern-forum-root .tf-companion-v3 .tf-device-skin-option {
+    position: relative;
+    grid-template-columns: 58px minmax(0, 1fr);
+    gap: 10px;
+    min-height: 78px;
+    padding: 8px 9px;
+    overflow: hidden;
+    border-color: color-mix(in srgb, var(--tf-line), #786872 12%);
+    border-radius: 15px;
+    background: linear-gradient(145deg, rgb(255 255 255 / 76%), rgb(255 255 255 / 38%));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 75%);
+    transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease, background .2s ease;
+}
+
+#tavern-forum-root .tf-companion-v3 .tf-device-skin-option:hover { transform: translateY(-2px); box-shadow: 0 7px 16px rgb(66 48 59 / 9%); }
+#tavern-forum-root .tf-companion-v3 .tf-device-skin-option.is-selected { background: linear-gradient(145deg, color-mix(in srgb, var(--tf-accent), white 90%), rgb(255 255 255 / 72%)); box-shadow: inset 3px 0 0 var(--tf-accent), 0 6px 17px color-mix(in srgb, var(--tf-accent), transparent 87%); }
+#tavern-forum-root .tf-companion-v3 .tf-device-skin-option.is-selected::after { position: absolute; top: 6px; right: 7px; display: grid; width: 16px; height: 16px; place-items: center; border-radius: 50%; color: white; background: var(--tf-accent); content: '✓'; font: 800 9px/1 sans-serif; }
+#tavern-forum-root .tf-companion-v3 .tf-device-skin-option > div b { padding-right: 0; font-size: 11px; }
+#tavern-forum-root .tf-companion-v3 .tf-device-skin-option > div small { display: -webkit-box; margin-top: 4px; overflow: hidden; font-size: 9px; line-height: 1.45; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch {
+    position: relative;
+    display: block;
+    width: 56px;
+    height: 58px;
+    border: 2px solid #996f96;
+    border-radius: 18px 18px 21px 21px;
+    background: linear-gradient(145deg, #ebc8e1, #cf98c2);
+    box-shadow: inset 0 0 0 3px rgb(255 255 255 / 22%), 0 4px 0 #8c668a, 0 7px 11px rgb(63 45 61 / 15%);
+    transform: scale(.9);
+}
+
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch i { position: absolute; top: 10px; left: 9px; z-index: 2; width: 34px; height: 25px; border: 4px solid #555057; border-radius: 7px; background: linear-gradient(145deg, #c8d6ac, #aebd94); box-shadow: inset 0 0 0 2px rgb(255 255 255 / 15%); }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch b { position: absolute; right: 10px; bottom: 7px; left: 10px; z-index: 2; height: 7px; border-radius: 99px; background: radial-gradient(circle at 15% 50%, #f1d8e5 0 3px, transparent 3.5px), radial-gradient(circle at 50% 50%, #f1d8e5 0 3px, transparent 3.5px), radial-gradient(circle at 85% 50%, #f1d8e5 0 3px, transparent 3.5px); }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch em,
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch small { position: absolute; display: block; margin: 0; font-style: normal; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch em { top: 4px; left: 50%; width: 17px; height: 2px; border-radius: 99px; background: rgb(255 255 255 / 40%); transform: translateX(-50%); }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch small { right: 5px; bottom: 5px; width: 3px; height: 3px; border-radius: 50%; background: #8d6687; box-shadow: -45px 0 0 #8d6687; }
+
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-pocket { border: 3px solid #506e87; border-radius: 9px 9px 15px 9px; background: linear-gradient(145deg, #acc5d8, #7d9fbb); box-shadow: inset 0 0 0 3px rgb(255 255 255 / 14%), 0 4px 0 #48657e; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-pocket i { top: 9px; left: 8px; border-color: #3f5667; border-radius: 2px 2px 11px 2px; background: #b8cbca; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-pocket b { right: 8px; bottom: 7px; left: 25px; background: radial-gradient(circle, #dbe7ea 0 4px, #516b7d 4.5px 5px, transparent 5.5px); }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-pocket em { top: auto; bottom: 9px; left: 13px; width: 10px; height: 10px; background: linear-gradient(90deg, transparent 0 3px, #516b7d 3px 7px, transparent 7px), linear-gradient(0deg, transparent 0 3px, #516b7d 3px 7px, transparent 7px); transform: none; }
+
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-crystal { border-color: rgb(255 255 255 / 82%); border-radius: 20px 9px; background: linear-gradient(135deg, rgb(239 255 255 / 86%), rgb(91 205 214 / 70%)); box-shadow: inset 0 0 0 4px rgb(255 255 255 / 23%), 0 4px 0 #5aa7b0, 0 0 12px #81e5e9; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-crystal i { border-color: #3f8b95; border-radius: 9px 3px; background: #c3eeee; box-shadow: inset 0 0 0 2px rgb(255 255 255 / 35%), 0 0 6px #9af5f4; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-crystal em { top: 2px; left: 18px; width: 4px; height: 50px; background: rgb(255 255 255 / 50%); transform: rotate(24deg); }
+
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-arcane { border: 3px double #d0ae67; border-radius: 50% 50% 39% 39% / 25% 25% 48% 48%; background: linear-gradient(145deg, #a886bc, #76538f); box-shadow: inset 0 0 0 3px rgb(255 220 151 / 10%), 0 4px 0 #543669, 0 0 9px rgb(183 120 214 / 45%); }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-arcane i { top: 11px; left: 8px; border-color: #d0ae67; border-radius: 50% 50% 5px 5px; background: #cdbbd6; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-arcane b { background: radial-gradient(circle, #e1c075 0 4px, #78528b 4.5px 6px, transparent 6.5px); }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-arcane em { top: 2px; width: 15px; height: 8px; border: solid #efd58f; border-width: 0 0 1px 1px; border-radius: 50%; background: transparent; transform: translateX(-50%) rotate(-20deg); }
+
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-terminal { border: 4px ridge #444e50; border-radius: 3px; background: repeating-linear-gradient(135deg, #737b7c 0 5px, #656d6d 5px 10px); box-shadow: inset 0 0 0 3px rgb(0 0 0 / 18%), 0 4px 0 #293133; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-terminal i { top: 8px; left: 7px; border-color: #303738; border-radius: 0; background: #d5bd72; box-shadow: inset 0 0 0 2px rgb(68 56 20 / 25%); }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-terminal b { right: 7px; bottom: 6px; left: 7px; border-radius: 1px; background: repeating-linear-gradient(135deg, #d0a84c 0 5px, #313a3b 5px 10px); }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-terminal em { top: 5px; left: 3px; width: 4px; height: 43px; background: repeating-linear-gradient(0deg, #222a2b 0 3px, transparent 3px 6px); transform: none; }
+
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-camp { margin-top: 5px; border: 3px solid #515b42; border-radius: 8px 8px 14px 14px; background: linear-gradient(90deg, #8b633e 0 6px, #8f9b6d 6px calc(100% - 6px), #8b633e calc(100% - 6px)); box-shadow: inset 0 0 0 3px rgb(255 255 255 / 10%), 0 4px 0 #454d39; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-camp::before { position: absolute; top: -10px; left: 15px; width: 20px; height: 10px; border: 4px solid #515b42; border-bottom: 0; border-radius: 8px 8px 0 0; content: ''; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-camp i { border-color: #414637; border-radius: 3px; background: #bdc99c; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-camp b { right: 9px; left: 30px; background: radial-gradient(circle, #d8c087 0 3px, #715735 3.5px 4px, transparent 4.5px); }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-camp em { top: auto; bottom: 7px; left: 10px; width: 16px; height: 9px; background: radial-gradient(circle, #3f4938 0 1px, transparent 1.5px) 0 0 / 5px 5px; transform: none; }
+
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-marine { border: 4px double #c8a35e; border-radius: 48% 48% 39% 39% / 29% 29% 38% 38%; background: linear-gradient(145deg, #559ba2, #2d6871); box-shadow: inset 0 0 0 3px rgb(13 68 76 / 20%), 0 4px 0 #1e4b53; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-marine i { top: 9px; left: 7px; border: 4px double #c7a45f; border-radius: 44% / 24%; background: #abd9d6; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-marine b { background: radial-gradient(circle, #d7b66f 0 4px, #75572d 4.5px 6px, transparent 6.5px); }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-marine em { top: 3px; width: 20px; height: 4px; border: 1px solid #d7b66f; background: transparent; }
+
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-arcade { margin-top: 5px; border: 3px solid #51285d; border-radius: 5px 5px 15px 15px; background: linear-gradient(90deg, #59d9dc 0 4px, #d55387 4px calc(100% - 4px), #f3cf57 calc(100% - 4px)); box-shadow: inset 0 0 0 3px rgb(255 255 255 / 9%), 0 4px 0 #4e2456, 0 0 8px rgb(227 75 164 / 35%); }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-arcade::before { position: absolute; top: -9px; left: 6px; width: 38px; height: 12px; border: 3px solid #51285d; border-radius: 4px 4px 0 0; background: #303369; box-shadow: inset 0 0 0 1px #58d9dc; content: ''; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-arcade i { top: 8px; left: 7px; border-color: #28294e; border-radius: 2px 2px 8px 8px; background: #30335f; box-shadow: 0 0 4px #59d9dc; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-arcade b { background: radial-gradient(circle at 20% 50%, #59d9dc 0 4px, #5a2c68 4.5px 6px, transparent 6.5px), radial-gradient(circle at 72% 50%, #f3cf57 0 4px, #79582c 4.5px 6px, transparent 6.5px); }
+
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-lunar { margin-top: 5px; border: 4px double #837b65; border-radius: 50% 50% 42% 42% / 30% 30% 45% 45%; background: linear-gradient(145deg, #f0ead5, #c2b99d); box-shadow: inset 0 0 0 3px rgb(255 255 255 / 22%), 0 4px 0 #6e6855, 0 0 8px rgb(172 177 208 / 30%); }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-lunar::before { position: absolute; top: -10px; left: 19px; width: 12px; height: 10px; border: 3px double #817a64; border-radius: 4px 4px 0 0; background: #c6bea4; content: ''; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-lunar i { top: 9px; left: 7px; border: 4px double #8b826a; border-radius: 40% / 20%; background: #424964; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-lunar b { background: radial-gradient(circle, #eee5c7 0 4px, #77705b 4.5px 6px, transparent 6.5px); }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-lunar em { top: 3px; width: 24px; height: 9px; border: 1px solid #837b65; border-radius: 50%; background: transparent; }
+
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-berry { border: 3px solid #934c72; border-radius: 13px 13px 19px 19px; background: linear-gradient(0deg, #efadc6 0 31%, #9d5579 31% 35%, #df8daf 35%); box-shadow: inset 0 0 0 3px rgb(255 255 255 / 16%), 0 4px 0 #834465; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-berry i { border-color: #9b5877; border-radius: 8px 8px 3px 3px; background: #ebc3d0; }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-berry b { background: radial-gradient(circle, #fff0d5 0 4px, #a25d77 4.5px 6px, transparent 6.5px); }
+#tavern-forum-root .tf-companion-v3 .tf-device-swatch.is-berry em { top: auto; bottom: 17px; width: 42px; height: 4px; background: #8f4b6d; }
+
+@container (max-width: 640px) {
+    #tavern-forum-root .tf-companion-v4 .tf-device-ornaments { border-radius: inherit; }
+    #tavern-forum-root .tf-companion-v4[class*="is-device-"] .tf-pet-console {
+        width: min(calc(100% - 6px), 360px);
+        padding: 18px 16px 19px;
+    }
+    #tavern-forum-root .tf-companion-v4:is(.is-device-camp,.is-device-arcade,.is-device-lunar) .tf-pet-console { margin-top: 20px; }
+    #tavern-forum-root .tf-companion-v4.is-device-camp .tf-device-ornaments > b { top: -21px; width: 124px; height: 31px; }
+    #tavern-forum-root .tf-companion-v4.is-device-arcade .tf-device-ornaments > b { top: -16px; height: 40px; }
+    #tavern-forum-root .tf-companion-v4.is-device-lunar .tf-device-ornaments > b { top: -29px; height: 28px; }
+}
+
+@container (max-width: 520px) {
+    #tavern-forum-root .tf-companion-v3 .tf-device-skin-grid { grid-template-columns: 1fr; }
+}
+
+@container (max-width: 390px) {
+    #tavern-forum-root .tf-companion-v4[class*="is-device-"] .tf-pet-console { width: calc(100% - 4px); padding-inline: 13px; }
+}

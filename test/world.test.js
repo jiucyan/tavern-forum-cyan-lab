@@ -64,6 +64,9 @@ test('travel module keeps one persistent companion and its journey log', () => {
     assert.equal(customizedRoom.world.companion.bodyColor, '#aabbcc');
     assert.equal(customizedRoom.world.companion.accentColor, '');
     assert.equal(customizedRoom.world.companion.accessory, 'scarf');
+
+    const expandedDevice = normalizeForumDataShape({ world: { companion: { deviceSkin: 'lunar' } } });
+    assert.equal(expandedDevice.world.companion.deviceSkin, 'lunar');
     const updates = normalizeWorldUpdates('<module_data>{"worldUpdates":{"travel":{"companion":{"name":"豆包","species":"机械鸟","status":"away","mood":"兴奋","destination":"旧钟楼","message":"这里的风很大。","bond":8},"journeys":[{"traveler":"豆包","destination":"旧钟楼","status":"away","notes":"在屋檐下发现一枚齿轮。","souvenir":"旧齿轮"}]}}}</module_data>');
     applyWorldUpdates(data, updates, config);
     assert.equal(data.world.companion.name, '豆包');
