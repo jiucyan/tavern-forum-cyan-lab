@@ -595,6 +595,7 @@ const ICONS = {
     lock: '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
     chevron: '<path d="m9 18 6-6-6-6"/>',
     edit: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"/>',
+    pin: '<path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',
     more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
     repost: '<path d="m17 2 4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>',
 };
@@ -707,6 +708,11 @@ function numberLabel(value) {
     return String(number);
 }
 
+function compactExcerpt(value, maximum = 90) {
+    const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+    return normalized.length > maximum ? `${normalized.slice(0, Math.max(1, maximum - 1))}…` : normalized;
+}
+
 function renderSwitch({ checked, action, label, disabled = false, dataset = {} }) {
     const dataAttributes = Object.entries(dataset).map(([key, value]) => ` data-${String(key).replace(/[A-Z]/g, match => `-${match.toLocaleLowerCase()}`)}="${escapeHtml(value)}"`).join('');
     return `<label class="tf-switch ${disabled ? 'is-disabled' : ''}"><input type="checkbox" data-action="${escapeHtml(action)}"${dataAttributes} ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="tf-switch-track"><i></i></span>${label ? `<span>${escapeHtml(label)}</span>` : ''}</label>`;
@@ -801,7 +807,7 @@ function renderPostImage(post) {
         if (memoryValue) return `<img class="tf-post-image" src="${escapeHtml(memoryValue)}" alt="帖子配图" loading="lazy">`;
         return `<div class="tf-image-loading"><span class="tf-spinner"></span><span>正在读取图片</span><img data-image-key="${escapeHtml(post.imageKey)}" alt="帖子配图"></div>`;
     }
-    if (usesTextImage(post)) return `<figure class="tf-text-image"><p>${escapeHtml(localizedImagePrompt(post))}</p></figure>`;
+    if (usesTextImage(post)) return `<figure class="tf-text-image"><figcaption><span>${icon('image')}</span>WORLD FIELD NOTE</figcaption><p>${escapeHtml(localizedImagePrompt(post))}</p><small>来自当前故事世界的现场剪影</small></figure>`;
     return '';
 }
 
@@ -816,12 +822,16 @@ function renderCommentImage(comment) {
     return '';
 }
 
-function renderComments(post, forceOpen = false) {
-    if (!forceOpen && !viewState.expandedComments.has(post.id)) return '';
-    const comments = (Array.isArray(post.comments) ? post.comments : []).filter(comment => {
+function visiblePostComments(post) {
+    return (Array.isArray(post?.comments) ? post.comments : []).filter(comment => {
         const npc = npcForAuthor(comment);
         return !npc?.muted && !npc?.blocked && (!comment.moderation?.hidden || comment.moderation?.action === 'delete');
     });
+}
+
+function renderComments(post, forceOpen = false) {
+    if (!forceOpen && !viewState.expandedComments.has(post.id)) return '';
+    const comments = visiblePostComments(post);
     const target = viewState.replyTarget?.postId === post.id ? viewState.replyTarget : null;
     const snapshot = getChatSnapshot();
     const profile = getSettings().profile;
@@ -858,26 +868,79 @@ function renderPostImageEditor(post) {
     return `<div class="tf-post-image-editor"><div>${icon('image')}<input class="tf-post-image-prompt-input" maxlength="500" value="${escapeHtml(post.imagePrompt || '')}" placeholder="描述这篇帖子的配图画面"></div><button class="tf-primary-button" data-action="save-post-image-prompt" data-post-id="${escapeHtml(post.id)}">${buttonLabel}</button><button class="tf-text-button" data-action="toggle-post-image-editor" data-post-id="${escapeHtml(post.id)}">取消</button></div>`;
 }
 
+function getPostPresentation(post, authorNpc = null) {
+    const searchText = `${post.content || ''} ${(post.tags || []).join(' ')}`;
+    let type = 'discussion';
+    if (post.poll) type = 'poll';
+    else if (post.repostOf || post.quoteText) type = 'repost';
+    else if (/求助|寻找|征集|有没有人|谁能|需要帮忙/u.test(searchText)) type = 'request';
+    else if (/公告|通知|提醒|暂停|封闭|开放|取消|恢复/u.test(searchText)) type = 'notice';
+    else if (hasRealImage(post) || usesTextImage(post)) type = 'scene';
+    else if (Number(post.storyRelevance || 0) >= 65) type = 'live';
+    const presentation = {
+        discussion: { label: '社区讨论', symbol: '◎' },
+        poll: { label: '居民投票', symbol: '◇' },
+        repost: { label: '转发线索', symbol: '↗' },
+        request: { label: '居民求助', symbol: '!' },
+        notice: { label: '社区通告', symbol: '▣' },
+        scene: { label: '现场记录', symbol: '◉' },
+        live: { label: '正在发生', symbol: '●' },
+    }[type];
+    const location = String(authorNpc?.location || post.location || (post.tags || [])[1] || '').replace(/^#/, '').trim();
+    return { type, location, ...presentation };
+}
+
+function renderPostSocialProof(post, comments) {
+    const people = [...new Map(comments.filter(comment => !comment.moderation?.hidden).map(comment => [comment.handle || comment.author, comment])).values()].slice(0, 3);
+    const likes = Math.max(0, Number(post.likes || 0));
+    if (!people.length && !likes) return '';
+    const avatars = people.map(comment => {
+        const npc = npcForAuthor(comment);
+        return renderAvatar(comment.author, { avatarUrl: npc?.avatarUrl, avatarKey: npc?.avatarKey });
+    }).join('');
+    const lead = people[0]?.author;
+    const text = people.length
+        ? `${lead}${comments.length > 1 ? `和另外 ${comments.length - 1} 人` : ''}正在讨论`
+        : `${numberLabel(likes)} 人留下了回应`;
+    return `<div class="tf-post-social-proof"><span class="tf-post-proof-avatars">${avatars}</span><p>${escapeHtml(text)}</p><i></i></div>`;
+}
+
+function renderPostCommentPreview(post, comments) {
+    const previews = comments
+        .filter(comment => !comment.moderation?.hidden)
+        .sort((a, b) => Number(b.likes || 0) - Number(a.likes || 0) || Number(b.createdAt || 0) - Number(a.createdAt || 0))
+        .slice(0, 2);
+    if (!previews.length) return '';
+    return `<section class="tf-comment-preview" aria-label="热门评论">
+        <header><span>讨论现场</span><button data-action="open-post" data-post-id="${escapeHtml(post.id)}">查看全部 ${comments.length} 条</button></header>
+        ${previews.map(comment => {
+            const npc = npcForAuthor(comment);
+            return `<article>${renderAvatar(comment.author, { avatarUrl: npc?.avatarUrl, avatarKey: npc?.avatarKey })}<button data-action="open-post" data-post-id="${escapeHtml(post.id)}"><b>${escapeHtml(comment.author)}</b>${comment.replyTo ? `<small>回复 @${escapeHtml(comment.replyTo)}</small>` : ''}<p>${escapeHtml(compactExcerpt(comment.content, 96))}</p></button>${Number(comment.likes || 0) ? `<span>${icon('heart')}${numberLabel(comment.likes)}</span>` : ''}</article>`;
+        }).join('')}
+    </section>`;
+}
+
 function renderPost(post, { detail = false } = {}) {
     if (post.moderation?.hidden && post.moderation?.action === 'delete') {
         return `<article class="tf-post tf-card tf-post-tombstone" data-post-id="${escapeHtml(post.id)}"><span>${icon('shield')}</span><div><small>社区管理记录 · ${formatTime(post.moderation.updatedAt || post.createdAt)}</small><h3>这篇帖子已被管理员删除</h3><p>原内容仅保留为本地管理记录，不可查看、回复、转发或注入正文。</p>${post.moderation.reason ? `<em>${escapeHtml(post.moderation.reason)}</em>` : ''}<b>此提示仅你可见；此前看过内容的角色仍可能保留模糊印象。</b></div></article>`;
     }
     const injecting = Boolean(post.selectedForInjection);
     const imageBusy = viewState.imageBusy.has(post.id);
-    const commentsCount = Array.isArray(post.comments) ? post.comments.filter(comment => {
-        const npc = npcForAuthor(comment);
-        return !npc?.muted && !npc?.blocked;
-    }).length : 0;
+    const comments = visiblePostComments(post);
+    const commentsCount = comments.length;
+    const authorNpc = post.npcId ? npcForId(post.npcId) : npcForAuthor(post);
+    const presentation = getPostPresentation(post, authorNpc);
     const authorHeader = post.npcId
         ? `<button class="tf-post-author" data-action="open-npc" data-npc-id="${escapeHtml(post.npcId)}"><b>${escapeHtml(post.author)}</b><span>@${escapeHtml(post.handle || 'user')} · ${formatTime(post.createdAt)}</span></button>`
         : isMyHandle(post.handle)
             ? `<button class="tf-post-author" data-action="open-my-profile"><b>${escapeHtml(post.author)}</b><span>@${escapeHtml(post.handle || 'me')} · ${formatTime(post.createdAt)}</span></button>`
             : `<div><b>${escapeHtml(post.author)}</b><span>@${escapeHtml(post.handle || 'user')} · ${formatTime(post.createdAt)}</span></div>`;
-    const authorNpc = post.npcId ? npcForId(post.npcId) : null;
     const moderationItems = authorNpc ? `<hr><button data-action="toggle-role-muted" data-npc-id="${escapeHtml(authorNpc.id)}">${icon('message')}<span>${authorNpc.muted ? '取消静音该角色' : '静音该角色'}</span></button><button class="${authorNpc.blocked ? '' : 'is-danger'}" data-action="toggle-role-blocked" data-npc-id="${escapeHtml(authorNpc.id)}">${icon('lock')}<span>${authorNpc.blocked ? '解除拉黑' : '拉黑该角色'}</span></button>` : '';
     const imageMarkup = renderPostImage(post);
-    const captionMarkup = `<div class="tf-post-caption"><p><b>${escapeHtml(post.author)}</b> ${renderSocialText(post.content)}</p>${(post.tags || []).length ? `<div class="tf-tags">${post.tags.map(tag => `<button data-action="topic-search" data-topic="${escapeHtml(String(tag).replace(/^#/, ''))}">#${escapeHtml(String(tag).replace(/^#/, ''))}</button>`).join('')}</div>` : ''}</div>`;
-    return `<article class="tf-post tf-card" data-post-id="${escapeHtml(post.id)}" data-search-text="${escapeHtml(postSearchText(post))}">
+    const captionMarkup = `<div class="tf-post-caption"><div class="tf-post-context"><span class="is-${presentation.type}"><i>${presentation.symbol}</i>${presentation.label}</span>${presentation.location ? `<em>${icon('pin')}${escapeHtml(presentation.location)}</em>` : ''}</div><p>${renderSocialText(post.content)}</p>${(post.tags || []).length ? `<div class="tf-tags">${post.tags.map(tag => `<button data-action="topic-search" data-topic="${escapeHtml(String(tag).replace(/^#/, ''))}">#${escapeHtml(String(tag).replace(/^#/, ''))}</button>`).join('')}</div>` : ''}</div>`;
+    const socialProof = renderPostSocialProof(post, comments);
+    const commentPreview = !detail ? renderPostCommentPreview(post, comments) : '';
+    return `<article class="tf-post tf-card is-post-${presentation.type}" data-post-id="${escapeHtml(post.id)}" data-search-text="${escapeHtml(postSearchText(post))}">
         <header class="tf-post-header">
             ${renderAuthorAvatar(post)}
             ${authorHeader}
@@ -889,14 +952,15 @@ function renderPost(post, { detail = false } = {}) {
         ${post.quoteText ? `<blockquote class="tf-quote-post">${renderSocialText(post.quoteText)}</blockquote>` : ''}
         ${post.poll ? `<section class="tf-poll"><b>${escapeHtml(post.poll.question)}</b>${post.poll.options.map(option => `<button class="${option.votedByUser ? 'is-selected' : ''}" data-action="vote-poll" data-post-id="${escapeHtml(post.id)}" data-option-id="${escapeHtml(option.id)}" ${post.poll.closed ? 'disabled' : ''}><span>${escapeHtml(option.text)}</span><em>${numberLabel(option.votes)} 票</em></button>`).join('')}</section>` : ''}
         ${imageMarkup}
+        ${socialProof}
         <div class="tf-post-actions">
-            <button class="${post.likedByUser ? 'is-liked' : ''}" data-action="like-post" data-post-id="${escapeHtml(post.id)}" title="点赞">${icon('heart')}<span>${numberLabel(post.likes)}</span></button>
-            <button data-action="open-post" data-post-id="${escapeHtml(post.id)}" title="打开完整帖子">${icon('comment')}<span>${commentsCount}</span></button>
-            <button data-action="quote-post" data-post-id="${escapeHtml(post.id)}" title="转发或引用">${icon('repost')}<span>${numberLabel(post.reposts)}</span></button>
-            <button data-action="toggle-post-image-editor" data-post-id="${escapeHtml(post.id)}" ${imageBusy ? 'disabled' : ''} title="${hasRealImage(post) || post.imagePrompt ? '管理配图' : '添加配图'}">${imageBusy ? '<span class="tf-spinner"></span>' : icon('image')}</button>
+            <button class="${post.likedByUser ? 'is-liked' : ''}" data-action="like-post" data-post-id="${escapeHtml(post.id)}" title="点赞">${icon('heart')}<b>喜欢</b><span>${numberLabel(post.likes)}</span></button>
+            <button data-action="open-post" data-post-id="${escapeHtml(post.id)}" title="打开完整帖子">${icon('comment')}<b>讨论</b><span>${commentsCount}</span></button>
+            <button data-action="quote-post" data-post-id="${escapeHtml(post.id)}" title="转发或引用">${icon('repost')}<b>引用</b><span>${numberLabel(post.reposts)}</span></button>
+            <button data-action="toggle-post-image-editor" data-post-id="${escapeHtml(post.id)}" ${imageBusy ? 'disabled' : ''} title="${hasRealImage(post) || post.imagePrompt ? '管理配图' : '添加配图'}">${imageBusy ? '<span class="tf-spinner"></span>' : icon('image')}<b>配图</b></button>
         </div>
         ${renderPostImageEditor(post)}
-        ${!detail && commentsCount ? `<button class="tf-view-comments" data-action="open-post" data-post-id="${escapeHtml(post.id)}">查看全部 ${commentsCount} 条评论</button>` : ''}
+        ${commentPreview}
         ${renderComments(post, detail)}
     </article>`;
 }
@@ -921,6 +985,70 @@ function renderStories(data) {
     const roles = data.npcs.filter(npc => !(npc.bindingType === 'char' && npc.bindingTarget === snapshot.characterId)).slice(0, 11);
     const people = [{ id: '', name: snapshot.characterName, avatarUrl: snapshot.characterAvatarUrl, isChar: true }, ...roles];
     return `<section class="tf-stories tf-card">${people.map(person => `<button data-action="${person.isChar ? 'open-char-dm' : 'open-npc'}" ${person.id ? `data-npc-id="${escapeHtml(person.id)}"` : ''}>${renderAvatar(person.name, { avatarUrl: person.avatarUrl, avatarKey: person.avatarKey })}<span>${escapeHtml(person.name)}</span></button>`).join('')}</section>`;
+}
+
+function getTrendingForumTopics(posts, limit = 5) {
+    const topics = new Map();
+    for (const post of posts) {
+        for (const rawTag of post.tags || []) {
+            const label = String(rawTag || '').replace(/^#/, '').trim();
+            if (!label) continue;
+            const current = topics.get(label) || { label, posts: 0, activity: 0, latestAt: 0 };
+            current.posts += 1;
+            current.activity += Number(post.likes || 0) + Number(post.reposts || 0) * 2 + visiblePostComments(post).length * 3;
+            current.latestAt = Math.max(current.latestAt, Number(post.createdAt || 0));
+            topics.set(label, current);
+        }
+    }
+    return [...topics.values()]
+        .sort((a, b) => b.posts - a.posts || b.activity - a.activity || b.latestAt - a.latestAt)
+        .slice(0, limit);
+}
+
+function getActiveForumRoles(data, posts, limit = 4) {
+    const activity = new Map();
+    posts.forEach((post, index) => {
+        const npc = post.npcId ? data.npcs.find(item => item.id === post.npcId) : data.npcs.find(item => String(item.handle || '').replace(/^@/, '') === String(post.handle || '').replace(/^@/, ''));
+        if (!npc || npc.blocked || npc.muted) return;
+        const score = Number(post.createdAt || 0) + Number(post.likes || 0) * 1000 + Math.max(0, posts.length - index) * 100;
+        activity.set(npc.id, Math.max(score, activity.get(npc.id) || 0));
+    });
+    return data.npcs
+        .filter(npc => !npc.blocked && !npc.muted)
+        .sort((a, b) => (activity.get(b.id) || Number(b.updatedAt || 0)) - (activity.get(a.id) || Number(a.updatedAt || 0)))
+        .slice(0, limit);
+}
+
+function renderCommunityHero(data, posts, { active, forumEnabled } = {}) {
+    const snapshot = getChatSnapshot();
+    const companion = data.world?.companion || {};
+    const time = getLocalCompanionTime(companion);
+    const weather = getLocalCompanionWeather(data, time);
+    const weatherClass = String(weather.id || 'cloudy').split(/\s+/)[0];
+    const latestPost = [...posts].sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0];
+    const latestTopic = getTrendingForumTopics(posts, 1)[0];
+    const status = !forumEnabled ? '论坛模块当前已暂停' : active ? `${snapshot.characterName}所在世界的居民社区` : '打开一个角色聊天后，社区才会继续生长';
+    const pulse = latestPost
+        ? `<button class="tf-community-live-card" data-action="open-post" data-post-id="${escapeHtml(latestPost.id)}"><span><i></i>社区刚刚发生</span><b>${escapeHtml(compactExcerpt(latestPost.content, 72))}</b><small>@${escapeHtml(latestPost.handle || 'user')} · ${formatTime(latestPost.createdAt)}</small></button>`
+        : `<div class="tf-community-live-card is-empty"><span><i></i>社区正在等待</span><b>第一条故事动态还没有出现</b><small>刷新论坛后，这里会留下世界的新动静。</small></div>`;
+    return `<section class="tf-community-hero is-weather-${escapeHtml(weatherClass)} is-time-${escapeHtml(time.id)}">
+        <span class="tf-community-atmosphere" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <div class="tf-community-hero-copy"><small>LIVE STORY COMMUNITY · ${escapeHtml(time.label)}</small><h1>${escapeHtml(data.topic || '故事广场')}</h1><p>${escapeHtml(status)}</p><div><span>${weather.icon} ${escapeHtml(weather.conditionLabel)}</span><span>${data.npcs.filter(npc => !npc.blocked).length} 位居民</span><span>${posts.length} 篇记录</span>${latestTopic ? `<span>#${escapeHtml(latestTopic.label)}</span>` : ''}</div></div>
+        <div class="tf-community-hero-pulse">${pulse}<button class="tf-community-refresh" data-action="generate-posts" ${viewState.busy || !active || !forumEnabled ? 'disabled' : ''}>${viewState.busy ? '<span class="tf-spinner"></span>' : icon('sparkles')}<span>${viewState.busy ? '正在收集新动静' : '刷新社区动态'}</span></button></div>
+    </section>`;
+}
+
+function renderCommunitySidebar(data, posts, fortune = '') {
+    const topics = getTrendingForumTopics(posts);
+    const roles = getActiveForumRoles(data, posts);
+    const commentCount = posts.reduce((sum, post) => sum + visiblePostComments(post).length, 0);
+    const interactions = posts.reduce((sum, post) => sum + Number(post.likes || 0) + Number(post.reposts || 0) + visiblePostComments(post).length, 0);
+    return `<aside class="tf-community-sidebar" aria-label="社区动态侧栏">
+        <section class="tf-community-sidebar-card tf-card tf-community-pulse-card"><header><div><small>COMMUNITY PULSE</small><h2>社区脉搏</h2></div><i></i></header><div><span><b>${numberLabel(posts.length)}</b><small>故事记录</small></span><span><b>${numberLabel(commentCount)}</b><small>居民讨论</small></span><span><b>${numberLabel(interactions)}</b><small>互动痕迹</small></span></div><p>所有变化均保存在当前聊天，不会串到其他故事。</p></section>
+        <section class="tf-community-sidebar-card tf-card tf-community-trends"><header><small>TRENDING NOW</small><h2>正在讨论</h2></header><div>${topics.length ? topics.map((topic, index) => `<button data-action="topic-search" data-topic="${escapeHtml(topic.label)}"><i>${String(index + 1).padStart(2, '0')}</i><span><b>#${escapeHtml(topic.label)}</b><small>${topic.posts} 篇记录 · ${numberLabel(topic.activity)} 热度</small></span>${icon('chevron')}</button>`).join('') : '<p class="tf-empty-mini">还没有形成热门话题</p>'}</div></section>
+        <section class="tf-community-sidebar-card tf-card tf-community-residents"><header><small>ACTIVE RESIDENTS</small><h2>活跃居民</h2></header><div>${roles.length ? roles.map(npc => `<button data-action="open-npc" data-npc-id="${escapeHtml(npc.id)}">${renderAvatar(npc.name, { avatarUrl: npc.avatarUrl, avatarKey: npc.avatarKey })}<span><b>${escapeHtml(npc.name)}</b><small>${escapeHtml(npc.location || npc.bio || `@${npc.handle}`)}</small></span><em>${npc.followedByUser ? '已关注' : '活跃'}</em></button>`).join('') : '<p class="tf-empty-mini">居民们还没有开始活动</p>'}</div></section>
+        ${fortune}
+    </aside>`;
 }
 
 function renderWorldPortal(data) {
@@ -1027,12 +1155,18 @@ function renderHome(data) {
     const fortune = getSettings().modules.fortune.enabled && data.world.fortune
         ? `<button class="tf-fortune-glance tf-card" data-action="open-world-page" data-module-id="fortune"><span>${icon('sparkles')}</span><div><small>今天</small><b>${escapeHtml(data.world.fortune.label)}</b><p>${escapeHtml(data.world.fortune.summary)}</p></div>${icon('chevron')}</button>`
         : '';
-    return `<div class="tf-home-page"><div class="tf-feed-column">
-        <section class="tf-feed-heading"><div><h1>${escapeHtml(data.topic || '故事动态')}</h1><p>${!forumEnabled ? '论坛模块当前已暂停' : active ? `${escapeHtml(getChatSnapshot().characterName)} · 当前聊天专属社区` : '请先打开一个角色聊天'}</p></div><button class="tf-primary-button" data-action="generate-posts" ${viewState.busy || !active || !forumEnabled ? 'disabled' : ''}>${viewState.busy ? '<span class="tf-spinner"></span>' : icon('sparkles')}<span>${viewState.busy ? '刷新中' : '刷新'}</span></button></section>
-        ${renderStories(data)}${fortune}<nav class="tf-feed-tabs">${feeds.map(([id, label]) => `<button class="${viewState.feedMode === id ? 'is-active' : ''}" data-action="feed-mode" data-feed="${id}">${label}</button>`).join('')}</nav>${viewState.selectedTopic ? `<section class="tf-topic-header tf-card"><div><small>话题详情</small><h2>#${escapeHtml(viewState.selectedTopic)}</h2><p>${posts.length} 篇相关帖子</p></div><button class="tf-secondary-button" data-action="clear-topic">返回全部</button></section>` : ''}${renderComposer()}
-        <div class="tf-search-result" ${viewState.searchQuery ? '' : 'hidden'}>搜索结果：<b data-search-count>0</b> 篇帖子</div>
-        <div class="tf-feed-list">${viewState.busy ? '<div class="tf-card tf-skeleton"><i></i><p></p><p></p></div>' : ''}${posts.length ? posts.map(renderPost).join('') : '<section class="tf-card tf-empty"><div class="tf-empty-icon">'+icon('image')+'</div><h3>这里还没有动态</h3><p>可以切换信息流，或关注更多角色。</p></section>'}</div>
-    </div></div>`;
+    return `<div class="tf-home-page">
+        ${renderCommunityHero(data, posts, { active, forumEnabled })}
+        <div class="tf-community-people"><span><small>WHO IS HERE</small><b>此刻在社区里</b></span>${renderStories(data)}</div>
+        <div class="tf-forum-dashboard">
+            <main class="tf-feed-column"><nav class="tf-feed-tabs">${feeds.map(([id, label]) => `<button class="${viewState.feedMode === id ? 'is-active' : ''}" data-action="feed-mode" data-feed="${id}">${label}</button>`).join('')}</nav>${viewState.selectedTopic ? `<section class="tf-topic-header tf-card"><div><small>话题详情</small><h2>#${escapeHtml(viewState.selectedTopic)}</h2><p>${posts.length} 篇相关帖子</p></div><button class="tf-secondary-button" data-action="clear-topic">返回全部</button></section>` : ''}${renderComposer()}
+                <div class="tf-feed-section-heading"><div><small>STORY FEED</small><h2>${viewState.feedMode === 'following' ? '关注居民的动态' : viewState.feedMode === 'latest' ? '刚刚发生的事情' : viewState.feedMode === 'hot' ? '社区正在热议' : '为这个故事挑选'}</h2></div><span>${posts.length} 篇</span></div>
+                <div class="tf-search-result" ${viewState.searchQuery ? '' : 'hidden'}>搜索结果：<b data-search-count>0</b> 篇帖子</div>
+                <div class="tf-feed-list">${viewState.busy ? '<div class="tf-card tf-skeleton"><i></i><p></p><p></p></div>' : ''}${posts.length ? posts.map(renderPost).join('') : '<section class="tf-card tf-empty"><div class="tf-empty-icon">'+icon('image')+'</div><h3>这里还没有动态</h3><p>可以切换信息流，或关注更多角色。</p></section>'}</div>
+            </main>
+            ${renderCommunitySidebar(data, posts, fortune)}
+        </div>
+    </div>`;
 }
 
 function prepareConversations(data) {

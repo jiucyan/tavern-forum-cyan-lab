@@ -69,6 +69,22 @@ try {
     await desktop.screenshot({ path: 'preview-world.png' });
     await desktop.locator('.tf-topbar .tf-main-nav [data-tab="home"]').click();
     if (await desktop.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-desktop') throw new Error('returning home replaced the full app shell');
+    if (!await desktop.locator('.tf-community-hero').count()) throw new Error('forum home is missing the world-aware community cover');
+    const forumDesktopLayout = await desktop.locator('.tf-forum-dashboard').evaluate(node => {
+        const bounds = element => {
+            const box = element?.getBoundingClientRect();
+            return box ? { x: box.x, y: box.y, width: box.width, height: box.height } : null;
+        };
+        const feed = bounds(node.querySelector('.tf-feed-column'));
+        const sidebar = bounds(node.querySelector('.tf-community-sidebar'));
+        return { columns: getComputedStyle(node).gridTemplateColumns, feed, sidebar, width: node.getBoundingClientRect().width };
+    });
+    if (!forumDesktopLayout.columns.includes('px') || !forumDesktopLayout.feed || !forumDesktopLayout.sidebar) throw new Error('desktop forum dashboard did not resolve its two-column layout');
+    if (forumDesktopLayout.sidebar.x <= forumDesktopLayout.feed.x + forumDesktopLayout.feed.width || forumDesktopLayout.sidebar.width < 250) throw new Error(`desktop community sidebar is not beside the feed: ${JSON.stringify(forumDesktopLayout)}`);
+    if (await desktop.locator('.tf-comment-preview').first().locator('article').count() !== 2) throw new Error('feed card does not preview two real comments');
+    if (!await desktop.locator('.tf-post-context').first().count()) throw new Error('post card is missing its locally derived content type');
+    await desktop.screenshot({ path: 'preview-forum-home-v2.png' });
+    await desktop.locator('.tf-feed-list .tf-post').first().screenshot({ path: 'preview-forum-post-card-v2.png' });
     const visibleTextImages = await desktop.locator('.tf-feed-list .tf-text-image').count();
     if (visibleTextImages !== 1) throw new Error(`expected only intentional post images to display, found ${visibleTextImages}`);
     if (!/[\u3400-\u9fff]/u.test(await desktop.locator('.tf-text-image p').first().innerText())) throw new Error('text image description is not Chinese');
@@ -798,6 +814,25 @@ try {
     await mobile.screenshot({ path: 'preview-companion-mobile.png', fullPage: true });
     await mobile.locator('[data-action="back-world-home"]').click();
     await mobile.locator('.tf-mobile-main-nav [data-tab="home"]').click();
+    if (!await mobile.locator('.tf-community-hero').isVisible()) throw new Error('mobile forum lost the community cover');
+    const mobileForumLayout = await mobile.locator('.tf-home-page').evaluate(node => {
+        const dashboard = node.querySelector('.tf-forum-dashboard');
+        const sidebar = node.querySelector('.tf-community-sidebar');
+        const feed = node.querySelector('.tf-feed-column');
+        return {
+            columns: dashboard ? getComputedStyle(dashboard).gridTemplateColumns : '',
+            sidebarY: sidebar?.getBoundingClientRect().y,
+            feedY: feed?.getBoundingClientRect().y,
+            sidebarScrolls: sidebar ? sidebar.scrollWidth > sidebar.clientWidth : false,
+            overflow: node.scrollWidth - node.clientWidth,
+        };
+    });
+    if (mobileForumLayout.columns.trim().split(/\s+/).length !== 1 || mobileForumLayout.sidebarY > mobileForumLayout.feedY) throw new Error(`mobile forum did not collapse sidebar before the feed: ${JSON.stringify(mobileForumLayout)}`);
+    if (!mobileForumLayout.sidebarScrolls || mobileForumLayout.overflow > 1) throw new Error(`mobile community cards do not scroll safely: ${JSON.stringify(mobileForumLayout)}`);
+    await mobile.locator('.tf-view').evaluate(node => { node.scrollTop = 0; });
+    await mobile.locator('[data-action="dismiss-toast"]').evaluateAll(buttons => buttons.forEach(button => button.click()));
+    await mobile.waitForTimeout(80);
+    await mobile.screenshot({ path: 'preview-forum-home-mobile-v2.png' });
     const mobileStories = mobile.locator('.tf-stories');
     await mobileStories.evaluate(node => { node.scrollLeft = Math.min(160, node.scrollWidth - node.clientWidth); });
     const storiesScrollBefore = await mobileStories.evaluate(node => node.scrollLeft);

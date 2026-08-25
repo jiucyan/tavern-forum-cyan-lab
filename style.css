@@ -11697,3 +11697,842 @@ button.tf-avatar {
     #tavern-forum-root .tf-companion-v4 .tf-device-skin-section > header p { max-width: none; text-align: left; }
     #tavern-forum-root .tf-companion-v4 .tf-device-skin-grid { grid-template-columns: 1fr; }
 }
+
+/* Forum community studio v2 */
+#tavern-forum-root .tf-home-page {
+    width: min(100%, 1120px);
+    padding: 24px 18px 64px;
+}
+
+#tavern-forum-root .tf-community-hero {
+    position: relative;
+    display: grid;
+    min-height: 218px;
+    grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr);
+    gap: 34px;
+    align-items: end;
+    padding: 34px 38px;
+    overflow: hidden;
+    color: #fff;
+    background:
+        radial-gradient(circle at 78% 12%, rgb(255 239 207 / 28%), transparent 24%),
+        linear-gradient(135deg, #566277, #888096 56%, #b4938f);
+    border: 1px solid rgb(255 255 255 / 26%);
+    border-radius: 26px;
+    box-shadow: 0 20px 55px rgb(36 41 55 / 16%);
+    isolation: isolate;
+}
+
+#tavern-forum-root .tf-community-hero.is-weather-sunny {
+    background: radial-gradient(circle at 79% 13%, rgb(255 243 190 / 52%), transparent 22%), linear-gradient(135deg, #4f7d98, #88a9b7 52%, #d5af8e);
+}
+
+#tavern-forum-root .tf-community-hero.is-weather-rain {
+    background: radial-gradient(circle at 80% 10%, rgb(207 221 232 / 22%), transparent 25%), linear-gradient(135deg, #34445a, #657183 54%, #897d8c);
+}
+
+#tavern-forum-root .tf-community-hero.is-weather-snow {
+    background: radial-gradient(circle at 80% 10%, rgb(255 255 255 / 48%), transparent 23%), linear-gradient(135deg, #647b91, #9caebc 52%, #c7b6bc);
+}
+
+#tavern-forum-root .tf-community-hero.is-weather-wind {
+    background: radial-gradient(ellipse at 70% 18%, rgb(255 255 255 / 26%), transparent 28%), linear-gradient(135deg, #496a72, #7f9996 52%, #b69a94);
+}
+
+#tavern-forum-root .tf-community-hero.is-time-night {
+    background: radial-gradient(circle at 79% 12%, rgb(231 220 183 / 28%), transparent 22%), linear-gradient(135deg, #263247, #4b526c 52%, #756477);
+}
+
+#tavern-forum-root .tf-community-atmosphere,
+#tavern-forum-root .tf-community-atmosphere > i {
+    position: absolute;
+    pointer-events: none;
+}
+
+#tavern-forum-root .tf-community-atmosphere {
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+}
+
+#tavern-forum-root .tf-community-atmosphere > i:nth-child(1) {
+    top: 25px;
+    right: 84px;
+    width: 58px;
+    height: 58px;
+    background: rgb(255 246 218 / 58%);
+    border-radius: 50%;
+    box-shadow: 0 0 44px rgb(255 241 202 / 30%);
+}
+
+#tavern-forum-root .tf-community-atmosphere > i:nth-child(2) {
+    right: -4%;
+    bottom: 0;
+    width: 68%;
+    height: 63%;
+    opacity: .34;
+    background: linear-gradient(145deg, rgb(12 29 45 / 16%), rgb(18 27 42 / 62%));
+    clip-path: polygon(0 100%, 0 69%, 12% 45%, 22% 64%, 34% 27%, 46% 61%, 58% 39%, 70% 70%, 82% 42%, 100% 64%, 100% 100%);
+}
+
+#tavern-forum-root .tf-community-atmosphere > i:nth-child(3) {
+    right: 0;
+    bottom: 0;
+    width: 58%;
+    height: 30%;
+    opacity: .48;
+    background:
+        repeating-linear-gradient(90deg, transparent 0 14px, rgb(17 26 40 / 48%) 14px 23px, transparent 23px 31px),
+        linear-gradient(0deg, rgb(20 29 42 / 54%), transparent);
+    clip-path: polygon(0 100%, 0 62%, 8% 62%, 8% 32%, 15% 32%, 15% 55%, 22% 55%, 22% 18%, 29% 18%, 29% 65%, 37% 65%, 37% 38%, 45% 38%, 45% 70%, 55% 70%, 55% 26%, 62% 26%, 62% 58%, 71% 58%, 71% 42%, 79% 42%, 79% 68%, 89% 68%, 89% 34%, 96% 34%, 96% 100%);
+}
+
+#tavern-forum-root .tf-community-atmosphere > i:nth-child(4) {
+    right: -12%;
+    bottom: 22%;
+    width: 82%;
+    height: 42px;
+    opacity: .42;
+    background: rgb(255 255 255 / 36%);
+    border-radius: 50%;
+    filter: blur(16px);
+    transform: rotate(-4deg);
+}
+
+#tavern-forum-root .tf-community-hero-copy,
+#tavern-forum-root .tf-community-hero-pulse {
+    position: relative;
+    z-index: 1;
+}
+
+#tavern-forum-root .tf-community-hero-copy > small,
+#tavern-forum-root .tf-community-sidebar-card header > small,
+#tavern-forum-root .tf-community-sidebar-card header div > small,
+#tavern-forum-root .tf-feed-section-heading small,
+#tavern-forum-root .tf-community-people > span small {
+    display: block;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .17em;
+}
+
+#tavern-forum-root .tf-community-hero-copy > small {
+    margin-bottom: 11px;
+    color: rgb(255 255 255 / 72%);
+}
+
+#tavern-forum-root .tf-community-hero-copy h1 {
+    max-width: 620px;
+    font-family: Georgia, "Noto Serif SC", "Songti SC", serif;
+    font-size: clamp(30px, 4vw, 46px);
+    line-height: 1.05;
+    letter-spacing: -.025em;
+    text-wrap: balance;
+    text-shadow: 0 2px 20px rgb(18 24 38 / 26%);
+}
+
+#tavern-forum-root .tf-community-hero-copy > p {
+    max-width: 560px;
+    margin-top: 10px !important;
+    color: rgb(255 255 255 / 78%);
+    font-size: 13px;
+}
+
+#tavern-forum-root .tf-community-hero-copy > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 20px;
+}
+
+#tavern-forum-root .tf-community-hero-copy > div span {
+    padding: 5px 9px;
+    color: rgb(255 255 255 / 86%);
+    font-size: 10px;
+    font-weight: 650;
+    background: rgb(255 255 255 / 11%);
+    border: 1px solid rgb(255 255 255 / 15%);
+    border-radius: 999px;
+    backdrop-filter: blur(8px);
+}
+
+#tavern-forum-root .tf-community-hero-pulse {
+    display: grid;
+    gap: 10px;
+}
+
+#tavern-forum-root .tf-community-live-card {
+    display: grid;
+    gap: 5px;
+    width: 100%;
+    padding: 14px 15px;
+    color: #fff !important;
+    text-align: left;
+    background: rgb(20 27 42 / 35%);
+    border: 1px solid rgb(255 255 255 / 20%);
+    border-radius: 15px;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+    backdrop-filter: blur(13px);
+    cursor: pointer;
+}
+
+#tavern-forum-root .tf-community-live-card > span {
+    display: flex;
+    gap: 7px;
+    align-items: center;
+    color: rgb(255 255 255 / 68%);
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: .08em;
+}
+
+#tavern-forum-root .tf-community-live-card > span i,
+#tavern-forum-root .tf-community-pulse-card header > i {
+    width: 6px;
+    height: 6px;
+    background: #78e6ad;
+    border-radius: 50%;
+    box-shadow: 0 0 0 4px rgb(120 230 173 / 13%);
+}
+
+#tavern-forum-root .tf-community-live-card b {
+    font-family: Georgia, "Noto Serif SC", "Songti SC", serif;
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+#tavern-forum-root .tf-community-live-card small {
+    color: rgb(255 255 255 / 58%);
+    font-size: 9px;
+}
+
+#tavern-forum-root .tf-community-refresh {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    padding: 8px 13px;
+    color: #263247 !important;
+    font-size: 11px;
+    font-weight: 750;
+    background: rgb(255 255 255 / 88%);
+    border: 1px solid rgb(255 255 255 / 55%);
+    border-radius: 11px;
+    box-shadow: 0 7px 22px rgb(25 30 44 / 16%);
+    cursor: pointer;
+}
+
+#tavern-forum-root .tf-community-refresh:disabled {
+    opacity: .62;
+    cursor: default;
+}
+
+#tavern-forum-root .tf-community-refresh .tf-icon {
+    width: 17px;
+    height: 17px;
+}
+
+#tavern-forum-root .tf-community-people {
+    display: grid;
+    grid-template-columns: 142px minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+    margin: 17px 0 20px;
+}
+
+#tavern-forum-root .tf-community-people > span {
+    display: grid;
+    gap: 4px;
+}
+
+#tavern-forum-root .tf-community-people > span small,
+#tavern-forum-root .tf-feed-section-heading small,
+#tavern-forum-root .tf-community-sidebar-card header > small,
+#tavern-forum-root .tf-community-sidebar-card header div > small {
+    color: var(--tf-muted);
+}
+
+#tavern-forum-root .tf-community-people > span b {
+    font-family: Georgia, "Noto Serif SC", "Songti SC", serif;
+    font-size: 14px;
+}
+
+#tavern-forum-root .tf-community-people .tf-stories {
+    min-width: 0;
+    padding: 10px 12px 9px;
+    background: color-mix(in srgb, var(--tf-card) 82%, transparent);
+    border-color: color-mix(in srgb, var(--tf-text) 7%, transparent);
+    box-shadow: none;
+}
+
+#tavern-forum-root .tf-community-people .tf-stories > button {
+    flex-basis: 60px;
+}
+
+#tavern-forum-root .tf-community-people .tf-stories > button > .tf-avatar {
+    width: 43px;
+    height: 43px;
+    border-width: 2px;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--tf-accent) 48%, transparent);
+}
+
+#tavern-forum-root .tf-forum-dashboard {
+    display: grid;
+    grid-template-columns: minmax(0, 720px) minmax(260px, 1fr);
+    gap: 22px;
+    align-items: start;
+}
+
+#tavern-forum-root .tf-forum-dashboard > .tf-feed-column {
+    gap: 14px;
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-feed-tabs {
+    min-height: 48px;
+    padding: 5px;
+    background: color-mix(in srgb, var(--tf-card) 86%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tf-text) 7%, transparent);
+    border-radius: 15px;
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-feed-tabs button {
+    border-radius: 11px;
+}
+
+#tavern-forum-root .tf-feed-section-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    padding: 7px 3px 0;
+}
+
+#tavern-forum-root .tf-feed-section-heading h2 {
+    margin-top: 3px;
+    font-family: Georgia, "Noto Serif SC", "Songti SC", serif;
+    font-size: 19px;
+}
+
+#tavern-forum-root .tf-feed-section-heading > span {
+    padding: 4px 8px;
+    color: var(--tf-muted);
+    font-size: 10px;
+    background: var(--tf-faint);
+    border-radius: 999px;
+}
+
+#tavern-forum-root .tf-community-sidebar {
+    position: sticky;
+    top: 18px;
+    display: grid;
+    gap: 13px;
+    min-width: 0;
+}
+
+#tavern-forum-root .tf-community-sidebar-card {
+    padding: 17px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--tf-card) 93%, var(--tf-faint));
+    border-color: color-mix(in srgb, var(--tf-text) 7%, transparent);
+    border-radius: 17px;
+    box-shadow: 0 8px 25px rgb(30 35 48 / 5%);
+}
+
+#tavern-forum-root .tf-community-sidebar-card > header {
+    margin-bottom: 12px;
+}
+
+#tavern-forum-root .tf-community-sidebar-card > header h2,
+#tavern-forum-root .tf-community-sidebar-card > header div h2 {
+    margin-top: 3px;
+    font-family: Georgia, "Noto Serif SC", "Songti SC", serif;
+    font-size: 16px;
+}
+
+#tavern-forum-root .tf-community-pulse-card > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+#tavern-forum-root .tf-community-pulse-card > div {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-block: 1px solid var(--tf-line);
+}
+
+#tavern-forum-root .tf-community-pulse-card > div span {
+    display: grid;
+    gap: 2px;
+    padding: 12px 5px;
+    text-align: center;
+}
+
+#tavern-forum-root .tf-community-pulse-card > div span + span {
+    border-left: 1px solid var(--tf-line);
+}
+
+#tavern-forum-root .tf-community-pulse-card > div b {
+    font-family: Georgia, serif;
+    font-size: 18px;
+}
+
+#tavern-forum-root .tf-community-pulse-card > div small,
+#tavern-forum-root .tf-community-pulse-card > p {
+    color: var(--tf-muted);
+    font-size: 9px;
+}
+
+#tavern-forum-root .tf-community-pulse-card > p {
+    margin-top: 11px !important;
+    line-height: 1.55;
+}
+
+#tavern-forum-root .tf-community-trends > div,
+#tavern-forum-root .tf-community-residents > div {
+    display: grid;
+}
+
+#tavern-forum-root .tf-community-trends > div > button,
+#tavern-forum-root .tf-community-residents > div > button {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-top: 1px solid var(--tf-line);
+    cursor: pointer;
+}
+
+#tavern-forum-root .tf-community-trends > div > button {
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    gap: 9px;
+    padding: 10px 0;
+}
+
+#tavern-forum-root .tf-community-trends > div > button > i {
+    color: color-mix(in srgb, var(--tf-accent) 70%, var(--tf-text));
+    font-family: Georgia, serif;
+    font-size: 10px;
+    font-style: normal;
+}
+
+#tavern-forum-root .tf-community-trends > div > button > span,
+#tavern-forum-root .tf-community-residents > div > button > span {
+    display: grid;
+    min-width: 0;
+}
+
+#tavern-forum-root .tf-community-trends b,
+#tavern-forum-root .tf-community-residents b {
+    overflow: hidden;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#tavern-forum-root .tf-community-trends small,
+#tavern-forum-root .tf-community-residents small {
+    overflow: hidden;
+    color: var(--tf-muted);
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#tavern-forum-root .tf-community-trends .tf-icon {
+    width: 14px;
+    color: var(--tf-muted);
+}
+
+#tavern-forum-root .tf-community-residents > div > button {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 9px;
+    padding: 10px 0;
+}
+
+#tavern-forum-root .tf-community-residents .tf-avatar {
+    width: 35px;
+    height: 35px;
+}
+
+#tavern-forum-root .tf-community-residents em {
+    padding: 3px 6px;
+    color: color-mix(in srgb, var(--tf-accent) 72%, var(--tf-text));
+    font-size: 8px;
+    font-style: normal;
+    background: color-mix(in srgb, var(--tf-accent) 8%, transparent);
+    border-radius: 999px;
+}
+
+#tavern-forum-root .tf-community-sidebar > .tf-fortune-glance {
+    width: 100%;
+    min-width: 0;
+    border-radius: 17px;
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-compose-collapsed,
+#tavern-forum-root .tf-forum-dashboard .tf-composer {
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgb(30 35 48 / 5%);
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-post {
+    border-color: color-mix(in srgb, var(--tf-text) 8%, transparent);
+    border-radius: 19px;
+    box-shadow: 0 10px 30px rgb(30 35 48 / 7%);
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-post::before {
+    display: block;
+    height: 3px;
+    content: "";
+    background: linear-gradient(90deg, color-mix(in srgb, var(--tf-accent) 68%, #7b8da2), transparent 72%);
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-post.is-post-notice::before { background: linear-gradient(90deg, #d89a55, transparent 72%); }
+#tavern-forum-root .tf-forum-dashboard .tf-post.is-post-request::before { background: linear-gradient(90deg, #c66c79, transparent 72%); }
+#tavern-forum-root .tf-forum-dashboard .tf-post.is-post-live::before { background: linear-gradient(90deg, #55aa7d, transparent 72%); }
+#tavern-forum-root .tf-forum-dashboard .tf-post.is-post-poll::before { background: linear-gradient(90deg, #8276c9, transparent 72%); }
+
+#tavern-forum-root .tf-forum-dashboard .tf-post-header {
+    padding: 15px 17px 10px;
+}
+
+#tavern-forum-root .tf-post-context {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px 10px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+#tavern-forum-root .tf-post-context > span,
+#tavern-forum-root .tf-post-context > em {
+    display: inline-flex;
+    gap: 5px;
+    align-items: center;
+    font-size: 9px;
+    font-style: normal;
+    font-weight: 750;
+}
+
+#tavern-forum-root .tf-post-context > span {
+    padding: 4px 7px;
+    color: color-mix(in srgb, var(--tf-accent) 76%, var(--tf-text));
+    background: color-mix(in srgb, var(--tf-accent) 8%, transparent);
+    border-radius: 999px;
+}
+
+#tavern-forum-root .tf-post-context > span i {
+    font-family: Georgia, serif;
+    font-size: 8px;
+    font-style: normal;
+}
+
+#tavern-forum-root .tf-post-context > span.is-notice { color: #a96929; background: rgb(216 154 85 / 10%); }
+#tavern-forum-root .tf-post-context > span.is-request { color: #a84f5e; background: rgb(198 108 121 / 10%); }
+#tavern-forum-root .tf-post-context > span.is-live { color: #347b58; background: rgb(85 170 125 / 10%); }
+
+#tavern-forum-root .tf-post-context > em {
+    color: var(--tf-muted);
+}
+
+#tavern-forum-root .tf-post-context > em .tf-icon {
+    width: 12px;
+    height: 12px;
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-post-caption {
+    padding: 5px 17px 14px;
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-post-caption > p {
+    color: color-mix(in srgb, var(--tf-text) 92%, transparent);
+    font-family: Georgia, "Noto Serif SC", "Songti SC", serif;
+    font-size: 14px;
+    line-height: 1.78;
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-tags {
+    margin-top: 10px;
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-tags button {
+    padding: 3px 7px;
+    font-size: 9px;
+    background: var(--tf-faint);
+    border-radius: 999px;
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-post-image,
+#tavern-forum-root .tf-forum-dashboard .tf-image-loading,
+#tavern-forum-root .tf-forum-dashboard .tf-text-image {
+    aspect-ratio: 16 / 10;
+    border-block-color: color-mix(in srgb, var(--tf-text) 7%, transparent);
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-text-image {
+    position: relative;
+    min-height: 260px;
+    padding: clamp(26px, 5vw, 52px);
+    overflow: hidden;
+    place-content: center start;
+    color: #604634;
+    background:
+        linear-gradient(115deg, rgb(255 255 255 / 74%), transparent 48%),
+        radial-gradient(circle at 84% 22%, rgb(255 251 239 / 88%) 0 51px, transparent 52px),
+        linear-gradient(145deg, #efe7dc, #e8cdb2 62%, #c9b1aa);
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-text-image::before,
+#tavern-forum-root .tf-forum-dashboard .tf-text-image::after {
+    position: absolute;
+    right: -5%;
+    bottom: 0;
+    width: 68%;
+    height: 42%;
+    content: "";
+    opacity: .16;
+    background: #5d584f;
+    clip-path: polygon(0 100%, 0 72%, 14% 42%, 26% 68%, 38% 32%, 52% 67%, 66% 45%, 78% 71%, 91% 39%, 100% 60%, 100% 100%);
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-text-image::after {
+    right: 8%;
+    bottom: 0;
+    width: 43%;
+    height: 24%;
+    opacity: .2;
+    clip-path: polygon(0 100%, 0 49%, 10% 49%, 10% 21%, 18% 21%, 18% 59%, 29% 59%, 29% 35%, 39% 35%, 39% 69%, 54% 69%, 54% 17%, 63% 17%, 63% 56%, 77% 56%, 77% 31%, 87% 31%, 87% 64%, 100% 64%, 100% 100%);
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-text-image figcaption,
+#tavern-forum-root .tf-forum-dashboard .tf-text-image p,
+#tavern-forum-root .tf-forum-dashboard .tf-text-image small {
+    position: relative;
+    z-index: 1;
+    max-width: 78%;
+    text-align: left;
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-text-image figcaption {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 12px;
+    color: #9b6a48;
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-text-image figcaption span,
+#tavern-forum-root .tf-forum-dashboard .tf-text-image figcaption .tf-icon {
+    width: 13px;
+    height: 13px;
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-text-image p {
+    font-family: Georgia, "Noto Serif SC", "Songti SC", serif;
+    font-size: clamp(16px, 2vw, 21px);
+    line-height: 1.65;
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-text-image small {
+    display: block;
+    margin-top: 15px;
+    color: rgb(96 70 52 / 60%);
+    font-size: 9px;
+    letter-spacing: .06em;
+}
+
+#tavern-forum-root .tf-post-social-proof {
+    display: flex;
+    gap: 9px;
+    align-items: center;
+    padding: 11px 17px 7px;
+}
+
+#tavern-forum-root .tf-post-proof-avatars {
+    display: flex;
+    padding-left: 6px;
+}
+
+#tavern-forum-root .tf-post-proof-avatars .tf-avatar {
+    width: 23px;
+    height: 23px;
+    margin-left: -6px;
+    font-size: 8px;
+    border: 2px solid var(--tf-card);
+    box-shadow: none;
+}
+
+#tavern-forum-root .tf-post-social-proof p {
+    color: var(--tf-muted);
+    font-size: 9px;
+}
+
+#tavern-forum-root .tf-post-social-proof > i {
+    flex: 1;
+    height: 1px;
+    background: color-mix(in srgb, var(--tf-text) 6%, transparent);
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-post-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    margin: 0 12px;
+    padding: 7px 0;
+    border-block: 1px solid color-mix(in srgb, var(--tf-text) 6%, transparent);
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-post-actions > button {
+    justify-content: center;
+    gap: 5px;
+    min-width: 0;
+    padding: 6px 4px;
+    color: color-mix(in srgb, var(--tf-text) 72%, transparent);
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-post-actions .tf-icon {
+    width: 18px;
+    height: 18px;
+}
+
+#tavern-forum-root .tf-forum-dashboard .tf-post-actions b {
+    font-size: 10px;
+    font-weight: 650;
+}
+
+#tavern-forum-root .tf-comment-preview {
+    display: grid;
+    gap: 0;
+    padding: 10px 17px 14px;
+}
+
+#tavern-forum-root .tf-comment-preview > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 7px;
+}
+
+#tavern-forum-root .tf-comment-preview > header span {
+    color: var(--tf-muted);
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: .08em;
+}
+
+#tavern-forum-root .tf-comment-preview > header button {
+    padding: 0;
+    color: var(--tf-primary) !important;
+    font-size: 9px;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+}
+
+#tavern-forum-root .tf-comment-preview > article {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 9px;
+    align-items: start;
+    padding: 8px 0;
+    border-top: 1px solid color-mix(in srgb, var(--tf-text) 6%, transparent);
+}
+
+#tavern-forum-root .tf-comment-preview > article > .tf-avatar {
+    width: 29px;
+    height: 29px;
+    font-size: 9px;
+    box-shadow: none;
+}
+
+#tavern-forum-root .tf-comment-preview > article > button {
+    display: grid;
+    min-width: 0;
+    padding: 0;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+}
+
+#tavern-forum-root .tf-comment-preview article b {
+    font-size: 10px;
+}
+
+#tavern-forum-root .tf-comment-preview article small {
+    color: var(--tf-muted);
+    font-size: 8px;
+}
+
+#tavern-forum-root .tf-comment-preview article p {
+    margin-top: 2px !important;
+    overflow: hidden;
+    color: color-mix(in srgb, var(--tf-text) 78%, transparent);
+    font-size: 10px;
+    line-height: 1.5;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#tavern-forum-root .tf-comment-preview > article > span {
+    display: inline-flex;
+    gap: 3px;
+    align-items: center;
+    color: var(--tf-muted);
+    font-size: 8px;
+}
+
+#tavern-forum-root .tf-comment-preview > article > span .tf-icon {
+    width: 11px;
+    height: 11px;
+}
+
+@container (max-width: 920px) {
+    #tavern-forum-root .tf-community-hero { grid-template-columns: minmax(0, 1fr) minmax(260px, .75fr); }
+    #tavern-forum-root .tf-forum-dashboard { grid-template-columns: 1fr; }
+    #tavern-forum-root .tf-community-sidebar { position: static; order: -1; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    #tavern-forum-root .tf-community-sidebar > .tf-fortune-glance { grid-column: 1 / -1; }
+}
+
+@container (max-width: 720px) {
+    #tavern-forum-root .tf-home-page { width: 100%; padding: 0 0 30px; }
+    #tavern-forum-root .tf-community-hero { min-height: 310px; grid-template-columns: 1fr; gap: 18px; padding: 25px 18px 20px; border-inline: 0; border-radius: 0 0 24px 24px; }
+    #tavern-forum-root .tf-community-hero-copy h1 { font-size: 32px; }
+    #tavern-forum-root .tf-community-hero-copy > div { margin-top: 15px; }
+    #tavern-forum-root .tf-community-hero-pulse { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+    #tavern-forum-root .tf-community-refresh { width: 42px; min-height: 42px; padding: 0; border-radius: 13px; }
+    #tavern-forum-root .tf-community-refresh > span:last-child { display: none; }
+    #tavern-forum-root .tf-community-people { display: block; margin: 12px 0; }
+    #tavern-forum-root .tf-community-people > span { display: none; }
+    #tavern-forum-root .tf-community-people .tf-stories { padding-inline: 13px; border-inline: 0; border-radius: 0; }
+    #tavern-forum-root .tf-forum-dashboard { gap: 12px; }
+    #tavern-forum-root .tf-community-sidebar { display: flex; gap: 10px; align-items: flex-start; padding: 0 13px 3px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; }
+    #tavern-forum-root .tf-community-sidebar::-webkit-scrollbar { display: none; }
+    #tavern-forum-root .tf-community-sidebar-card,
+    #tavern-forum-root .tf-community-sidebar > .tf-fortune-glance { flex: 0 0 min(82vw, 310px); scroll-snap-align: start; }
+    #tavern-forum-root .tf-forum-dashboard > .tf-feed-column { gap: 11px; }
+    #tavern-forum-root .tf-forum-dashboard .tf-feed-tabs { margin-inline: 13px; }
+    #tavern-forum-root .tf-feed-section-heading { padding-inline: 14px; }
+    #tavern-forum-root .tf-forum-dashboard .tf-compose-collapsed,
+    #tavern-forum-root .tf-forum-dashboard .tf-composer,
+    #tavern-forum-root .tf-forum-dashboard .tf-post { border-inline: 0; border-radius: 0; }
+}
+
+@container (max-width: 520px) {
+    #tavern-forum-root .tf-community-hero { min-height: 292px; }
+    #tavern-forum-root .tf-community-live-card b { font-size: 11px; }
+    #tavern-forum-root .tf-community-live-card small { display: none; }
+    #tavern-forum-root .tf-community-hero-copy > div span:nth-child(3) { display: none; }
+    #tavern-forum-root .tf-forum-dashboard .tf-post-caption > p { font-size: 13px; }
+    #tavern-forum-root .tf-forum-dashboard .tf-text-image { min-height: 225px; }
+    #tavern-forum-root .tf-forum-dashboard .tf-text-image figcaption,
+    #tavern-forum-root .tf-forum-dashboard .tf-text-image p,
+    #tavern-forum-root .tf-forum-dashboard .tf-text-image small { max-width: 88%; }
+    #tavern-forum-root .tf-forum-dashboard .tf-post-actions b { display: none; }
+    #tavern-forum-root .tf-comment-preview { padding-inline: 14px; }
+}
