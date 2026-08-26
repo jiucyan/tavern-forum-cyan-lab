@@ -596,6 +596,7 @@ const ICONS = {
     chevron: '<path d="m9 18 6-6-6-6"/>',
     edit: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"/>',
     pin: '<path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
     repost: '<path d="m17 2 4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>',
 };
@@ -807,7 +808,7 @@ function renderPostImage(post) {
         if (memoryValue) return `<img class="tf-post-image" src="${escapeHtml(memoryValue)}" alt="帖子配图" loading="lazy">`;
         return `<div class="tf-image-loading"><span class="tf-spinner"></span><span>正在读取图片</span><img data-image-key="${escapeHtml(post.imageKey)}" alt="帖子配图"></div>`;
     }
-    if (usesTextImage(post)) return `<figure class="tf-text-image"><figcaption><span>${icon('image')}</span>WORLD FIELD NOTE</figcaption><p>${escapeHtml(localizedImagePrompt(post))}</p><small>来自当前故事世界的现场剪影</small></figure>`;
+    if (usesTextImage(post)) return `<figure class="tf-text-image"><figcaption><span>${icon('image')}</span>旅途现场</figcaption><p>${escapeHtml(localizedImagePrompt(post))}</p><small>来自当前故事世界的现场剪影</small></figure>`;
     return '';
 }
 
@@ -940,7 +941,8 @@ function renderPost(post, { detail = false } = {}) {
     const captionMarkup = `<div class="tf-post-caption"><div class="tf-post-context"><span class="is-${presentation.type}"><i>${presentation.symbol}</i>${presentation.label}</span>${presentation.location ? `<em>${icon('pin')}${escapeHtml(presentation.location)}</em>` : ''}</div><p>${renderSocialText(post.content)}</p>${(post.tags || []).length ? `<div class="tf-tags">${post.tags.map(tag => `<button data-action="topic-search" data-topic="${escapeHtml(String(tag).replace(/^#/, ''))}">#${escapeHtml(String(tag).replace(/^#/, ''))}</button>`).join('')}</div>` : ''}</div>`;
     const socialProof = renderPostSocialProof(post, comments);
     const commentPreview = !detail ? renderPostCommentPreview(post, comments) : '';
-    return `<article class="tf-post tf-card is-post-${presentation.type}" data-post-id="${escapeHtml(post.id)}" data-search-text="${escapeHtml(postSearchText(post))}">
+    const postImageClass = hasRealImage(post) ? 'has-post-image has-real-image' : usesTextImage(post) ? 'has-post-image has-text-image' : '';
+    return `<article class="tf-post tf-card is-post-${presentation.type} ${postImageClass}" data-post-id="${escapeHtml(post.id)}" data-search-text="${escapeHtml(postSearchText(post))}">
         <header class="tf-post-header">
             ${renderAuthorAvatar(post)}
             ${authorHeader}
@@ -970,14 +972,24 @@ function renderPostDetail(data, post) {
     return `<section class="tf-detail-page"><header class="tf-detail-header"><button class="tf-back-button" data-action="back-post">${icon('chevron')}返回</button><div><h2>帖子</h2><p>@${escapeHtml(post.handle || 'user')}</p></div></header><div class="tf-detail-post">${renderPost(post, { detail: true })}</div></section>`;
 }
 
-function renderComposer() {
+function getForumLayout() {
+    const layout = getSettings().appearance.forumLayout;
+    return ['waystation', 'modern'].includes(layout) ? layout : 'waystation';
+}
+
+function renderComposer(layout = getForumLayout()) {
     const snapshot = getChatSnapshot();
     const profile = getSettings().profile;
     const name = getMyDisplayName();
     const avatar = renderAvatar(name, { avatarUrl: profile.avatarUrl, avatarKey: profile.avatarKey });
-    if (!viewState.composerOpen) return `<button class="tf-compose-collapsed tf-card" data-action="toggle-composer">${avatar}<span>分享故事世界里的新鲜事…</span>${icon('plus')}</button>`;
+    const placeholder = layout === 'waystation' ? '写下此刻见闻…' : '分享旅途中的新鲜事…';
+    if (!viewState.composerOpen && layout === 'waystation') return `<section class="tf-compose-collapsed tf-card is-waystation" data-action="toggle-composer" role="button" tabindex="0" aria-label="打开驿站留言编辑器">
+        <header>${avatar}<span><b>${placeholder}</b><small>把值得记住的片段留在这座驿站</small></span><i>${icon('edit')}</i></header>
+        <div class="tf-waystation-compose-actions"><span>${icon('pin')}标记位置</span><span>${icon('plus')}添加话题</span><i></i><span>公开可见⌄</span><strong>留下留言</strong></div>
+    </section>`;
+    if (!viewState.composerOpen) return `<button class="tf-compose-collapsed tf-card" data-action="toggle-composer">${avatar}<span>${placeholder}</span>${icon('plus')}</button>`;
     const poll = viewState.composerPoll;
-    return `<section class="tf-composer tf-card"><header>${avatar}<b>发布新帖子</b></header><input id="tf-compose-author" value="${escapeHtml(name)}" hidden><input id="tf-compose-handle" value="${escapeHtml(profile.handle || 'me')}" hidden><textarea id="tf-compose-content" rows="4" maxlength="2000" placeholder="写下帖子内容；可以使用 @账号 提及角色…"></textarea><input id="tf-compose-tags" placeholder="话题标签（用逗号分隔）">${poll ? `<div class="tf-compose-poll"><b>${escapeHtml(poll.question)}</b><span>${poll.options.map(option => escapeHtml(option)).join(' · ')}</span><button data-action="remove-composer-poll">移除</button></div>` : ''}<footer><button class="tf-secondary-button" data-action="add-composer-poll">${icon('plus')}投票</button><span></span><button class="tf-text-button" data-action="toggle-composer">取消</button><button class="tf-primary-button" data-action="publish-manual">发布</button></footer></section>`;
+    return `<section class="tf-composer tf-card ${layout === 'waystation' ? 'is-waystation' : ''}"><header>${avatar}<b>${layout === 'waystation' ? '留下新的驿站见闻' : '发布新帖子'}</b></header><input id="tf-compose-author" value="${escapeHtml(name)}" hidden><input id="tf-compose-handle" value="${escapeHtml(profile.handle || 'me')}" hidden><textarea id="tf-compose-content" rows="4" maxlength="2000" placeholder="写下帖子内容；可以使用 @账号 提及角色…"></textarea><input id="tf-compose-tags" placeholder="话题标签（用逗号分隔）">${poll ? `<div class="tf-compose-poll"><b>${escapeHtml(poll.question)}</b><span>${poll.options.map(option => escapeHtml(option)).join(' · ')}</span><button data-action="remove-composer-poll">移除</button></div>` : ''}<footer><button class="tf-secondary-button" data-action="add-composer-poll">${icon('plus')}投票</button><span></span><button class="tf-text-button" data-action="toggle-composer">取消</button><button class="tf-primary-button" data-action="publish-manual">${layout === 'waystation' ? '留下留言' : '发布'}</button></footer></section>`;
 }
 
 function renderStories(data) {
@@ -993,8 +1005,10 @@ function getTrendingForumTopics(posts, limit = 5) {
         for (const rawTag of post.tags || []) {
             const label = String(rawTag || '').replace(/^#/, '').trim();
             if (!label) continue;
-            const current = topics.get(label) || { label, posts: 0, activity: 0, latestAt: 0 };
+            const current = topics.get(label) || { label, posts: 0, replies: 0, activity: 0, latestAt: 0 };
             current.posts += 1;
+            const replyCount = visiblePostComments(post).length + Number(post.reposts || 0);
+            current.replies += replyCount;
             current.activity += Number(post.likes || 0) + Number(post.reposts || 0) * 2 + visiblePostComments(post).length * 3;
             current.latestAt = Math.max(current.latestAt, Number(post.createdAt || 0));
             topics.set(label, current);
@@ -1027,28 +1041,59 @@ function renderCommunityHero(data, posts, { active, forumEnabled } = {}) {
     const weatherClass = String(weather.id || 'cloudy').split(/\s+/)[0];
     const latestPost = [...posts].sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0];
     const latestTopic = getTrendingForumTopics(posts, 1)[0];
+    const weatherSeed = Number(weather.slot || 0) + posts.length + data.npcs.length;
+    const temperature = 14 + (weatherSeed % 8);
+    const windDirections = ['东北风', '东风', '东南风', '西北风'];
+    const windDirection = windDirections[weatherSeed % windDirections.length];
+    const windLevel = 2 + (weatherSeed % 3);
+    const tideStates = ['缓慢涨潮', '平潮', '正在退潮'];
+    const tideState = tideStates[weatherSeed % tideStates.length];
+    const stationPlace = String(companion.destination || data.topic || '当前驿站').replace(/(?:夜话|故事广场)$/u, '').trim() || '当前驿站';
     const status = !forumEnabled ? '论坛模块当前已暂停' : active ? `${snapshot.characterName}所在世界的居民社区` : '打开一个角色聊天后，社区才会继续生长';
     const pulse = latestPost
         ? `<button class="tf-community-live-card" data-action="open-post" data-post-id="${escapeHtml(latestPost.id)}"><span><i></i>社区刚刚发生</span><b>${escapeHtml(compactExcerpt(latestPost.content, 72))}</b><small>@${escapeHtml(latestPost.handle || 'user')} · ${formatTime(latestPost.createdAt)}</small></button>`
         : `<div class="tf-community-live-card is-empty"><span><i></i>社区正在等待</span><b>第一条故事动态还没有出现</b><small>刷新论坛后，这里会留下世界的新动静。</small></div>`;
-    return `<section class="tf-community-hero is-weather-${escapeHtml(weatherClass)} is-time-${escapeHtml(time.id)}">
+    const refreshLabel = viewState.busy ? '正在收集新动静' : '刷新社区动态';
+    const refresh = `<button class="tf-community-refresh" data-action="generate-posts" title="${refreshLabel}" aria-label="${refreshLabel}" ${viewState.busy || !active || !forumEnabled ? 'disabled' : ''}>${viewState.busy ? '<span class="tf-spinner"></span>' : icon('sparkles')}<span>${refreshLabel}</span></button>`;
+    if (getForumLayout() === 'modern') {
+        return `<section class="tf-community-hero is-layout-modern is-weather-${escapeHtml(weatherClass)} is-time-${escapeHtml(time.id)}">
+            <div class="tf-modern-world-place">${icon('pin')}<span><b>${escapeHtml(data.topic || '故事广场')}</b><small>${escapeHtml(time.label)} · ${escapeHtml(weather.conditionLabel)}</small></span></div>
+            <div class="tf-modern-world-facts"><span>${weather.icon}<b>${escapeHtml(weather.conditionLabel)}</b></span><span>${icon('clock')}<b>${escapeHtml(time.label)}</b></span><span><i></i><b>${escapeHtml(status)}</b></span></div>
+            <div class="tf-community-hero-pulse">${pulse}${refresh}</div>
+        </section>`;
+    }
+    return `<section class="tf-community-hero is-layout-waystation is-weather-${escapeHtml(weatherClass)} is-time-${escapeHtml(time.id)}">
         <span class="tf-community-atmosphere" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-        <div class="tf-community-hero-copy"><small>LIVE STORY COMMUNITY · ${escapeHtml(time.label)}</small><h1>${escapeHtml(data.topic || '故事广场')}</h1><p>${escapeHtml(status)}</p><div><span>${weather.icon} ${escapeHtml(weather.conditionLabel)}</span><span>${data.npcs.filter(npc => !npc.blocked).length} 位居民</span><span>${posts.length} 篇记录</span>${latestTopic ? `<span>#${escapeHtml(latestTopic.label)}</span>` : ''}</div></div>
-        <div class="tf-community-hero-pulse">${pulse}<button class="tf-community-refresh" data-action="generate-posts" ${viewState.busy || !active || !forumEnabled ? 'disabled' : ''}>${viewState.busy ? '<span class="tf-spinner"></span>' : icon('sparkles')}<span>${viewState.busy ? '正在收集新动静' : '刷新社区动态'}</span></button></div>
+        <div class="tf-community-hero-copy">${icon('pin')}<span><small>旅途驿站</small><h1>${escapeHtml(data.topic || '故事广场')}</h1></span></div>
+        <div class="tf-waystation-facts"><span>${icon('pin')}<b>${escapeHtml(stationPlace)} · 驿站区</b></span><span><i>${weather.icon}</i><b>${escapeHtml(weather.conditionLabel)}　${temperature}℃</b></span><span><i>≋</i><b>${windDirection}　${windLevel}级</b></span><span>${icon('clock')}<b>潮汐　${tideState} · ${escapeHtml(time.label)}</b></span></div>
+        ${refresh}
     </section>`;
 }
 
 function renderCommunitySidebar(data, posts, fortune = '') {
     const topics = getTrendingForumTopics(posts);
     const roles = getActiveForumRoles(data, posts);
-    const commentCount = posts.reduce((sum, post) => sum + visiblePostComments(post).length, 0);
-    const interactions = posts.reduce((sum, post) => sum + Number(post.likes || 0) + Number(post.reposts || 0) + visiblePostComments(post).length, 0);
-    return `<aside class="tf-community-sidebar" aria-label="社区动态侧栏">
-        <section class="tf-community-sidebar-card tf-card tf-community-pulse-card"><header><div><small>COMMUNITY PULSE</small><h2>社区脉搏</h2></div><i></i></header><div><span><b>${numberLabel(posts.length)}</b><small>故事记录</small></span><span><b>${numberLabel(commentCount)}</b><small>居民讨论</small></span><span><b>${numberLabel(interactions)}</b><small>互动痕迹</small></span></div><p>所有变化均保存在当前聊天，不会串到其他故事。</p></section>
-        <section class="tf-community-sidebar-card tf-card tf-community-trends"><header><small>TRENDING NOW</small><h2>正在讨论</h2></header><div>${topics.length ? topics.map((topic, index) => `<button data-action="topic-search" data-topic="${escapeHtml(topic.label)}"><i>${String(index + 1).padStart(2, '0')}</i><span><b>#${escapeHtml(topic.label)}</b><small>${topic.posts} 篇记录 · ${numberLabel(topic.activity)} 热度</small></span>${icon('chevron')}</button>`).join('') : '<p class="tf-empty-mini">还没有形成热门话题</p>'}</div></section>
-        <section class="tf-community-sidebar-card tf-card tf-community-residents"><header><small>ACTIVE RESIDENTS</small><h2>活跃居民</h2></header><div>${roles.length ? roles.map(npc => `<button data-action="open-npc" data-npc-id="${escapeHtml(npc.id)}">${renderAvatar(npc.name, { avatarUrl: npc.avatarUrl, avatarKey: npc.avatarKey })}<span><b>${escapeHtml(npc.name)}</b><small>${escapeHtml(npc.location || npc.bio || `@${npc.handle}`)}</small></span><em>${npc.followedByUser ? '已关注' : '活跃'}</em></button>`).join('') : '<p class="tf-empty-mini">居民们还没有开始活动</p>'}</div></section>
-        ${fortune}
-    </aside>`;
+    const layout = getForumLayout();
+    const latestPost = [...posts].sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0];
+    if (layout === 'waystation') {
+        const companion = data.world?.companion || {};
+        const time = getLocalCompanionTime(companion);
+        const weather = getLocalCompanionWeather(data, time);
+        const topic = data.topic || '故事广场';
+        const bulletinRows = [
+            `<span><i>${weather.icon}</i><b>${escapeHtml(weather.conditionLabel || weather.label)}</b><small>${escapeHtml(weather.note || '适合在驿站稍作停留')}</small></span>`,
+            `<span><i>${icon('pin')}</i><b>${escapeHtml(topic)}</b><small>${posts.length ? `今日留下 ${posts.length} 则见闻` : '今日还没有新的留言'}</small></span>`,
+            `<span><i>${icon('clock')}</i><b>${escapeHtml(time.label)}</b><small>${latestPost ? `最近更新于 ${formatTime(latestPost.createdAt)}` : '留言板正在安静等候'}</small></span>`,
+        ].join('');
+        const eventCard = `<section class="tf-community-sidebar-card tf-card tf-community-event-card is-waystation"><header><div><small>旅途简报</small><h2>驿站今日</h2></div><i aria-hidden="true">驿站印</i></header><div class="tf-waystation-bulletin">${bulletinRows}</div>${latestPost ? `<button class="tf-waystation-bulletin-link" data-action="open-post" data-post-id="${escapeHtml(latestPost.id)}">查看最新见闻 ${icon('chevron')}</button>` : ''}</section>`;
+        const residentsCard = `<section class="tf-community-sidebar-card tf-card tf-community-residents is-waystation"><header><small>旅人名册</small><h2>路过这里的人</h2></header><div>${roles.length ? `${roles.map(npc => `<button data-action="open-npc" data-npc-id="${escapeHtml(npc.id)}" title="${escapeHtml(npc.name)} · ${escapeHtml(npc.location || npc.bio || `@${npc.handle}`)}">${renderAvatar(npc.name, { avatarUrl: npc.avatarUrl, avatarKey: npc.avatarKey })}<small>${escapeHtml(npc.name)}</small></button>`).join('')}<i class="tf-resident-more" aria-hidden="true">•••</i>` : '<p class="tf-empty-mini">还没有旅人在这里留下足迹</p>'}</div><p class="tf-waystation-resident-count">${roles.length ? `${roles.length} 位旅人最近来过` : '等第一位旅人推开驿站的门'}</p></section>`;
+        const trendsCard = `<section class="tf-community-sidebar-card tf-card tf-community-trends is-waystation"><header><small>夜谈话题</small><h2>今晚正在谈论</h2></header><div>${topics.length ? topics.map(topicItem => `<button data-action="topic-search" data-topic="${escapeHtml(topicItem.label)}"><i>${icon('message')}</i><span><b>${escapeHtml(topicItem.label)}</b><small>${topicItem.posts} 则见闻</small></span><em title="${topicItem.replies ? `${numberLabel(topicItem.replies)} 条回应` : `${topicItem.posts} 则新见闻`}">🔥 ${numberLabel(topicItem.replies || topicItem.posts)}</em></button>`).join('') : '<p class="tf-empty-mini">还没有形成热门话题</p>'}</div>${topics.length ? `<button class="tf-waystation-topics-link" data-action="feed-mode" data-feed="hot">查看全部话题 ${icon('chevron')}</button>` : ''}</section>`;
+        return `<aside class="tf-community-sidebar" aria-label="社区动态侧栏">${eventCard}${residentsCard}${trendsCard}</aside>`;
+    }
+    const eventCard = `<section class="tf-community-sidebar-card tf-card tf-community-event-card"><header><div><small>${layout === 'waystation' ? '旅途简报' : '世界动态'}</small><h2>${layout === 'waystation' ? '驿站今日' : '正在发生'}</h2></div><i></i></header>${latestPost ? `<button data-action="open-post" data-post-id="${escapeHtml(latestPost.id)}"><b>${escapeHtml(compactExcerpt(latestPost.content, 74))}</b><small>@${escapeHtml(latestPost.handle || 'user')} · ${formatTime(latestPost.createdAt)}</small>${icon('chevron')}</button>` : '<p class="tf-empty-mini">今天还没有新的世界动静</p>'}<p>内容只属于当前聊天世界，不会串到其他故事。</p></section>`;
+    const residentsCard = `<section class="tf-community-sidebar-card tf-card tf-community-residents"><header><small>${layout === 'waystation' ? '旅人名册' : '社区在线'}</small><h2>${layout === 'waystation' ? '路过这里的人' : '活跃旅伴'}</h2></header><div>${roles.length ? roles.map(npc => `<button data-action="open-npc" data-npc-id="${escapeHtml(npc.id)}">${renderAvatar(npc.name, { avatarUrl: npc.avatarUrl, avatarKey: npc.avatarKey })}<span><b>${escapeHtml(npc.name)}</b><small>${escapeHtml(npc.location || npc.bio || `@${npc.handle}`)}</small></span><em>${npc.followedByUser ? '已关注' : '在线'}</em></button>`).join('') : '<p class="tf-empty-mini">居民们还没有开始活动</p>'}</div></section>`;
+    const trendsCard = `<section class="tf-community-sidebar-card tf-card tf-community-trends"><header><small>${layout === 'waystation' ? '夜谈话题' : '社区热议'}</small><h2>${layout === 'waystation' ? '今晚正在讨论' : '热门讨论'}</h2></header><div>${topics.length ? topics.map((topic, index) => `<button data-action="topic-search" data-topic="${escapeHtml(topic.label)}"><i>${String(index + 1).padStart(2, '0')}</i><span><b>#${escapeHtml(topic.label)}</b><small>${topic.posts} 篇记录 · ${numberLabel(topic.activity)} 热度</small></span>${icon('chevron')}</button>`).join('') : '<p class="tf-empty-mini">还没有形成热门话题</p>'}</div></section>`;
+    return `<aside class="tf-community-sidebar" aria-label="社区动态侧栏">${layout === 'waystation' ? `${eventCard}${residentsCard}${trendsCard}` : `${residentsCard}${eventCard}${trendsCard}`}${fortune}</aside>`;
 }
 
 function renderWorldPortal(data) {
@@ -1151,19 +1196,32 @@ function renderHome(data) {
     const active = hasActiveChat();
     const forumEnabled = getSettings().modules.forum.enabled;
     const posts = getFeedPosts(data);
+    const layout = getForumLayout();
     const feeds = [['following', '关注'], ['recommended', '推荐'], ['latest', '最新'], ['hot', '热门']];
     const fortune = getSettings().modules.fortune.enabled && data.world.fortune
         ? `<button class="tf-fortune-glance tf-card" data-action="open-world-page" data-module-id="fortune"><span>${icon('sparkles')}</span><div><small>今天</small><b>${escapeHtml(data.world.fortune.label)}</b><p>${escapeHtml(data.world.fortune.summary)}</p></div>${icon('chevron')}</button>`
         : '';
-    return `<div class="tf-home-page">
+    const emptyState = `<section class="tf-card tf-empty tf-forum-empty-state"><div class="tf-empty-icon">${icon('message')}</div><h3>${layout === 'waystation' ? '驿站还没有留言' : '这里还没有动态'}</h3><p>${active && forumEnabled ? '生成第一批社区动态后，居民的见闻和讨论会出现在这里。' : '打开一个角色聊天并启用论坛后，社区才会开始生长。'}</p><button class="tf-primary-button" data-action="generate-posts" ${viewState.busy || !active || !forumEnabled ? 'disabled' : ''}>${viewState.busy ? '<span class="tf-spinner"></span>' : icon('sparkles')}<span>${viewState.busy ? '正在收集新动静' : '生成第一批动态'}</span></button></section>`;
+    const feedTabs = `<nav class="tf-feed-tabs">${feeds.map(([id, label]) => `<button class="${viewState.feedMode === id ? 'is-active' : ''}" data-action="feed-mode" data-feed="${id}">${label}</button>`).join('')}</nav>`;
+    const topicHeader = viewState.selectedTopic ? `<section class="tf-topic-header tf-card"><div><small>话题详情</small><h2>#${escapeHtml(viewState.selectedTopic)}</h2><p>${posts.length} 篇相关帖子</p></div><button class="tf-secondary-button" data-action="clear-topic">返回全部</button></section>` : '';
+    const headingTitle = viewState.feedMode === 'following' ? '关注居民的动态' : viewState.feedMode === 'latest' ? '刚刚发生的事情' : viewState.feedMode === 'hot' ? '社区正在热议' : layout === 'waystation' ? '驿站留言' : '为你挑选';
+    const waystationMasthead = layout === 'waystation'
+        ? `<section class="tf-waystation-masthead"><span>旅途手记 · ${posts.length} 则见闻</span><h1>${escapeHtml(data.topic || '故事广场')}</h1><p>雾与灯火之间，旅人留下的只言片语在纸页上慢慢汇成故事。</p><i aria-hidden="true"></i></section>`
+        : '';
+    const waystationComposer = `<section class="tf-waystation-compose-module"><div class="tf-waystation-board-heading"><div><small>旅人手记</small><h2>${headingTitle}</h2></div><span>${posts.length} 篇</span></div>${renderComposer(layout)}</section>`;
+    const feedHeading = `<div class="tf-feed-section-heading ${layout === 'waystation' ? 'is-waystation' : ''}"><div><small>${layout === 'waystation' ? '旅人手记' : '社区动态'}</small><h2>${headingTitle}</h2></div><span>${posts.length} 篇</span></div>`;
+    const resultsAndFeed = `<div class="tf-search-result" ${viewState.searchQuery ? '' : 'hidden'}>搜索结果：<b data-search-count>0</b> 篇帖子</div><div class="tf-feed-list">${viewState.busy ? '<div class="tf-card tf-skeleton"><i></i><p></p><p></p></div>' : ''}${posts.length ? posts.map(renderPost).join('') : emptyState}</div>`;
+    const feedColumn = layout === 'waystation'
+        ? `${waystationMasthead}<div class="tf-feed-tools is-waystation">${waystationComposer}${feedTabs}</div>${topicHeader}${resultsAndFeed}`
+        : `<div class="tf-feed-tools">${feedTabs}${renderComposer(layout)}</div>${topicHeader}${feedHeading}${resultsAndFeed}`;
+    const waystationInkFilter = layout === 'waystation'
+        ? `<svg class="tf-waystation-ink-filter" width="0" height="0" aria-hidden="true" focusable="false"><defs><filter id="tf-waystation-ink-extract" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  -0.2126 -0.7152 -0.0722 0.96 0"/></filter></defs></svg>`
+        : '';
+    return `<div class="tf-home-page is-forum-${escapeHtml(layout)}">
+        ${waystationInkFilter}
         ${renderCommunityHero(data, posts, { active, forumEnabled })}
-        <div class="tf-community-people"><span><small>WHO IS HERE</small><b>此刻在社区里</b></span>${renderStories(data)}</div>
         <div class="tf-forum-dashboard">
-            <main class="tf-feed-column"><nav class="tf-feed-tabs">${feeds.map(([id, label]) => `<button class="${viewState.feedMode === id ? 'is-active' : ''}" data-action="feed-mode" data-feed="${id}">${label}</button>`).join('')}</nav>${viewState.selectedTopic ? `<section class="tf-topic-header tf-card"><div><small>话题详情</small><h2>#${escapeHtml(viewState.selectedTopic)}</h2><p>${posts.length} 篇相关帖子</p></div><button class="tf-secondary-button" data-action="clear-topic">返回全部</button></section>` : ''}${renderComposer()}
-                <div class="tf-feed-section-heading"><div><small>STORY FEED</small><h2>${viewState.feedMode === 'following' ? '关注居民的动态' : viewState.feedMode === 'latest' ? '刚刚发生的事情' : viewState.feedMode === 'hot' ? '社区正在热议' : '为这个故事挑选'}</h2></div><span>${posts.length} 篇</span></div>
-                <div class="tf-search-result" ${viewState.searchQuery ? '' : 'hidden'}>搜索结果：<b data-search-count>0</b> 篇帖子</div>
-                <div class="tf-feed-list">${viewState.busy ? '<div class="tf-card tf-skeleton"><i></i><p></p><p></p></div>' : ''}${posts.length ? posts.map(renderPost).join('') : '<section class="tf-card tf-empty"><div class="tf-empty-icon">'+icon('image')+'</div><h3>这里还没有动态</h3><p>可以切换信息流，或关注更多角色。</p></section>'}</div>
-            </main>
+            <main class="tf-feed-column">${feedColumn}</main>
             ${renderCommunitySidebar(data, posts, fortune)}
         </div>
     </div>`;
@@ -2277,6 +2335,27 @@ function renderWindowThemeSettings(settings) {
     return `<section class="tf-card tf-settings-card tf-view-theme-settings"><header><div><h3>每个窗口独立外观</h3><p>每个窗口可以继承全局，也可以拥有自己的底色、卡片色、壁纸和 CSS。</p></div></header><div class="tf-view-theme-list">${Object.entries(labels).map(([id, [title, description]]) => { const theme = settings.appearance.viewThemes[id]; const preview = renderStoredImage({ url: theme.wallpaperUrl, imageKey: theme.wallpaperKey, alt: `${title}壁纸` }); return `<details data-view-theme-id="${escapeHtml(id)}"><summary><div><b>${escapeHtml(title)}</b><small>${escapeHtml(description)}</small></div><span>${theme.inherit ? '继承全局' : '独立外观'}</span></summary><div class="tf-view-theme-editor"><div>${renderSwitch({ checked: theme.inherit, action: 'toggle-view-theme-inherit', label: '继承全局外观', dataset: { viewId: id } })}</div><label><span>窗口底色</span><input type="color" data-view-theme-field="backgroundColor" value="${escapeHtml(theme.backgroundColor || settings.appearance.backgroundColor)}" ${theme.inherit ? 'disabled' : ''}></label><label><span>卡片底色</span><input type="color" data-view-theme-field="cardColor" value="${escapeHtml(theme.cardColor || settings.appearance.cardColor)}" ${theme.inherit ? 'disabled' : ''}></label><div class="tf-view-wallpaper-preview">${preview || '<span>没有独立壁纸</span>'}</div><label class="is-wide"><span>壁纸图床直链</span><input data-view-theme-field="wallpaperUrl" value="${escapeHtml(theme.wallpaperKey ? '' : theme.wallpaperUrl)}" placeholder="https://example.com/background.jpg" ${theme.inherit ? 'disabled' : ''}></label><div class="tf-image-source-row"><button class="tf-secondary-button" data-action="upload-view-wallpaper" data-view-id="${escapeHtml(id)}" ${theme.inherit ? 'disabled' : ''}>导入本地壁纸</button><button class="tf-danger-text" data-action="clear-view-wallpaper" data-view-id="${escapeHtml(id)}" ${theme.inherit ? 'disabled' : ''}>清除</button></div><label class="is-wide"><span>本窗口 CSS</span><textarea rows="6" data-view-theme-field="customCss" placeholder="#tavern-forum-root .tf-app[data-tf-view='${escapeHtml(id)}'] { ... }" ${theme.inherit ? 'disabled' : ''}>${escapeHtml(theme.customCss)}</textarea></label></div></details>`; }).join('')}</div></section>`;
 }
 
+function renderForumLayoutSettings(settings) {
+    const selected = ['waystation', 'modern'].includes(settings.appearance.forumLayout)
+        ? settings.appearance.forumLayout
+        : 'waystation';
+    const options = [
+        {
+            id: 'waystation',
+            name: '驿站手账',
+            description: '纸张、印章与旅行留言板；世界感更鲜明。',
+            badge: '世界观',
+        },
+        {
+            id: 'modern',
+            name: '现代动态',
+            description: '紧凑状态栏与清爽信息流；阅读效率更高。',
+            badge: '简洁',
+        },
+    ];
+    return `<section class="tf-card tf-settings-card tf-forum-layout-settings"><header><div><h3>论坛首页风格</h3><p>切换的是首页构图、帖子排版和侧栏结构，不会改变帖子与角色数据。</p></div></header><div class="tf-forum-layout-options">${options.map(option => `<button type="button" class="${selected === option.id ? 'is-selected' : ''}" data-action="set-forum-layout" data-forum-layout="${option.id}" aria-pressed="${selected === option.id}"><span class="tf-layout-miniature is-${option.id}" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span><b>${option.name}</b><small>${option.description}</small></span><em>${selected === option.id ? '正在使用' : option.badge}</em></button>`).join('')}</div></section>`;
+}
+
 function renderAppearanceSettings() {
     const settings = getSettings();
     const appearance = settings.appearance;
@@ -2284,7 +2363,7 @@ function renderAppearanceSettings() {
     const brandImage = renderStoredImage({ url: appearance.brandIconUrl, imageKey: appearance.brandIconKey, alt: '论坛名称图标' });
     const wallpaper = renderStoredImage({ url: appearance.wallpaperUrl, imageKey: appearance.wallpaperKey, alt: '论坛壁纸' });
     const launcherImage = renderStoredImage({ url: ui.floatingButtonImageUrl, imageKey: ui.floatingButtonImageKey, alt: '悬浮入口图片' });
-    const visualSection = `<section class="tf-card tf-settings-card tf-visual-assets-settings"><header><div><h3>图标、壁纸与帖子毛玻璃</h3><p>透明度只作用于帖子和评论承载区；文字、头像、图标与照片始终保持清晰。</p></div></header><div class="tf-visual-assets-grid"><div><b>论坛名称图标</b><div class="tf-brand-icon-preview">${brandImage || '◎'}</div><label><span>图床直链</span><input data-appearance-image-url="brandIcon" value="${escapeHtml(appearance.brandIconKey ? '' : appearance.brandIconUrl)}" placeholder="https://example.com/icon.png"></label><div class="tf-image-source-row"><button class="tf-secondary-button" data-action="upload-brand-icon">导入本地图片</button><button class="tf-danger-text" data-action="clear-brand-icon">恢复默认</button></div></div><div><b>论坛壁纸</b><div class="tf-wallpaper-preview">${wallpaper || '<span>尚未设置壁纸</span>'}</div><label><span>图床直链</span><input data-appearance-image-url="wallpaper" value="${escapeHtml(appearance.wallpaperKey ? '' : appearance.wallpaperUrl)}" placeholder="https://example.com/wallpaper.jpg"></label><div class="tf-image-source-row"><button class="tf-secondary-button" data-action="upload-forum-wallpaper">导入本地图片</button><button class="tf-danger-text" data-action="clear-forum-wallpaper">清除壁纸</button></div></div></div><div class="tf-glass-controls"><label><span>帖子透明度 <output>${Math.round(Number(appearance.postOpacity ?? 0.85) * 100)}%</output></span><input type="range" min="0.2" max="1" step="0.01" value="${Number(appearance.postOpacity ?? 0.85)}" data-appearance-number="postOpacity"></label><label><span>评论透明度 <output>${Math.round(Number(appearance.commentOpacity ?? 0.94) * 100)}%</output></span><input type="range" min="0.2" max="1" step="0.01" value="${Number(appearance.commentOpacity ?? 0.94)}" data-appearance-number="commentOpacity"></label><label><span>帖子模糊强度 <output>${Number(appearance.postBlur ?? 16)}px</output></span><input type="range" min="0" max="40" step="1" value="${Number(appearance.postBlur ?? 16)}" data-appearance-number="postBlur"></label></div></section>`;
+    const visualSection = `${renderForumLayoutSettings(settings)}<section class="tf-card tf-settings-card tf-visual-assets-settings"><header><div><h3>图标、壁纸与帖子毛玻璃</h3><p>透明度只作用于帖子和评论承载区；文字、头像、图标与照片始终保持清晰。</p></div></header><div class="tf-visual-assets-grid"><div><b>论坛名称图标</b><div class="tf-brand-icon-preview">${brandImage || '◎'}</div><label><span>图床直链</span><input data-appearance-image-url="brandIcon" value="${escapeHtml(appearance.brandIconKey ? '' : appearance.brandIconUrl)}" placeholder="https://example.com/icon.png"></label><div class="tf-image-source-row"><button class="tf-secondary-button" data-action="upload-brand-icon">导入本地图片</button><button class="tf-danger-text" data-action="clear-brand-icon">恢复默认</button></div></div><div><b>论坛壁纸</b><div class="tf-wallpaper-preview">${wallpaper || '<span>尚未设置壁纸</span>'}</div><label><span>图床直链</span><input data-appearance-image-url="wallpaper" value="${escapeHtml(appearance.wallpaperKey ? '' : appearance.wallpaperUrl)}" placeholder="https://example.com/wallpaper.jpg"></label><div class="tf-image-source-row"><button class="tf-secondary-button" data-action="upload-forum-wallpaper">导入本地图片</button><button class="tf-danger-text" data-action="clear-forum-wallpaper">清除壁纸</button></div></div></div><div class="tf-glass-controls"><label><span>帖子透明度 <output>${Math.round(Number(appearance.postOpacity ?? 0.85) * 100)}%</output></span><input type="range" min="0.2" max="1" step="0.01" value="${Number(appearance.postOpacity ?? 0.85)}" data-appearance-number="postOpacity"></label><label><span>评论透明度 <output>${Math.round(Number(appearance.commentOpacity ?? 0.94) * 100)}%</output></span><input type="range" min="0.2" max="1" step="0.01" value="${Number(appearance.commentOpacity ?? 0.94)}" data-appearance-number="commentOpacity"></label><label><span>帖子模糊强度 <output>${Number(appearance.postBlur ?? 16)}px</output></span><input type="range" min="0" max="40" step="1" value="${Number(appearance.postBlur ?? 16)}" data-appearance-number="postBlur"></label></div></section>`;
     const launcherSection = `<section class="tf-card tf-settings-card tf-launcher-settings"><header><div><h3>悬浮入口</h3><p>可显示或关闭，也可以更换图片。关闭后仍可从酒馆扩展菜单打开论坛。</p></div>${renderSwitch({ checked: ui.floatingButton, action: 'toggle-floating-button', label: '显示悬浮入口' })}</header><div class="tf-launcher-settings-body"><div class="tf-launcher-preview">${launcherImage || icon('message')}</div><div><label><span>图片图床直链</span><input data-floating-button-image-url value="${escapeHtml(ui.floatingButtonImageKey ? '' : ui.floatingButtonImageUrl)}" placeholder="https://example.com/forum-icon.png"></label><div class="tf-image-source-row"><button class="tf-secondary-button" data-action="upload-floating-button-image">导入本地图片</button><button class="tf-danger-text" data-action="clear-floating-button-image">恢复默认图标</button><button class="tf-secondary-button" data-action="reset-floating-button-position">恢复默认位置</button></div><small>关闭设置页后，可直接拖动页面上的悬浮入口改变位置；手机端也支持触摸拖动。</small></div></div></section>`;
     const page = renderAppearanceSettingsLegacy(visualSection);
     const end = page.lastIndexOf('</section>');
@@ -3727,6 +3806,12 @@ async function handleRootClick(event) {
         return paintInAppToasts();
     }
     if (action === 'switch-tab') return setActiveTab(target.dataset.tab);
+    if (action === 'set-forum-layout') {
+        const layout = ['waystation', 'modern'].includes(target.dataset.forumLayout) ? target.dataset.forumLayout : 'waystation';
+        getSettings().appearance.forumLayout = layout;
+        saveSettings();
+        return render({ preserveScroll: true });
+    }
     if (action === 'open-settings') return setMeSection(target.dataset.section || 'modules');
     if (action === 'open-world-page') {
         const moduleId = target.dataset.moduleId;

@@ -188,6 +188,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     },
     appearance: {
         forumName: '微坛',
+        forumLayout: 'waystation',
         fontFamily: '',
         primaryColor: '#0095f6',
         backgroundColor: '#fafafa',

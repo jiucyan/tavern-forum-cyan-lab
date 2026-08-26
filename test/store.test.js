@@ -51,6 +51,7 @@ test('API profiles switch freely and source switches include selected lore entri
     assert.equal(store.getSettings().notifications.reply, true);
     assert.equal(store.getSettings().profile.handle, 'me');
     assert.equal(store.getSettings().orchestration.enabled, true);
+    assert.equal(store.getSettings().appearance.forumLayout, 'waystation');
     for (const moduleId of ['moderation', 'tasks', 'health']) {
         assert.equal(store.getSettings().modules[moduleId].enabled, true);
         assert.equal(store.getSettings().modules[moduleId].generationMode, 'linked');

@@ -70,6 +70,7 @@ try {
     await desktop.locator('.tf-topbar .tf-main-nav [data-tab="home"]').click();
     if (await desktop.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-desktop') throw new Error('returning home replaced the full app shell');
     if (!await desktop.locator('.tf-community-hero').count()) throw new Error('forum home is missing the world-aware community cover');
+    if (!await desktop.locator('.tf-home-page.is-forum-waystation').count()) throw new Error('waystation forum layout is not the default');
     const forumDesktopLayout = await desktop.locator('.tf-forum-dashboard').evaluate(node => {
         const bounds = element => {
             const box = element?.getBoundingClientRect();
@@ -81,18 +82,129 @@ try {
     });
     if (!forumDesktopLayout.columns.includes('px') || !forumDesktopLayout.feed || !forumDesktopLayout.sidebar) throw new Error('desktop forum dashboard did not resolve its two-column layout');
     if (forumDesktopLayout.sidebar.x <= forumDesktopLayout.feed.x + forumDesktopLayout.feed.width || forumDesktopLayout.sidebar.width < 250) throw new Error(`desktop community sidebar is not beside the feed: ${JSON.stringify(forumDesktopLayout)}`);
+    const waystationFidelity = await desktop.locator('.tf-home-page.is-forum-waystation').evaluate(node => {
+        const app = node.closest('.tf-app');
+        const masthead = node.querySelector('.tf-waystation-masthead');
+        const boardHeading = masthead?.querySelector('.tf-waystation-board-heading');
+        const composerModule = node.querySelector('.tf-waystation-compose-module');
+        const composerHeading = composerModule?.querySelector('.tf-waystation-board-heading');
+        const appBox = app.getBoundingClientRect();
+        const navBox = app.querySelector('.tf-main-nav button').getBoundingClientRect();
+        const mastheadBox = masthead?.getBoundingClientRect();
+        const boardBox = boardHeading?.getBoundingClientRect();
+        const firstPost = node.querySelector('.tf-feed-list .tf-post:nth-child(1)');
+        const secondPost = node.querySelector('.tf-feed-list .tf-post:nth-child(2)');
+        const sidebar = node.querySelector('.tf-community-sidebar');
+        const topicMetrics = [...node.querySelectorAll('.tf-community-trends.is-waystation button > em')].map(item => item.textContent.trim());
+        const postBodyBox = firstPost.querySelector('.tf-post-caption > p').getBoundingClientRect();
+        const postTagsBox = firstPost.querySelector('.tf-tags')?.getBoundingClientRect();
+        return {
+            topbarBackground: getComputedStyle(app.querySelector('.tf-topbar')).backgroundColor,
+            navStartsOnRight: navBox.x > appBox.x + appBox.width * .54,
+            mastheadHeight: mastheadBox?.height || 0,
+            boardInsideMasthead: Boolean(mastheadBox && boardBox && boardBox.y >= mastheadBox.y && boardBox.y + boardBox.height <= mastheadBox.y + mastheadBox.height + 1),
+            boardInsideComposer: Boolean(composerModule && composerHeading && composerModule.contains(composerHeading)),
+            mastheadPanel: getComputedStyle(masthead).backgroundImage.includes('waystation-masthead-panel-v2.png'),
+            postcardPanel: getComputedStyle(firstPost, '::after').backgroundImage.includes('waystation-postcard-panel-v2.png'),
+            notePanel: getComputedStyle(secondPost, '::after').backgroundImage.includes('waystation-note-panel-v2.png'),
+            printedArtTransparent: getComputedStyle(firstPost, '::after').backgroundColor === 'rgba(0, 0, 0, 0)' && getComputedStyle(secondPost, '::after').backgroundColor === 'rgba(0, 0, 0, 0)',
+            printedArtFilter: getComputedStyle(firstPost, '::after').filter.includes('tf-waystation-ink-extract') && getComputedStyle(secondPost, '::after').filter.includes('tf-waystation-ink-extract'),
+            printedArtWidthRatio: parseFloat(getComputedStyle(firstPost, '::after').width) / firstPost.getBoundingClientRect().width,
+            routeLayer: getComputedStyle(node.querySelector('.tf-feed-list'), '::before').backgroundImage.includes('svg'),
+            paperclipLayer: getComputedStyle(node.querySelector('.tf-feed-list .tf-post:nth-child(2)'), '::before').backgroundImage.includes('svg'),
+            paperclipWidth: parseFloat(getComputedStyle(secondPost, '::before').width),
+            tackLayer: getComputedStyle(node.querySelector('.tf-feed-list .tf-post:nth-child(1)'), '::before').backgroundImage.includes('svg'),
+            botanicalLeaf: getComputedStyle(composerHeading, '::before').backgroundImage.includes('svg') && parseFloat(getComputedStyle(composerHeading, '::before').width) >= 18 && parseFloat(getComputedStyle(composerHeading, '::before').width) <= 23,
+            modernFiltersHidden: getComputedStyle(node.querySelector('.tf-feed-tools.is-waystation .tf-feed-tabs')).display === 'none',
+            textPlaceholderHidden: getComputedStyle(node.querySelector('.tf-feed-list .tf-text-image')).display === 'none',
+            expandedComposerShell: Boolean(node.querySelector('.tf-compose-collapsed.is-waystation .tf-waystation-compose-actions')),
+            bulletinRows: node.querySelectorAll('.tf-waystation-bulletin > span').length,
+            residentFlow: getComputedStyle(node.querySelector('.tf-community-residents.is-waystation > div')).display,
+            firstPostHeight: firstPost?.getBoundingClientRect().height || 0,
+            firstPostBackgroundSize: getComputedStyle(firstPost).backgroundSize,
+            postBodyFont: parseFloat(getComputedStyle(firstPost.querySelector('.tf-post-caption > p')).fontSize),
+            sidebarWidth: sidebar?.getBoundingClientRect().width || 0,
+            bulletinLabelFont: parseFloat(getComputedStyle(node.querySelector('.tf-waystation-bulletin b')).fontSize),
+            topicLabelFont: parseFloat(getComputedStyle(node.querySelector('.tf-community-trends.is-waystation button b')).fontSize),
+            topicMetrics,
+            residentOverflow: node.querySelector('.tf-community-residents.is-waystation > div').scrollWidth - node.querySelector('.tf-community-residents.is-waystation > div').clientWidth,
+            tagsClearBody: !postTagsBox || postTagsBox.top >= postBodyBox.bottom - 1,
+            secondArt: (() => {
+                const art = getComputedStyle(secondPost, '::after');
+                return { backgroundSize: art.backgroundSize, backgroundPosition: art.backgroundPosition, transform: art.transform };
+            })(),
+        };
+    });
+    if (!/rgb\(33,? 31,? 28\)/.test(waystationFidelity.topbarBackground)) throw new Error(`waystation top navigation is not ink black: ${JSON.stringify(waystationFidelity)}`);
+    if (!waystationFidelity.navStartsOnRight || waystationFidelity.mastheadHeight < 200 || waystationFidelity.boardInsideMasthead || !waystationFidelity.boardInsideComposer || !waystationFidelity.mastheadPanel || !waystationFidelity.postcardPanel || !waystationFidelity.notePanel || !waystationFidelity.printedArtTransparent || !waystationFidelity.printedArtFilter || waystationFidelity.printedArtWidthRatio > .28 || waystationFidelity.secondArt.backgroundSize !== '500%' || waystationFidelity.secondArt.transform !== 'none' || !waystationFidelity.routeLayer || !waystationFidelity.paperclipLayer || waystationFidelity.paperclipWidth > 25 || !waystationFidelity.tackLayer || !waystationFidelity.botanicalLeaf || !waystationFidelity.modernFiltersHidden || !waystationFidelity.textPlaceholderHidden || !waystationFidelity.expandedComposerShell || waystationFidelity.bulletinRows !== 3 || waystationFidelity.residentFlow !== 'flex') throw new Error(`waystation concept structure is incomplete: ${JSON.stringify(waystationFidelity)}`);
+    if (waystationFidelity.firstPostHeight < 220 || !waystationFidelity.firstPostBackgroundSize.includes('cover') || waystationFidelity.postBodyFont < 13 || waystationFidelity.sidebarWidth < 300 || waystationFidelity.bulletinLabelFont < 11 || waystationFidelity.topicLabelFont < 11 || waystationFidelity.residentOverflow > 1 || !waystationFidelity.tagsClearBody) throw new Error(`waystation reading scale is too small or clips content: ${JSON.stringify(waystationFidelity)}`);
+    if (waystationFidelity.topicMetrics.some(label => /137\s*条新留言/.test(label))) throw new Error(`waystation topics still expose synthetic engagement as replies: ${JSON.stringify(waystationFidelity.topicMetrics)}`);
     if (await desktop.locator('.tf-comment-preview').first().locator('article').count() !== 2) throw new Error('feed card does not preview two real comments');
     if (!await desktop.locator('.tf-post-context').first().count()) throw new Error('post card is missing its locally derived content type');
     await desktop.screenshot({ path: 'preview-forum-home-v2.png' });
+    await desktop.screenshot({ path: 'preview-forum-waystation.png' });
+    await desktop.locator('.tf-community-sidebar').screenshot({ path: 'preview-forum-waystation-sidebar.png' });
     await desktop.locator('.tf-feed-list .tf-post').first().screenshot({ path: 'preview-forum-post-card-v2.png' });
-    const visibleTextImages = await desktop.locator('.tf-feed-list .tf-text-image').count();
-    if (visibleTextImages !== 1) throw new Error(`expected only intentional post images to display, found ${visibleTextImages}`);
+    await desktop.locator('.tf-feed-list .tf-post').nth(1).screenshot({ path: 'preview-forum-note-card-v2.png' });
+    const textImageNodes = await desktop.locator('.tf-feed-list .tf-text-image').count();
+    if (textImageNodes !== 1) throw new Error(`expected one intentional text-image source node, found ${textImageNodes}`);
     if (!/[\u3400-\u9fff]/u.test(await desktop.locator('.tf-text-image p').first().innerText())) throw new Error('text image description is not Chinese');
     const postOrder = await desktop.locator('.tf-post').first().evaluate(post => ({ caption: [...post.children].findIndex(node => node.classList.contains('tf-post-caption')), image: [...post.children].findIndex(node => node.classList.contains('tf-text-image') || node.classList.contains('tf-post-image')), actions: [...post.children].findIndex(node => node.classList.contains('tf-post-actions')) }));
     if (!(postOrder.caption < postOrder.image && postOrder.image < postOrder.actions)) throw new Error('post body, image and action order is incorrect');
     if (await desktop.getByText('文字配图', { exact: true }).count()) throw new Error('text image labels should stay hidden');
     if (await desktop.locator('.tf-post-image-editor').count()) throw new Error('post image editor should stay closed until explicitly requested');
     await desktop.screenshot({ path: 'preview.png' });
+
+    const wallpaperEmpty = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+    enableScreenshotRetry(wallpaperEmpty);
+    await wallpaperEmpty.goto(url, { waitUntil: 'networkidle' });
+    await wallpaperEmpty.evaluate(() => {
+        const context = globalThis.SillyTavern.getContext();
+        context.chatMetadata.tavern_forum_data.posts = [];
+        context.chatMetadata.tavern_forum_data.npcs = [];
+        const appearance = context.extensionSettings.tavern_forum.appearance;
+        appearance.forumLayout = 'waystation';
+        appearance.wallpaperUrl = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"%3E%3Crect width="1200" height="800" fill="%238bc5ef"/%3E%3Ccircle cx="220" cy="180" r="140" fill="%23ff8db3"/%3E%3C/svg%3E';
+        appearance.wallpaperKey = '';
+    });
+    await wallpaperEmpty.locator('.tf-topbar [data-tab="messages"]').click();
+    await wallpaperEmpty.locator('.tf-topbar .tf-main-nav [data-tab="home"]').click();
+    const wallpaperEmptyLayout = await wallpaperEmpty.locator('.tf-home-page.is-forum-waystation').evaluate(node => {
+        const app = node.closest('.tf-app');
+        const empty = node.querySelector('.tf-forum-empty-state');
+        const wallpaperImage = app.querySelector('.tf-wallpaper-image');
+        return {
+            hasWallpaper: app.classList.contains('has-wallpaper'),
+            wallpaperDisplay: wallpaperImage ? getComputedStyle(wallpaperImage).display : '',
+            emptyHeight: empty?.getBoundingClientRect().height || 0,
+            overflow: node.scrollWidth - node.clientWidth,
+        };
+    });
+    if (!wallpaperEmptyLayout.hasWallpaper || wallpaperEmptyLayout.wallpaperDisplay !== 'none') throw new Error(`waystation did not isolate the user wallpaper: ${JSON.stringify(wallpaperEmptyLayout)}`);
+    if (wallpaperEmptyLayout.emptyHeight > 190 || wallpaperEmptyLayout.overflow > 1) throw new Error(`wallpaper empty forum regressed: ${JSON.stringify(wallpaperEmptyLayout)}`);
+    await wallpaperEmpty.screenshot({ path: 'preview-forum-waystation-empty-wallpaper.png' });
+    await wallpaperEmpty.close();
+
+    const compactDesktop = await browser.newPage({ viewport: { width: 1000, height: 900 }, deviceScaleFactor: 1 });
+    enableScreenshotRetry(compactDesktop);
+    await compactDesktop.goto(url, { waitUntil: 'networkidle' });
+    const compactWaystation = await compactDesktop.locator('.tf-home-page.is-forum-waystation').evaluate(node => {
+        const feed = node.querySelector('.tf-feed-column').getBoundingClientRect();
+        const sidebar = node.querySelector('.tf-community-sidebar').getBoundingClientRect();
+        const residents = node.querySelector('.tf-community-residents.is-waystation > div');
+        return {
+            feedRight: feed.right,
+            sidebarLeft: sidebar.left,
+            sidebarWidth: sidebar.width,
+            bodyFont: parseFloat(getComputedStyle(node.querySelector('.tf-post-caption > p')).fontSize),
+            residentOverflow: residents.scrollWidth - residents.clientWidth,
+            pageOverflow: node.scrollWidth - node.clientWidth,
+        };
+    });
+    if (compactWaystation.sidebarLeft <= compactWaystation.feedRight || compactWaystation.sidebarWidth < 270 || compactWaystation.bodyFont < 13 || compactWaystation.residentOverflow > 1 || compactWaystation.pageOverflow > 1) throw new Error(`compact desktop waystation regressed: ${JSON.stringify(compactWaystation)}`);
+    await compactDesktop.screenshot({ path: 'preview-forum-waystation-compact.png' });
+    await compactDesktop.close();
+
     await desktop.locator('[data-action="open-post"]').first().click();
     await desktop.screenshot({ path: 'preview-post-detail.png' });
     await desktop.locator('[data-action="back-post"]').click();
@@ -132,6 +244,19 @@ try {
     await desktop.locator('[data-action="me-section"][data-section="appearance"]').click();
     if (!await desktop.locator('[data-appearance-number="postOpacity"]').count()) throw new Error('post opacity control is missing');
     if (!await desktop.locator('[data-appearance-image-url="brandIcon"]').count()) throw new Error('brand icon control is missing');
+    if (await desktop.locator('[data-action="set-forum-layout"]').count() !== 2) throw new Error('appearance settings do not expose both forum layouts');
+    await desktop.locator('[data-action="set-forum-layout"][data-forum-layout="modern"]').click();
+    if (!await desktop.locator('[data-forum-layout="modern"].is-selected').count()) throw new Error('modern forum layout was not selected');
+    if (await desktop.evaluate(() => globalThis.SillyTavern.getContext().extensionSettings.tavern_forum.appearance.forumLayout) !== 'modern') throw new Error('forum layout selection did not persist');
+    await desktop.locator('.tf-topbar .tf-main-nav [data-tab="home"]').click();
+    if (!await desktop.locator('.tf-home-page.is-forum-modern').count()) throw new Error('modern forum layout did not render');
+    const modernHeroHeight = await desktop.locator('.tf-community-hero').evaluate(node => node.getBoundingClientRect().height);
+    if (modernHeroHeight > 90) throw new Error(`modern world status bar is too tall (${modernHeroHeight}px)`);
+    await desktop.screenshot({ path: 'preview-forum-modern.png' });
+    await desktop.locator('.tf-settings-entry').click();
+    await desktop.locator('[data-action="me-section"][data-section="appearance"]').click();
+    await desktop.locator('.tf-forum-layout-settings').scrollIntoViewIfNeeded();
+    await desktop.screenshot({ path: 'preview-appearance-forum-layouts.png' });
     await desktop.locator('[data-action="restore-standard-css"]').click();
     const globalCssTemplate = await desktop.locator('.tf-custom-css').inputValue();
     if (!globalCssTemplate.includes('微坛全局 CSS 主题模板 v2')) throw new Error('current global CSS template was not loaded');
@@ -827,19 +952,22 @@ try {
             overflow: node.scrollWidth - node.clientWidth,
         };
     });
-    if (mobileForumLayout.columns.trim().split(/\s+/).length !== 1 || mobileForumLayout.sidebarY > mobileForumLayout.feedY) throw new Error(`mobile forum did not collapse sidebar before the feed: ${JSON.stringify(mobileForumLayout)}`);
-    if (!mobileForumLayout.sidebarScrolls || mobileForumLayout.overflow > 1) throw new Error(`mobile community cards do not scroll safely: ${JSON.stringify(mobileForumLayout)}`);
+    if (mobileForumLayout.columns.trim().split(/\s+/).length !== 1 || mobileForumLayout.sidebarY <= mobileForumLayout.feedY) throw new Error(`mobile forum did not keep the feed before secondary cards: ${JSON.stringify(mobileForumLayout)}`);
+    if (mobileForumLayout.sidebarScrolls || mobileForumLayout.overflow > 1) throw new Error(`mobile community layout still overflows horizontally: ${JSON.stringify(mobileForumLayout)}`);
     await mobile.locator('.tf-view').evaluate(node => { node.scrollTop = 0; });
     await mobile.locator('[data-action="dismiss-toast"]').evaluateAll(buttons => buttons.forEach(button => button.click()));
     await mobile.waitForTimeout(80);
     await mobile.screenshot({ path: 'preview-forum-home-mobile-v2.png' });
-    const mobileStories = mobile.locator('.tf-stories');
-    await mobileStories.evaluate(node => { node.scrollLeft = Math.min(160, node.scrollWidth - node.clientWidth); });
-    const storiesScrollBefore = await mobileStories.evaluate(node => node.scrollLeft);
     await mobile.locator('[data-action="feed-mode"][data-feed="latest"]').evaluate(node => node.click());
     await mobile.waitForTimeout(80);
-    const storiesScrollAfter = await mobile.locator('.tf-stories').evaluate(node => node.scrollLeft);
-    if (storiesScrollBefore > 20 && Math.abs(storiesScrollAfter - storiesScrollBefore) > 8) throw new Error(`switching feed reset stories scroll from ${storiesScrollBefore} to ${storiesScrollAfter}`);
+    await mobile.evaluate(() => { globalThis.SillyTavern.getContext().extensionSettings.tavern_forum.appearance.forumLayout = 'modern'; });
+    await mobile.locator('.tf-mobile-main-nav [data-tab="messages"]').click();
+    await mobile.locator('.tf-mobile-main-nav [data-tab="home"]').click();
+    if (!await mobile.locator('.tf-home-page.is-forum-modern').count()) throw new Error('modern forum layout did not render on mobile');
+    const modernMobileWidth = await mobile.locator('.tf-home-page').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
+    if (modernMobileWidth.scroll > modernMobileWidth.client + 1) throw new Error(`modern mobile forum overflows horizontally: ${JSON.stringify(modernMobileWidth)}`);
+    await mobile.locator('.tf-view').evaluate(node => { node.scrollTop = 0; });
+    await mobile.screenshot({ path: 'preview-forum-modern-mobile.png' });
     await mobile.locator('.tf-view').evaluate(node => { node.scrollTop = Math.min(620, node.scrollHeight - node.clientHeight); });
     const homeScrollBeforePost = await mobile.locator('.tf-view').evaluate(node => node.scrollTop);
     await mobile.locator('[data-action="open-post"]').first().evaluate(node => node.click());

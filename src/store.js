@@ -190,6 +190,9 @@ function migrateSettings(settings) {
     settings.appearance.viewThemes = settings.appearance.viewThemes && typeof settings.appearance.viewThemes === 'object'
         ? settings.appearance.viewThemes
         : {};
+    settings.appearance.forumLayout = ['waystation', 'modern'].includes(settings.appearance.forumLayout)
+        ? settings.appearance.forumLayout
+        : DEFAULT_SETTINGS.appearance.forumLayout;
     for (const [id, defaults] of Object.entries(DEFAULT_SETTINGS.appearance.viewThemes)) {
         settings.appearance.viewThemes[id] = mergeDefaults(
             settings.appearance.viewThemes[id] && typeof settings.appearance.viewThemes[id] === 'object'
