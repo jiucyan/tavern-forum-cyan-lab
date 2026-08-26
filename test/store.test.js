@@ -46,21 +46,34 @@ test('API profiles switch freely and source switches include selected lore entri
     const store = await import(`../src/store.js?store-test=${Date.now()}`);
 
     assert.equal(store.getApiConfig('text').provider, 'sillytavern');
-    assert.equal(store.getApiConfig('text').maxTokens, 8192);
+    assert.equal(store.getApiConfig('text').maxTokens, 30000);
     assert.equal(store.getSettings().generation.autoRefreshOnMessage, false);
     assert.equal(store.getSettings().notifications.reply, true);
     assert.equal(store.getSettings().profile.handle, 'me');
     assert.equal(store.getSettings().orchestration.enabled, true);
     assert.equal(store.getSettings().appearance.forumLayout, 'waystation');
-    for (const moduleId of ['moderation', 'tasks', 'health']) {
+    assert.equal(store.getSettings().generation.commentsMin, 0);
+    assert.equal(store.getSettings().generation.commentsMax, 3);
+    for (const moduleId of ['forum', 'moderation', 'tasks', 'travel', 'inventory', 'health']) {
         assert.equal(store.getSettings().modules[moduleId].enabled, true);
         assert.equal(store.getSettings().modules[moduleId].generationMode, 'linked');
         assert.equal(store.getSettings().modules[moduleId].automation, 'auto');
         assert.equal('rpm' in store.getSettings().modules[moduleId], false);
     }
+    assert.equal(store.getSettings().modules.fortune.enabled, false);
+    assert.equal(store.getSettings().modules.fortune.generationMode, 'local');
+    store.getSettings().generation.commentsMin = 4;
+    store.getSettings().generation.commentsMax = 12;
+    store.getSettings().modules.travel.enabled = false;
+    assert.equal(store.getSettings().generation.commentsMin, 4);
+    assert.equal(store.getSettings().generation.commentsMax, 12);
+    assert.equal(store.getSettings().modules.travel.enabled, false);
+    store.getSettings().modules.travel.enabled = true;
     assert.equal(store.getSettings().modules.tasks.verificationApiEnabled, false);
     assert.equal('extraParameters' in store.getApiConfig('text'), false);
     store.setActiveApiProfile('default-api-profile');
+    store.updateApiConfig('text', 'maxTokens', 12000);
+    assert.equal(store.getApiConfig('text').maxTokens, 12000);
     store.updateApiConfig('text', 'endpoint', 'https://one.example/v1');
     assert.equal(store.getApiConfig('image').enabled, false);
     assert.equal(store.getApiConfig('image').textFallback, true);

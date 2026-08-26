@@ -244,6 +244,16 @@ test('forum prompt preserves preset and plugin message roles', () => {
     assert.match(request.user, /1～3 条/);
 });
 
+test('initial comment range remains user-adjustable up to fifteen', () => {
+    const request = buildForumGenerationRequest({
+        settings: {
+            generation: { postsMin: 1, postsMax: 1, commentsMin: 4, commentsMax: 15 },
+            promptEntries: [],
+        },
+    });
+    assert.match(request.user, /4～15 条/);
+});
+
 test('forum prompt queue is the exact API message order and includes only readable sources', () => {
     const request = buildForumGenerationRequest({
         settings: {

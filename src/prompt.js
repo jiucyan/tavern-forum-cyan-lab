@@ -314,8 +314,8 @@ export function buildForumGenerationRequest({
     const legacyPostCount = safeInteger(settings?.generation?.postsPerRun, 4, 1, 10);
     const postsMin = safeInteger(settings?.generation?.postsMin, legacyPostCount, 1, 10);
     const postsMax = safeInteger(settings?.generation?.postsMax, legacyPostCount, 1, 10);
-    const commentsMin = safeInteger(settings?.generation?.commentsMin, 0, 0, 8);
-    const commentsMax = safeInteger(settings?.generation?.commentsMax, 3, 0, 8);
+    const commentsMin = safeInteger(settings?.generation?.commentsMin, 0, 0, 15);
+    const commentsMax = safeInteger(settings?.generation?.commentsMax, 3, 0, 15);
     const count = randomInteger(postsMin, postsMax);
     const commentLower = Math.min(commentsMin, commentsMax);
     const commentUpper = Math.max(commentsMin, commentsMax);

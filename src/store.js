@@ -56,6 +56,8 @@ function normalizeProfile(profile, index = 0) {
     profile.reserved = Boolean(isSillyTavern);
     profile.text = mergeDefaults(profile.text && typeof profile.text === 'object' ? profile.text : {}, template.text);
     profile.text.provider = isSillyTavern ? 'sillytavern' : 'custom';
+    const maxTokens = Number(profile.text.maxTokens);
+    profile.text.maxTokens = Number.isFinite(maxTokens) ? Math.min(30000, Math.max(1024, maxTokens)) : 30000;
     profile.text.excludedBodyParameters = Array.isArray(profile.text.excludedBodyParameters)
         ? [...new Set(profile.text.excludedBodyParameters.map(String).filter(item => ['model', 'temperature', 'max_tokens', 'response_format'].includes(item)))]
         : [];
@@ -124,8 +126,6 @@ function migrateSettings(settings) {
         settings.modules[definition.id].probability = Math.min(100, Math.max(0, Number(settings.modules[definition.id].probability ?? 35)));
         settings.modules[definition.id].cooldownMinutes = Math.min(43200, Math.max(0, Number(settings.modules[definition.id].cooldownMinutes || 0)));
         if (definition.id === 'travel') {
-            settings.modules[definition.id].generationMode = 'independent';
-            settings.modules[definition.id].joinGeneration = false;
             settings.modules[definition.id].travelDurationPreset = ['test', 'short', 'normal', 'long', 'custom'].includes(settings.modules[definition.id].travelDurationPreset)
                 ? settings.modules[definition.id].travelDurationPreset
                 : 'normal';
@@ -149,6 +149,18 @@ function migrateSettings(settings) {
             settings.modules[id].joinGeneration = true;
         }
         settings.linkedWorldDefaultsMigrated = true;
+    }
+    if (!settings.worldModuleDefaultsV2Migrated) {
+        settings.orchestration.enabled = true;
+        for (const definition of WORLD_MODULE_DEFINITIONS) {
+            const module = settings.modules[definition.id];
+            const linked = definition.id !== 'fortune';
+            module.enabled = linked;
+            module.generationMode = linked ? 'linked' : 'local';
+            module.joinGeneration = linked;
+            module.automation = 'auto';
+        }
+        settings.worldModuleDefaultsV2Migrated = true;
     }
     settings.orchestration.apiProfileId = String(settings.orchestration.apiProfileId || 'inherit');
     settings.social.directMessagePolicy = ['open', 'following', 'chance'].includes(settings.social.directMessagePolicy)
@@ -206,12 +218,12 @@ function migrateSettings(settings) {
         settings.apiProfiles = clone(DEFAULT_SETTINGS.apiProfiles);
     }
     settings.apiProfiles.forEach(normalizeProfile);
-    if (!settings.forumOutputBudgetMigrated) {
-        const sillyTavernProfile = settings.apiProfiles.find(profile => profile.text?.provider === 'sillytavern');
-        if (sillyTavernProfile && Number(sillyTavernProfile.text.maxTokens || 0) <= 2200) {
-            sillyTavernProfile.text.maxTokens = 8192;
+    if (!settings.forumOutputBudget30000Migrated) {
+        for (const profile of settings.apiProfiles) {
+            const maxTokens = Number(profile.text?.maxTokens || 0);
+            if (maxTokens <= 2200 || maxTokens === 8192) profile.text.maxTokens = 30000;
         }
-        settings.forumOutputBudgetMigrated = true;
+        settings.forumOutputBudget30000Migrated = true;
     }
     if (!settings.apiProfiles.some(profile => profile.id === 'sillytavern-default')) {
         settings.apiProfiles.unshift(clone(DEFAULT_SETTINGS.apiProfiles[0]));
@@ -228,6 +240,7 @@ function migrateSettings(settings) {
             Object.assign(profile.image, settings.imageApi);
             if (settings.imageApi.endpoint || settings.imageApi.model) profile.image.enabled = true;
         }
+        normalizeProfile(profile);
         settings.apiProfilesMigrated = true;
     }
     if (!settings.sillyTavernProfileMigrated) {

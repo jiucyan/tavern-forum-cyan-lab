@@ -103,7 +103,7 @@ export function buildTextRequestBody(config, request) {
         ...(!excluded.has('model') ? { model: String(config?.model || '').trim() } : {}),
         messages: requestMessages(request),
         ...(!excluded.has('temperature') ? { temperature: Number(config?.temperature ?? 0.9) } : {}),
-        ...(!excluded.has('max_tokens') ? { max_tokens: Number(config?.maxTokens ?? 8192) } : {}),
+        ...(!excluded.has('max_tokens') ? { max_tokens: Number(config?.maxTokens ?? 30000) } : {}),
         ...(request?.jsonSchema && !excluded.has('response_format') ? { response_format: buildResponseFormat(request.jsonSchema) } : {}),
     };
     return body;
@@ -116,7 +116,7 @@ export async function generateForumTextResult(config, request, { captureTrace = 
         if (typeof generateRaw !== 'function') throw new Error('当前 SillyTavern 不支持使用酒馆默认连接生成');
         const options = {
             prompt: requestMessages(request),
-            responseLength: Number(config.maxTokens || 8192),
+            responseLength: Number(config.maxTokens || 30000),
             trimNames: false,
             ...(request?.jsonSchema ? { jsonSchema: request.jsonSchema } : {}),
         };

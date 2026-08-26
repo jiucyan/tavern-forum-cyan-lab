@@ -426,7 +426,7 @@ function renderSettings() {
                 ${renderField('API Key', `<input type="password" autocomplete="off" data-secret="text" value="${escapeHtml(textConfig.apiKey)}" placeholder="sk-…">`)}
                 ${renderField('模型名称 *', `<input data-api-setting="text.model" value="${escapeHtml(textConfig.model)}" placeholder="例如：gpt-4.1-mini">`)}
                 ${renderField('温度', `<input type="number" data-api-setting="text.temperature" value="${Number(textConfig.temperature)}" min="0" max="2" step="0.1">`)}
-                ${renderField('最大输出 Tokens', `<input type="number" data-api-setting="text.maxTokens" value="${Number(textConfig.maxTokens)}" min="256" max="32000" step="128">`)}
+                ${renderField('最大输出 Tokens', `<input type="number" data-api-setting="text.maxTokens" value="${Number(textConfig.maxTokens)}" min="1024" max="30000" step="128">`)}
             </div>
         </section>
         <section class="tf-card tf-settings-section">

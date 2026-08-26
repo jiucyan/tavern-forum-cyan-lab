@@ -40,8 +40,8 @@ export const WORLD_MODULE_DEFINITIONS = Object.freeze([
     { id: 'moderation', name: '社区治理', icon: 'shield', description: '官号权限、举报、删帖与裁决', defaultEnabled: true },
     { id: 'tasks', name: '任务', icon: 'book', description: '委托、神秘人、骗局、成功与失败', defaultEnabled: true },
     { id: 'fortune', name: '运势', icon: 'sparkles', description: '每日倾向与剧情概率影响', defaultEnabled: false },
-    { id: 'travel', name: '旅伴', icon: 'repost', description: '会自主外出、寄回见闻并带回小物件的宠物', defaultEnabled: false },
-    { id: 'inventory', name: '背包', icon: 'database', description: '物品、奖励、消耗与剧情效果', defaultEnabled: false },
+    { id: 'travel', name: '旅伴', icon: 'repost', description: '会自主外出、寄回见闻并带回小物件的宠物', defaultEnabled: true },
+    { id: 'inventory', name: '背包', icon: 'database', description: '物品、奖励、消耗与剧情效果', defaultEnabled: true },
     { id: 'health', name: '健康与医疗', icon: 'heart', description: '虚构角色的日常身体事件、就医与恢复', defaultEnabled: true },
 ]);
 
@@ -49,8 +49,8 @@ const DEFAULT_MODULE_SETTINGS = Object.fromEntries(WORLD_MODULE_DEFINITIONS.map(
     enabled: module.defaultEnabled,
     injectIntoChat: false,
     allowApiDraw: false,
-    generationMode: ['forum', 'moderation', 'tasks', 'health'].includes(module.id) ? 'linked' : module.id === 'fortune' ? 'local' : 'independent',
-    joinGeneration: ['forum', 'moderation', 'tasks', 'health'].includes(module.id),
+    generationMode: module.id === 'fortune' ? 'local' : 'linked',
+    joinGeneration: module.id !== 'fortune',
     apiProfileId: 'inherit',
     probability: module.id === 'fortune' ? 100 : 35,
     cooldownMinutes: module.id === 'forum' ? 0 : 60,
@@ -81,7 +81,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
                 apiKey: '',
                 model: '',
                 temperature: 0.9,
-                maxTokens: 8192,
+                maxTokens: 30000,
                 excludedBodyParameters: [],
             },
             image: {
@@ -103,7 +103,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
                 apiKey: '',
                 model: '',
                 temperature: 0.9,
-                maxTokens: 8192,
+                maxTokens: 30000,
                 excludedBodyParameters: [],
             },
             image: {
@@ -123,7 +123,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
         apiKey: '',
         model: '',
         temperature: 0.9,
-        maxTokens: 8192,
+        maxTokens: 30000,
         excludedBodyParameters: [],
     },
     imageApi: {

@@ -368,7 +368,13 @@ try {
     if (!await travelToggle.isChecked()) await travelToggle.check({ force: true });
     await desktop.locator('[data-module-id="travel"] [data-module-field="travelDurationPreset"]').selectOption('test');
     if (!/2 分钟～5 分钟返家/.test(await desktop.locator('[data-module-id="travel"] .tf-travel-timing-settings').innerText())) throw new Error('travel duration preset did not expose the user-selected return window');
-    if (await desktop.locator('[data-module-id="travel"] [data-module-field="generationMode"]').count()) throw new Error('travel should not expose a repeated linked-generation mode');
+    const travelMode = desktop.locator('[data-module-id="travel"] [data-module-field="generationMode"]');
+    if (await travelMode.count() !== 1) throw new Error('travel should expose one user-adjustable generation mode');
+    if (await travelMode.inputValue() !== 'linked') throw new Error('travel should default to linked forum generation');
+    await travelMode.selectOption('independent');
+    if (await desktop.locator('[data-module-id="travel"] [data-module-field="generationMode"]').inputValue() !== 'independent') throw new Error('travel generation mode did not preserve the user selection');
+    await desktop.locator('[data-module-id="travel"] [data-module-field="generationMode"]').selectOption('linked');
+    if (await desktop.locator('[data-module-id="travel"] [data-module-field="probability"]').count() !== 1) throw new Error('linked travel should expose a user-adjustable trigger probability');
     await desktop.locator('[data-module-id="travel"] [data-module-field="travelDurationPreset"]').selectOption('custom');
     if (await desktop.locator('[data-module-id="travel"] .tf-travel-custom-time input').count() !== 4) throw new Error('custom travel timing did not expose duration and message interval controls');
     await desktop.locator('[data-module-id="travel"] [data-module-field="travelDurationPreset"]').selectOption('test');
