@@ -1034,13 +1034,10 @@ function getActiveForumRoles(data, posts, limit = 4) {
 }
 
 function renderCommunityHero(data, posts, { active, forumEnabled } = {}) {
-    const snapshot = getChatSnapshot();
     const companion = data.world?.companion || {};
     const time = getLocalCompanionTime(companion);
     const weather = getLocalCompanionWeather(data, time);
     const weatherClass = String(weather.id || 'cloudy').split(/\s+/)[0];
-    const latestPost = [...posts].sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0];
-    const latestTopic = getTrendingForumTopics(posts, 1)[0];
     const weatherSeed = Number(weather.slot || 0) + posts.length + data.npcs.length;
     const temperature = 14 + (weatherSeed % 8);
     const windDirections = ['东北风', '东风', '东南风', '西北风'];
@@ -1049,17 +1046,13 @@ function renderCommunityHero(data, posts, { active, forumEnabled } = {}) {
     const tideStates = ['缓慢涨潮', '平潮', '正在退潮'];
     const tideState = tideStates[weatherSeed % tideStates.length];
     const stationPlace = String(companion.destination || data.topic || '当前驿站').replace(/(?:夜话|故事广场)$/u, '').trim() || '当前驿站';
-    const status = !forumEnabled ? '论坛模块当前已暂停' : active ? `${snapshot.characterName}所在世界的居民社区` : '打开一个角色聊天后，社区才会继续生长';
-    const pulse = latestPost
-        ? `<button class="tf-community-live-card" data-action="open-post" data-post-id="${escapeHtml(latestPost.id)}"><span><i></i>社区刚刚发生</span><b>${escapeHtml(compactExcerpt(latestPost.content, 72))}</b><small>@${escapeHtml(latestPost.handle || 'user')} · ${formatTime(latestPost.createdAt)}</small></button>`
-        : `<div class="tf-community-live-card is-empty"><span><i></i>社区正在等待</span><b>第一条故事动态还没有出现</b><small>刷新论坛后，这里会留下世界的新动静。</small></div>`;
     const refreshLabel = viewState.busy ? '正在收集新动静' : '刷新社区动态';
     const refresh = `<button class="tf-community-refresh" data-action="generate-posts" title="${refreshLabel}" aria-label="${refreshLabel}" ${viewState.busy || !active || !forumEnabled ? 'disabled' : ''}>${viewState.busy ? '<span class="tf-spinner"></span>' : icon('sparkles')}<span>${refreshLabel}</span></button>`;
     if (getForumLayout() === 'modern') {
         return `<section class="tf-community-hero is-layout-modern is-weather-${escapeHtml(weatherClass)} is-time-${escapeHtml(time.id)}">
-            <div class="tf-modern-world-place">${icon('pin')}<span><b>${escapeHtml(data.topic || '故事广场')}</b><small>${escapeHtml(time.label)} · ${escapeHtml(weather.conditionLabel)}</small></span></div>
-            <div class="tf-modern-world-facts"><span>${weather.icon}<b>${escapeHtml(weather.conditionLabel)}</b></span><span>${icon('clock')}<b>${escapeHtml(time.label)}</b></span><span><i></i><b>${escapeHtml(status)}</b></span></div>
-            <div class="tf-community-hero-pulse">${pulse}${refresh}</div>
+            <div class="tf-modern-world-place">${icon('pin')}<span><b>${escapeHtml(data.topic || '故事广场')}</b><small>${escapeHtml(stationPlace)} · 驿站区</small></span></div>
+            <div class="tf-modern-world-facts"><span><em>${weather.icon}</em><b>${escapeHtml(weather.conditionLabel)}　${temperature}℃</b></span><span><em>≋</em><b>${windDirection}　${windLevel}级</b></span></div>
+            <div class="tf-community-hero-pulse"><div class="tf-modern-world-tide">${icon('clock')}<b>潮汐　${tideState} · ${escapeHtml(time.label)}</b></div>${refresh}</div>
         </section>`;
     }
     return `<section class="tf-community-hero is-layout-waystation is-weather-${escapeHtml(weatherClass)} is-time-${escapeHtml(time.id)}">

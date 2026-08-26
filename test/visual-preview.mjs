@@ -282,6 +282,8 @@ try {
     if (!await desktop.locator('.tf-home-page.is-forum-modern').count()) throw new Error('modern forum layout did not render');
     const modernHeroHeight = await desktop.locator('.tf-community-hero').evaluate(node => node.getBoundingClientRect().height);
     if (modernHeroHeight > 90) throw new Error(`modern world status bar is too tall (${modernHeroHeight}px)`);
+    if (await desktop.locator('.tf-community-hero [data-action="open-post"]').count()) throw new Error('modern world status bar should not display or link to post content');
+    if (!/潮汐/.test(await desktop.locator('.tf-modern-world-tide').innerText())) throw new Error('modern world status bar is missing tide and time information');
     await desktop.screenshot({ path: 'preview-forum-modern.png' });
     await desktop.locator('.tf-settings-entry').click();
     await desktop.locator('[data-action="me-section"][data-section="appearance"]').click();

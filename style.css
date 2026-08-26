@@ -7961,13 +7961,12 @@ button.tf-avatar {
 #tavern-forum-root .tf-modern-world-facts > span:first-child { padding-left: 0; }
 #tavern-forum-root .tf-modern-world-facts b { overflow: hidden; font-size: 9px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 #tavern-forum-root .tf-modern-world-facts .tf-icon { width: 15px; }
-#tavern-forum-root .tf-modern-world-facts i { flex: 0 0 auto; width: 6px; height: 6px; background: #48b77c; border-radius: 50%; }
+#tavern-forum-root .tf-modern-world-facts em { flex: 0 0 auto; font-style: normal; }
 
 #tavern-forum-root .is-forum-modern .tf-community-hero-pulse { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; min-width: 0; }
-#tavern-forum-root .is-forum-modern .tf-community-live-card { display: block; min-width: 0; padding: 4px 8px; overflow: hidden; color: var(--tf-text) !important; background: transparent; border: 0; box-shadow: none; backdrop-filter: none; }
-#tavern-forum-root .is-forum-modern .tf-community-live-card > span,
-#tavern-forum-root .is-forum-modern .tf-community-live-card > small { display: none; }
-#tavern-forum-root .is-forum-modern .tf-community-live-card b { display: block; overflow: hidden; font-family: inherit; font-size: 9px; font-weight: 600; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+#tavern-forum-root .is-forum-modern .tf-modern-world-tide { display: flex; gap: 7px; align-items: center; min-width: 0; padding: 4px 8px; color: var(--tf-muted); }
+#tavern-forum-root .is-forum-modern .tf-modern-world-tide .tf-icon { flex: 0 0 auto; width: 15px; }
+#tavern-forum-root .is-forum-modern .tf-modern-world-tide b { overflow: hidden; font-size: 9px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 #tavern-forum-root .is-forum-modern .tf-community-refresh { width: 34px; min-height: 34px; padding: 0; color: #314154 !important; background: var(--tf-faint); border: 1px solid var(--tf-line); border-radius: 10px; box-shadow: none; }
 #tavern-forum-root .is-forum-modern .tf-community-refresh > span:last-child { display: none; }
 
@@ -8040,7 +8039,7 @@ button.tf-avatar {
     #tavern-forum-root .is-forum-modern .tf-community-hero.is-layout-modern { min-height: 64px; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 9px 11px; border-radius: 11px; }
     #tavern-forum-root .is-forum-modern .tf-modern-world-facts { display: none; }
     #tavern-forum-root .is-forum-modern .tf-community-hero-pulse { grid-template-columns: auto; }
-    #tavern-forum-root .is-forum-modern .tf-community-live-card { display: none; }
+    #tavern-forum-root .is-forum-modern .tf-modern-world-tide { display: none; }
     #tavern-forum-root .is-forum-modern .tf-feed-tools { grid-template-columns: 1fr; }
     #tavern-forum-root .is-forum-modern .tf-feed-tools .tf-compose-collapsed { grid-row: 1; }
     #tavern-forum-root .is-forum-modern .tf-feed-tools .tf-feed-tabs { grid-row: 2; }
