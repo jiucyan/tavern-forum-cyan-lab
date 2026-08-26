@@ -942,7 +942,7 @@ function renderPost(post, { detail = false } = {}) {
     const socialProof = renderPostSocialProof(post, comments);
     const commentPreview = !detail ? renderPostCommentPreview(post, comments) : '';
     const postImageClass = hasRealImage(post) ? 'has-post-image has-real-image' : usesTextImage(post) ? 'has-post-image has-text-image' : '';
-    return `<article class="tf-post tf-card is-post-${presentation.type} ${postImageClass}" data-post-id="${escapeHtml(post.id)}" data-search-text="${escapeHtml(postSearchText(post))}">
+    return `<article class="tf-post tf-card is-post-${presentation.type} ${postImageClass}" data-post-id="${escapeHtml(post.id)}" data-waystation-place="${escapeHtml(presentation.location || '')}" data-search-text="${escapeHtml(postSearchText(post))}">
         <header class="tf-post-header">
             ${renderAuthorAvatar(post)}
             ${authorHeader}
@@ -1214,11 +1214,7 @@ function renderHome(data) {
     const feedColumn = layout === 'waystation'
         ? `${waystationMasthead}<div class="tf-feed-tools is-waystation">${waystationComposer}${feedTabs}</div>${topicHeader}${resultsAndFeed}`
         : `<div class="tf-feed-tools">${feedTabs}${renderComposer(layout)}</div>${topicHeader}${feedHeading}${resultsAndFeed}`;
-    const waystationInkFilter = layout === 'waystation'
-        ? `<svg class="tf-waystation-ink-filter" width="0" height="0" aria-hidden="true" focusable="false"><defs><filter id="tf-waystation-ink-extract" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  -0.2126 -0.7152 -0.0722 0.96 0"/></filter></defs></svg>`
-        : '';
     return `<div class="tf-home-page is-forum-${escapeHtml(layout)}">
-        ${waystationInkFilter}
         ${renderCommunityHero(data, posts, { active, forumEnabled })}
         <div class="tf-forum-dashboard">
             <main class="tf-feed-column">${feedColumn}</main>

@@ -104,14 +104,15 @@ try {
             mastheadHeight: mastheadBox?.height || 0,
             boardInsideMasthead: Boolean(mastheadBox && boardBox && boardBox.y >= mastheadBox.y && boardBox.y + boardBox.height <= mastheadBox.y + mastheadBox.height + 1),
             boardInsideComposer: Boolean(composerModule && composerHeading && composerModule.contains(composerHeading)),
-            mastheadPanel: getComputedStyle(masthead).backgroundImage.includes('waystation-masthead-panel-v2.png'),
-            postcardPanel: getComputedStyle(firstPost, '::after').backgroundImage.includes('waystation-postcard-panel-v2.png'),
-            notePanel: getComputedStyle(secondPost, '::after').backgroundImage.includes('waystation-note-panel-v2.png'),
+            mastheadPanel: getComputedStyle(masthead.querySelector(':scope > i')).backgroundImage.includes('wugang-harbor-watercolor.png'),
+            mastheadLegacyDecorHidden: getComputedStyle(masthead, '::after').display === 'none',
+            postcardPanel: getComputedStyle(firstPost, '::after').backgroundImage.includes('wugang-postcard-postmark.png'),
+            notePanel: getComputedStyle(secondPost, '::after').backgroundImage.includes('wugang-landscape-sketch.png'),
             printedArtTransparent: getComputedStyle(firstPost, '::after').backgroundColor === 'rgba(0, 0, 0, 0)' && getComputedStyle(secondPost, '::after').backgroundColor === 'rgba(0, 0, 0, 0)',
-            printedArtFilter: getComputedStyle(firstPost, '::after').filter.includes('tf-waystation-ink-extract') && getComputedStyle(secondPost, '::after').filter.includes('tf-waystation-ink-extract'),
+            printedArtUsesNativeAlpha: !getComputedStyle(firstPost, '::after').filter.includes('url(') && !getComputedStyle(secondPost, '::after').filter.includes('url('),
             printedArtWidthRatio: parseFloat(getComputedStyle(firstPost, '::after').width) / firstPost.getBoundingClientRect().width,
-            routeLayer: getComputedStyle(node.querySelector('.tf-feed-list'), '::before').backgroundImage.includes('svg'),
-            paperclipLayer: getComputedStyle(node.querySelector('.tf-feed-list .tf-post:nth-child(2)'), '::before').backgroundImage.includes('svg'),
+            routeLayer: getComputedStyle(node.querySelector('.tf-feed-list'), '::before').backgroundImage.includes('wugang-route-location.png'),
+            paperclipLayer: getComputedStyle(node.querySelector('.tf-feed-list .tf-post:nth-child(2)'), '::before').backgroundImage.includes('wugang-paperclip.png'),
             paperclipWidth: parseFloat(getComputedStyle(secondPost, '::before').width),
             tackLayer: getComputedStyle(node.querySelector('.tf-feed-list .tf-post:nth-child(1)'), '::before').backgroundImage.includes('svg'),
             botanicalLeaf: getComputedStyle(composerHeading, '::before').backgroundImage.includes('svg') && parseFloat(getComputedStyle(composerHeading, '::before').width) >= 18 && parseFloat(getComputedStyle(composerHeading, '::before').width) <= 23,
@@ -120,8 +121,15 @@ try {
             expandedComposerShell: Boolean(node.querySelector('.tf-compose-collapsed.is-waystation .tf-waystation-compose-actions')),
             bulletinRows: node.querySelectorAll('.tf-waystation-bulletin > span').length,
             residentFlow: getComputedStyle(node.querySelector('.tf-community-residents.is-waystation > div')).display,
+            residentLeaf: getComputedStyle(node.querySelector('.tf-community-residents.is-waystation > header h2'), '::after').backgroundImage.includes('wugang-leaf-nav-icons.png'),
+            injectionDot: (() => {
+                const dot = getComputedStyle(app.querySelector('.tf-injection-dot'));
+                return { width: parseFloat(dot.width), height: parseFloat(dot.height), radius: dot.borderRadius };
+            })(),
             firstPostHeight: firstPost?.getBoundingClientRect().height || 0,
             firstPostBackgroundSize: getComputedStyle(firstPost).backgroundSize,
+            firstPostBackgroundRepeat: getComputedStyle(firstPost).backgroundRepeat,
+            firstPostPaperBorder: getComputedStyle(firstPost).backgroundImage.includes('wugang-paper-border.png'),
             postBodyFont: parseFloat(getComputedStyle(firstPost.querySelector('.tf-post-caption > p')).fontSize),
             sidebarWidth: sidebar?.getBoundingClientRect().width || 0,
             bulletinLabelFont: parseFloat(getComputedStyle(node.querySelector('.tf-waystation-bulletin b')).fontSize),
@@ -131,13 +139,13 @@ try {
             tagsClearBody: !postTagsBox || postTagsBox.top >= postBodyBox.bottom - 1,
             secondArt: (() => {
                 const art = getComputedStyle(secondPost, '::after');
-                return { backgroundSize: art.backgroundSize, backgroundPosition: art.backgroundPosition, transform: art.transform };
+                return { backgroundImage: art.backgroundImage, backgroundSize: art.backgroundSize, backgroundPosition: art.backgroundPosition, transform: art.transform };
             })(),
         };
     });
     if (!/rgb\(33,? 31,? 28\)/.test(waystationFidelity.topbarBackground)) throw new Error(`waystation top navigation is not ink black: ${JSON.stringify(waystationFidelity)}`);
-    if (!waystationFidelity.navStartsOnRight || waystationFidelity.mastheadHeight < 200 || waystationFidelity.boardInsideMasthead || !waystationFidelity.boardInsideComposer || !waystationFidelity.mastheadPanel || !waystationFidelity.postcardPanel || !waystationFidelity.notePanel || !waystationFidelity.printedArtTransparent || !waystationFidelity.printedArtFilter || waystationFidelity.printedArtWidthRatio > .28 || waystationFidelity.secondArt.backgroundSize !== '500%' || waystationFidelity.secondArt.transform !== 'none' || !waystationFidelity.routeLayer || !waystationFidelity.paperclipLayer || waystationFidelity.paperclipWidth > 25 || !waystationFidelity.tackLayer || !waystationFidelity.botanicalLeaf || !waystationFidelity.modernFiltersHidden || !waystationFidelity.textPlaceholderHidden || !waystationFidelity.expandedComposerShell || waystationFidelity.bulletinRows !== 3 || waystationFidelity.residentFlow !== 'flex') throw new Error(`waystation concept structure is incomplete: ${JSON.stringify(waystationFidelity)}`);
-    if (waystationFidelity.firstPostHeight < 220 || !waystationFidelity.firstPostBackgroundSize.includes('cover') || waystationFidelity.postBodyFont < 13 || waystationFidelity.sidebarWidth < 300 || waystationFidelity.bulletinLabelFont < 11 || waystationFidelity.topicLabelFont < 11 || waystationFidelity.residentOverflow > 1 || !waystationFidelity.tagsClearBody) throw new Error(`waystation reading scale is too small or clips content: ${JSON.stringify(waystationFidelity)}`);
+    if (!waystationFidelity.navStartsOnRight || waystationFidelity.mastheadHeight < 180 || waystationFidelity.boardInsideMasthead || !waystationFidelity.boardInsideComposer || !waystationFidelity.mastheadPanel || !waystationFidelity.mastheadLegacyDecorHidden || !waystationFidelity.postcardPanel || !waystationFidelity.notePanel || !waystationFidelity.printedArtTransparent || !waystationFidelity.printedArtUsesNativeAlpha || waystationFidelity.printedArtWidthRatio > .32 || !waystationFidelity.secondArt.backgroundImage.includes('wugang-landscape-sketch.png') || !waystationFidelity.secondArt.backgroundSize.includes('220%') || waystationFidelity.secondArt.transform !== 'none' || !waystationFidelity.routeLayer || !waystationFidelity.paperclipLayer || waystationFidelity.paperclipWidth < 42 || waystationFidelity.paperclipWidth > 46 || !waystationFidelity.tackLayer || !waystationFidelity.botanicalLeaf || !waystationFidelity.residentLeaf || waystationFidelity.injectionDot.width > 10 || waystationFidelity.injectionDot.height > 10 || !waystationFidelity.injectionDot.radius.includes('%') || !waystationFidelity.modernFiltersHidden || !waystationFidelity.textPlaceholderHidden || !waystationFidelity.expandedComposerShell || waystationFidelity.bulletinRows !== 3 || waystationFidelity.residentFlow !== 'flex') throw new Error(`waystation concept structure is incomplete: ${JSON.stringify(waystationFidelity)}`);
+    if (waystationFidelity.firstPostHeight < 220 || !waystationFidelity.firstPostBackgroundSize.includes('100% 100%') || !waystationFidelity.firstPostBackgroundRepeat.includes('repeat') || !waystationFidelity.firstPostPaperBorder || waystationFidelity.postBodyFont < 13 || waystationFidelity.sidebarWidth < 300 || waystationFidelity.bulletinLabelFont < 11 || waystationFidelity.topicLabelFont < 11 || waystationFidelity.residentOverflow > 1 || !waystationFidelity.tagsClearBody) throw new Error(`waystation reading scale is too small or clips content: ${JSON.stringify(waystationFidelity)}`);
     if (waystationFidelity.topicMetrics.some(label => /137\s*条新留言/.test(label))) throw new Error(`waystation topics still expose synthetic engagement as replies: ${JSON.stringify(waystationFidelity.topicMetrics)}`);
     if (await desktop.locator('.tf-comment-preview').first().locator('article').count() !== 2) throw new Error('feed card does not preview two real comments');
     if (!await desktop.locator('.tf-post-context').first().count()) throw new Error('post card is missing its locally derived content type');
@@ -204,6 +212,28 @@ try {
     if (compactWaystation.sidebarLeft <= compactWaystation.feedRight || compactWaystation.sidebarWidth < 270 || compactWaystation.bodyFont < 13 || compactWaystation.residentOverflow > 1 || compactWaystation.pageOverflow > 1) throw new Error(`compact desktop waystation regressed: ${JSON.stringify(compactWaystation)}`);
     await compactDesktop.screenshot({ path: 'preview-forum-waystation-compact.png' });
     await compactDesktop.close();
+
+    const tablet = await browser.newPage({ viewport: { width: 768, height: 1000 }, deviceScaleFactor: 1 });
+    enableScreenshotRetry(tablet);
+    await tablet.goto(url, { waitUntil: 'networkidle' });
+    const tabletWaystation = await tablet.locator('.tf-home-page.is-forum-waystation').evaluate(node => {
+        const dashboard = node.querySelector('.tf-forum-dashboard');
+        const feed = node.querySelector('.tf-feed-column').getBoundingClientRect();
+        const sidebarNode = node.querySelector('.tf-community-sidebar');
+        const sidebar = sidebarNode.getBoundingClientRect();
+        const sidebarColumns = getComputedStyle(sidebarNode).gridTemplateColumns.trim().split(/\s+/).filter(Boolean);
+        return {
+            columns: getComputedStyle(dashboard).gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length,
+            sidebarColumns: sidebarColumns.length,
+            sidebarAfterFeed: sidebar.y >= feed.bottom,
+            sidebarDisplay: getComputedStyle(sidebarNode).display,
+            pageOverflow: node.scrollWidth - node.clientWidth,
+            bodyFont: parseFloat(getComputedStyle(node.querySelector('.tf-post-caption > p')).fontSize),
+        };
+    });
+    if (tabletWaystation.columns !== 1 || tabletWaystation.sidebarDisplay !== 'grid' || tabletWaystation.sidebarColumns !== 2 || !tabletWaystation.sidebarAfterFeed || tabletWaystation.pageOverflow > 1 || tabletWaystation.bodyFont < 13) throw new Error(`tablet waystation did not reflow cleanly: ${JSON.stringify(tabletWaystation)}`);
+    await tablet.screenshot({ path: 'preview-forum-waystation-tablet.png', fullPage: true });
+    await tablet.close();
 
     await desktop.locator('[data-action="open-post"]').first().click();
     await desktop.screenshot({ path: 'preview-post-detail.png' });
@@ -944,16 +974,27 @@ try {
         const dashboard = node.querySelector('.tf-forum-dashboard');
         const sidebar = node.querySelector('.tf-community-sidebar');
         const feed = node.querySelector('.tf-feed-column');
+        const firstPost = node.querySelector('.tf-feed-list > .tf-post');
+        const firstPostActions = firstPost?.querySelector('.tf-post-actions');
+        const firstPostTags = firstPost?.querySelector('.tf-tags');
+        const facts = node.querySelector('.tf-waystation-facts');
+        const route = node.querySelector('.tf-feed-list');
         return {
             columns: dashboard ? getComputedStyle(dashboard).gridTemplateColumns : '',
             sidebarY: sidebar?.getBoundingClientRect().y,
             feedY: feed?.getBoundingClientRect().y,
-            sidebarScrolls: sidebar ? sidebar.scrollWidth > sidebar.clientWidth : false,
+            sidebarDisplay: sidebar ? getComputedStyle(sidebar).display : '',
+            sidebarOverflow: sidebar ? getComputedStyle(sidebar).overflowX : '',
+            factsDisplay: facts ? getComputedStyle(facts).display : '',
+            routeDisplay: route ? getComputedStyle(route, '::before').display : '',
+            actionsPosition: firstPostActions ? getComputedStyle(firstPostActions).position : '',
+            tagsPosition: firstPostTags ? getComputedStyle(firstPostTags).position : '',
+            postFits: firstPost ? firstPost.scrollWidth <= firstPost.clientWidth + 1 : false,
             overflow: node.scrollWidth - node.clientWidth,
         };
     });
     if (mobileForumLayout.columns.trim().split(/\s+/).length !== 1 || mobileForumLayout.sidebarY <= mobileForumLayout.feedY) throw new Error(`mobile forum did not keep the feed before secondary cards: ${JSON.stringify(mobileForumLayout)}`);
-    if (mobileForumLayout.sidebarScrolls || mobileForumLayout.overflow > 1) throw new Error(`mobile community layout still overflows horizontally: ${JSON.stringify(mobileForumLayout)}`);
+    if (mobileForumLayout.sidebarDisplay !== 'grid' || mobileForumLayout.sidebarOverflow !== 'visible' || mobileForumLayout.factsDisplay !== 'none' || mobileForumLayout.routeDisplay !== 'none' || mobileForumLayout.actionsPosition !== 'static' || mobileForumLayout.tagsPosition !== 'static' || !mobileForumLayout.postFits || mobileForumLayout.overflow > 1) throw new Error(`mobile community layout did not apply its compact reflow: ${JSON.stringify(mobileForumLayout)}`);
     await mobile.locator('.tf-view').evaluate(node => { node.scrollTop = 0; });
     await mobile.locator('[data-action="dismiss-toast"]').evaluateAll(buttons => buttons.forEach(button => button.click()));
     await mobile.waitForTimeout(80);
