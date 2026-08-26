@@ -537,6 +537,7 @@ const viewState = {
     openPostMenuId: '',
     openPostImageEditorId: '',
     injectionTokens: { total: 0, forum: 0, roles: 0, world: 0, modules: {}, loading: false },
+    promptViewer: { open: false, loading: false, error: '', messages: [], totalTokens: 0, tokenMode: '', createdAt: 0, requestId: 0 },
     moduleBusy: new Set(),
     taskVerificationBusy: new Set(),
     notificationFilter: 'all',
@@ -1503,6 +1504,17 @@ function renderPublicNpcProfile(data, npc) {
     return page.replace('</div><div class="tf-public-profile-copy">', `${menu}</div><div class="tf-public-profile-copy">`);
 }
 
+function renderPromptViewer() {
+    const viewer = viewState.promptViewer;
+    if (!viewer.open) return '';
+    const body = viewer.loading
+        ? '<div class="tf-prompt-viewer-state"><span class="tf-spinner"></span><b>正在组装本轮提示词并统计 Token…</b><small>这个操作不会调用 AI。</small></div>'
+        : viewer.error
+            ? `<div class="tf-prompt-viewer-state is-error"><b>提示词读取失败</b><small>${escapeHtml(viewer.error)}</small><button class="tf-secondary-button" data-action="open-prompt-viewer">重新读取</button></div>`
+            : `<div class="tf-prompt-viewer-summary"><div><span>输入提示词总计</span><strong data-prompt-viewer-total>${numberLabel(viewer.totalTokens)} Tokens</strong><small>${viewer.messages.length} 条 messages · ${viewer.tokenMode === 'tokenizer' ? '使用酒馆当前分词器统计' : '当前酒馆未提供分词器，使用本地估算'} · 不含模型回复与接口协议开销</small></div><button class="tf-secondary-button" data-action="open-prompt-viewer">重新读取</button></div><div class="tf-prompt-viewer-messages">${viewer.messages.map((message, index) => `<article class="tf-prompt-viewer-message" data-prompt-viewer-message="${index}"><header><div><span>${String(index + 1).padStart(2, '0')}</span><b>${escapeHtml(roleOptionsLabel(message.role))} · ${escapeHtml(message.title || '未命名提示词')}</b><small>${escapeHtml(message.source || 'unknown')}</small></div><strong>${numberLabel(message.tokens)} Tokens</strong></header><pre>${escapeHtml(message.content)}</pre></article>`).join('')}</div>`;
+    return `<section class="tf-card tf-prompt-viewer" aria-live="polite"><header><div><h3>提示词查看器</h3><p>按当前设置即时组装，下面的顺序与发送给 AI 的 messages 顺序一致。</p></div><button class="tf-icon-button" data-action="close-prompt-viewer" title="关闭提示词查看器" aria-label="关闭提示词查看器">${icon('close')}</button></header><div class="tf-prompt-viewer-notice">查看不会发起 AI 请求。正式生成时，概率联动模块与随机帖子数量会重新判定，因此对应文字可能变化。</div>${body}</section>`;
+}
+
 function renderPrompts() {
     const settings = getSettings();
     const items = getForumReadOrderItems(settings);
@@ -1525,7 +1537,7 @@ function renderPrompts() {
         const reason = entry.enabled ? '内容为空，不会发送' : '已停用，不会发送';
         return `<article class="tf-card tf-prompt-entry is-disabled ${open ? 'is-open' : ''}" data-entry-id="${escapeHtml(entry.id)}"><header><span class="tf-prompt-drag-placeholder"></span><span class="tf-prompt-sequence-number">—</span><button class="tf-prompt-summary" data-action="toggle-prompt-editor" data-entry-id="inactive:${escapeHtml(entry.id)}" aria-expanded="${open}"><span><small>论坛设定 · ${escapeHtml(roleOptionsLabel(entry.role))} · ${reason}</small><b>${escapeHtml(entry.title || '未命名设定')}</b></span>${icon('chevron')}</button></header><div class="tf-prompt-editor" ${open ? '' : 'hidden'}>${renderEntryEditor(entry, -1, 0)}</div></article>`;
     };
-    return `<section class="tf-section-page tf-prompt-settings"><header><div><h2>论坛设定</h2><p>这里是论坛唯一的提示词队列；从上到下就是实际发送给 AI 的 messages 顺序。</p></div><div><button class="tf-secondary-button" data-action="import-prompts">导入</button><button class="tf-secondary-button" data-action="export-prompts">导出</button><button class="tf-primary-button" data-action="add-prompt-entry">${icon('plus')}新增</button></div></header><div class="tf-prompt-order-note"><span>队列位置就是实际发送位置</span><small>只列出论坛当前允许读取的内容；拖动 ⠿ 排序，手机端可展开后上移或下移</small></div><div class="tf-prompt-list">${items.map(renderQueueItem).join('')}</div>${inactiveEntries.length ? `<details class="tf-prompt-inactive"><summary>未参与读取 · ${inactiveEntries.length} 条</summary><div class="tf-prompt-list">${inactiveEntries.map(renderInactiveEntry).join('')}</div></details>` : ''}</section>`;
+    return `<section class="tf-section-page tf-prompt-settings"><header><div><h2>论坛设定</h2><p>这里是论坛唯一的提示词队列；从上到下就是实际发送给 AI 的 messages 顺序。</p></div><div><button class="tf-secondary-button" data-action="open-prompt-viewer">${icon('search')}查看提示词</button><button class="tf-secondary-button" data-action="import-prompts">导入</button><button class="tf-secondary-button" data-action="export-prompts">导出</button><button class="tf-primary-button" data-action="add-prompt-entry">${icon('plus')}新增</button></div></header>${renderPromptViewer()}<div class="tf-prompt-order-note"><span>队列位置就是实际发送位置</span><small>只列出论坛当前允许读取的内容；拖动 ⠿ 排序，手机端可展开后上移或下移</small></div><div class="tf-prompt-list">${items.map(renderQueueItem).join('')}</div>${inactiveEntries.length ? `<details class="tf-prompt-inactive"><summary>未参与读取 · ${inactiveEntries.length} 条</summary><div class="tf-prompt-list">${inactiveEntries.map(renderInactiveEntry).join('')}</div></details>` : ''}</section>`;
 }
 
 function roleOptionsLabel(role) {
@@ -2729,6 +2741,69 @@ async function refreshInjectionTokenCount() {
     }
 }
 
+function estimateLocalTokenCount(value) {
+    return Math.ceil(Array.from(String(value || '')).reduce((sum, char) => sum + (/[^\x00-\xff]/.test(char) ? 1 : 0.28), 0));
+}
+
+async function countPromptMessageTokens(messages) {
+    const context = globalThis.SillyTavern?.getContext?.();
+    if (typeof context?.getTokenCountAsync !== 'function') {
+        return { counts: messages.map(message => estimateLocalTokenCount(message.content)), tokenMode: 'estimated' };
+    }
+    try {
+        const counts = await Promise.all(messages.map(async message => Number(await context.getTokenCountAsync(message.content) || 0)));
+        return { counts, tokenMode: 'tokenizer' };
+    } catch (error) {
+        console.warn('[微坛] 酒馆分词器统计失败，已改用本地估算', error);
+        return { counts: messages.map(message => estimateLocalTokenCount(message.content)), tokenMode: 'estimated' };
+    }
+}
+
+async function openForumPromptViewer() {
+    if (viewState.promptViewer.loading) return;
+    const requestId = Number(viewState.promptViewer.requestId || 0) + 1;
+    viewState.promptViewer = { ...viewState.promptViewer, open: true, loading: true, error: '', requestId };
+    render({ preserveScroll: true });
+    try {
+        if (!hasActiveChat()) throw new Error('请先打开一个角色聊天，查看器才能读取当前聊天、人设与世界书。');
+        const settings = getSettings();
+        const data = getForumData();
+        const sourceContext = await getGenerationSourceContext();
+        viewState.promptSourceContext = sourceContext;
+        const linkedWorldInstruction = settings.orchestration.enabled
+            ? buildLinkedWorldInstruction({ settings, data })
+            : '';
+        const request = buildForumGenerationRequest({
+            ...getChatSnapshot(),
+            settings,
+            existingPosts: data.posts,
+            sourceContext,
+            excludedRoles: data.npcs.filter(npc => npc.blocked),
+            linkedWorldInstruction,
+        });
+        const { counts, tokenMode } = await countPromptMessageTokens(request.messages);
+        if (viewState.promptViewer.requestId !== requestId) return;
+        viewState.promptViewer = {
+            open: true,
+            loading: false,
+            error: '',
+            messages: request.messages.map((message, index) => ({
+                ...message,
+                ...request.promptSequence[index],
+                tokens: counts[index] || 0,
+            })),
+            totalTokens: counts.reduce((sum, count) => sum + count, 0),
+            tokenMode,
+            createdAt: Date.now(),
+            requestId,
+        };
+    } catch (error) {
+        if (viewState.promptViewer.requestId !== requestId) return;
+        viewState.promptViewer = { ...viewState.promptViewer, open: true, loading: false, error: error.message || String(error), requestId };
+    }
+    render({ preserveScroll: true });
+}
+
 async function hydrateImages() {
     const localforage = globalThis.SillyTavern?.libs?.localforage;
     if (!localforage) return;
@@ -2779,6 +2854,9 @@ function setMeSection(section) {
     getSettings().ui.meSection = section;
     viewState.selectedPostId = '';
     viewState.publicNpcId = '';
+    if (section !== 'prompts' && (viewState.promptViewer.open || viewState.promptViewer.loading)) {
+        viewState.promptViewer = { ...viewState.promptViewer, open: false, loading: false, requestId: Number(viewState.promptViewer.requestId || 0) + 1 };
+    }
     if (section === 'prompts') viewState.promptSourceContext = null;
     saveSettings();
     render();
@@ -4909,6 +4987,11 @@ async function handleRootClick(event) {
         syncInjection();
         notify('success', removed ? `已清理 ${removed} 篇旧帖` : '当前无需清理');
         return render();
+    }
+    if (action === 'open-prompt-viewer') return void openForumPromptViewer();
+    if (action === 'close-prompt-viewer') {
+        viewState.promptViewer = { ...viewState.promptViewer, open: false, loading: false, requestId: Number(viewState.promptViewer.requestId || 0) + 1 };
+        return render({ preserveScroll: true });
     }
     if (action === 'toggle-prompt-editor') {
         const entryId = target.dataset.entryId;
