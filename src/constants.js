@@ -329,7 +329,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
 });
 
 export const EMPTY_FORUM_DATA = Object.freeze({
-    version: 12,
+    version: 13,
+    events: [],
     topic: '故事广场',
     posts: [],
     npcs: [],

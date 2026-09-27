@@ -1,3 +1,5 @@
+import { normalizeStoryEvents } from './events.js';
+import { normalizeMemoryContinuity, refreshMemorySummary } from './memory.js';
 import { createId } from './prompt.js';
 import { normalizeWorldState } from './world.js';
 
@@ -248,9 +250,11 @@ export function ensureCharacterRole(data, snapshot = {}) {
 export function normalizeForumDataShape(data) {
     const normalized = data && typeof data === 'object' ? data : {};
     const previousVersion = Number(normalized.version || 0);
-    normalized.version = 12;
+    normalized.version = 13;
+    normalized.events = normalizeStoryEvents(normalized.events);
     normalized.topic = text(normalized.topic, '故事广场');
     normalized.posts = Array.isArray(normalized.posts) ? normalized.posts : [];
+    normalized.deletedPosts = Array.isArray(normalized.deletedPosts) ? normalized.deletedPosts.filter(item => item && typeof item === 'object' && item.id) : [];
     normalized.npcs = Array.isArray(normalized.npcs) ? normalized.npcs : [];
     normalized.conversations = Array.isArray(normalized.conversations) ? normalized.conversations : [];
     normalized.notifications = Array.isArray(normalized.notifications) ? normalized.notifications : [];
@@ -263,6 +267,9 @@ export function normalizeForumDataShape(data) {
             id: text(log?.id) || createId('generation-log'),
             createdAt: Math.max(0, Number(log?.createdAt || Date.now())),
             status: log?.status === 'error' ? 'error' : 'success',
+            mode: ['all', 'posts', 'threads', 'world'].includes(log?.mode) ? log.mode : 'all',
+            allowedModules: Array.isArray(log?.allowedModules) ? log.allowedModules.map(String) : [],
+            recoveredAt: Math.max(0, Number(log?.recoveredAt || 0)),
             locallyRepaired: Boolean(log?.locallyRepaired || log?.status === 'recovered'),
             automatic: Boolean(log?.automatic),
             provider: text(log?.provider, 'unknown').slice(0, 80),
@@ -367,6 +374,7 @@ export function normalizeForumDataShape(data) {
         if (npc.blocked) npc.socialState = 'blocked';
         const memory = npc.memory && typeof npc.memory === 'object' ? npc.memory : {};
         npc.memory = {
+            ...normalizeMemoryContinuity(memory),
             relationshipToUser: text(memory.relationshipToUser, '陌生人'),
             relationshipScore: Math.min(100, Math.max(-100, Number(memory.relationshipScore || 0))),
             publicHistory: Array.isArray(memory.publicHistory) ? memory.publicHistory.map(String).filter(Boolean) : [],
@@ -375,6 +383,7 @@ export function normalizeForumDataShape(data) {
             unknownFacts: Array.isArray(memory.unknownFacts) ? memory.unknownFacts.map(String).filter(Boolean) : [],
             attitudes: Array.isArray(memory.attitudes) ? memory.attitudes.map(String).filter(Boolean) : [],
             notes: text(memory.notes),
+            relationshipEvents: Array.isArray(memory.relationshipEvents) ? memory.relationshipEvents.slice(-30).map(event => ({ reason: text(event.reason), delta: Number(event.delta || 0), private: Boolean(event.private), createdAt: Number(event.createdAt || 0) })) : [],
         };
     }
     for (const conversation of normalized.conversations) {
@@ -509,6 +518,7 @@ function rememberActivity(npc, prefix, content) {
     const value = `${prefix}：${text(content)}`;
     if (!text(content) || npc.memory.publicHistory.includes(value)) return;
     npc.memory.publicHistory.push(value);
+    refreshMemorySummary(npc, { changed: true });
     npc.memory.publicHistory = npc.memory.publicHistory.slice(-80);
 }
 

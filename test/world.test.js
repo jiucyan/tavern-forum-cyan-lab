@@ -41,7 +41,7 @@ test('world state migrates tasks, fortune, inventory and reports', () => {
             reports: [{ postId: 'p1', reason: '疑似违规' }],
         },
     });
-    assert.equal(data.version, 12);
+    assert.equal(data.version, 13);
     assert.equal(data.world.tasks[0].status, 'offered');
     assert.equal(data.world.fortune.label, '小吉');
     assert.equal(data.world.inventory[0].quantity, 1);
@@ -54,6 +54,7 @@ test('travel module keeps one persistent companion and its journey log', () => {
     config.modules.travel.enabled = true;
     config.modules.travel.injectIntoChat = true;
     const data = normalizeForumDataShape({});
+    data.world.companion.life.autoSleep = false;
     assert.equal(data.world.companion.weather, 'auto');
     assert.equal(data.world.companion.timeOfDay, 'auto');
     assert.equal(data.world.companion.accessory, 'none');
@@ -139,7 +140,7 @@ test('one API journey plan is scheduled and settled entirely by the local clock'
     const start = 1_800_000_000_000;
     const data = normalizeForumDataShape({
         world: {
-            companion: { name: '团子', species: '青蛙', status: 'home', energy: 80, satiety: 75, happiness: 70 },
+            companion: { name: '团子', species: '青蛙', status: 'home', energy: 80, satiety: 75, happiness: 70, life: { autoSleep: false } },
             trips: [{
                 id: 'trip-once', traveler: '团子', destination: '雾灯小径', status: 'planned',
                 departureMessage: '我出门啦。', returnMessage: '我顺利回来了。', notes: '沿着雾灯走了一圈。',
@@ -178,7 +179,7 @@ test('one API journey plan is scheduled and settled entirely by the local clock'
 test('inventory food and medical supplies close local companion and health loops', () => {
     const health = createLocalHealthEvent({ subject: '林舟', seed: 'inventory-care' });
     const data = normalizeForumDataShape({ world: {
-        companion: { name: '团子', satiety: 40, happiness: 50 },
+        companion: { name: '团子', satiety: 40, happiness: 50, life: { autoSleep: false } },
         health: [health],
         inventory: [
             { id: 'food-1', name: '森林莓果', quantity: 2, description: '可以吃的小零食' },

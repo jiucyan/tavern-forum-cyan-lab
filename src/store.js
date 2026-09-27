@@ -1,3 +1,4 @@
+import { syncStoryEventLinks } from './events.js';
 import {
     CHAT_DATA_KEY,
     DEFAULT_BUILTIN_PROMPTS,
@@ -30,6 +31,23 @@ function hasOwn(target, key) {
 }
 
 let volatileForumData = clone(EMPTY_FORUM_DATA);
+const forumOwners = new WeakMap();
+
+export function captureChatScope() {
+    const context = getContext();
+    const metadata = context.chatMetadata;
+    const identity = JSON.stringify([context.chatId, context.groupId, context.characterId]);
+    return () => {
+        const current = getContext();
+        return current.chatMetadata === metadata && JSON.stringify([current.chatId, current.groupId, current.characterId]) === identity;
+    };
+}
+
+export function assertForumDataCurrent(data) {
+    if (forumOwners.has(data) && !forumOwners.get(data)()) {
+        throw new DOMException('聊天已切换，本次操作已停止，未写入其他聊天。', 'AbortError');
+    }
+}
 
 function getContext() {
     if (!globalThis.SillyTavern?.getContext) throw new Error('没有检测到 SillyTavern 上下文');
@@ -503,11 +521,16 @@ export function getForumData() {
     if (!hasActiveChat()) return normalizeForumDataShape(volatileForumData);
     const context = getContext();
     if (!context.chatMetadata[CHAT_DATA_KEY]) context.chatMetadata[CHAT_DATA_KEY] = clone(EMPTY_FORUM_DATA);
-    return normalizeForumDataShape(context.chatMetadata[CHAT_DATA_KEY]);
+    const data = normalizeForumDataShape(context.chatMetadata[CHAT_DATA_KEY]);
+    const currentChat = captureChatScope();
+    forumOwners.set(data, () => currentChat() && getContext().chatMetadata[CHAT_DATA_KEY] === data);
+    return data;
 }
 
 export async function saveForumData(data, immediate = false) {
+    assertForumDataCurrent(data);
     const normalized = normalizeForumDataShape(data);
+    syncStoryEventLinks(normalized);
     normalized.updatedAt = Date.now();
     if (!hasActiveChat()) {
         volatileForumData = normalized;

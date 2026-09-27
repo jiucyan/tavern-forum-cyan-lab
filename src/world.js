@@ -1,3 +1,6 @@
+import { normalizeDeliveryRequirements, normalizeTaskReceipt } from './task-delivery.js';
+import { normalizeCompanionLife, advanceCompanionLife, canCareForCompanion, recordCompanionCare, addCompanionMilestone, getCompanionLifeView } from './companion-life.js';
+import { applyRelationshipTransition, recordRelationshipEvent } from './memory.js';
 import { DEFAULT_BUILTIN_PROMPTS, WORLD_MODULE_DEFINITIONS } from './constants.js';
 import { createId, parseJsonResponse } from './prompt.js';
 
@@ -46,6 +49,23 @@ export function getEnabledLinkedModuleIds(settings, onlyModuleId = '') {
 
 export function normalizeWorldState(value) {
     const world = value && typeof value === 'object' ? value : {};
+    const previous = { ...world };
+    const normalized = normalizeWorldStateValues(world);
+    // Rendering also normalizes data. Keep references held by pending actions valid.
+    for (const [key, prior] of Object.entries(previous)) {
+        if (Array.isArray(prior) && Array.isArray(normalized[key])) {
+            const byId = new Map(prior.filter(item => item?.id).map(item => [item.id, item]));
+            normalized[key] = normalized[key].map(item => item?.id && byId.has(item.id)
+                ? Object.assign(byId.get(item.id), item) : item);
+        } else if (prior && typeof prior === 'object' && normalized[key] && !Array.isArray(normalized[key])) {
+            normalized[key] = Object.assign(prior, normalized[key]);
+        }
+    }
+    return normalized;
+}
+
+function normalizeWorldStateValues(value) {
+    const world = value && typeof value === 'object' ? value : {};
     world.tasks = list(world.tasks).map(item => ({
         id: text(item?.id) || createId('task'),
         title: text(item?.title, '未命名任务'),
@@ -57,17 +77,22 @@ export function normalizeWorldState(value) {
         status: ['offered', 'accepted', 'completed', 'failed', 'abandoned'].includes(item?.status) ? item.status : 'offered',
         risk: ['low', 'medium', 'high', 'unknown'].includes(item?.risk) ? item.risk : 'unknown',
         reward: text(item?.reward),
+        eventId: text(item?.eventId),
+        deliveryRequirements: normalizeDeliveryRequirements(item?.deliveryRequirements),
+        rewardItems: normalizeDeliveryRequirements(item?.rewardItems),
+        deliveryReceipt: normalizeTaskReceipt(item?.deliveryReceipt),
         failure: text(item?.failure),
         scam: Boolean(item?.scam),
         secret: text(item?.secret),
         objectiveType: ['item', 'action', 'delivery', 'investigation', 'other'].includes(item?.objectiveType) ? item.objectiveType : 'other',
         objectiveTarget: text(item?.objectiveTarget, item?.title),
         objectiveQuantity: integer(item?.objectiveQuantity, 1, 1, 999),
+        steps: list(item?.steps).map(step => typeof step === 'string' ? step.trim() : text(step?.target)).filter(Boolean).slice(0, 12),
         completionCriteria: text(item?.completionCriteria, item?.description),
         acceptedAt: Math.max(0, Number(item?.acceptedAt || 0)),
         acceptedMessageIndex: Math.max(0, Number(item?.acceptedMessageIndex || 0)),
         verificationStatus: ['unverified', 'checking', 'eligible', 'rejected', 'verified'].includes(item?.verificationStatus) ? item.verificationStatus : 'unverified',
-        verificationMethod: ['local', 'api', 'manual'].includes(item?.verificationMethod) ? item.verificationMethod : '',
+        verificationMethod: ['local', 'api', 'manual', 'inventory'].includes(item?.verificationMethod) ? item.verificationMethod : '',
         verificationReason: text(item?.verificationReason),
         evidenceMessageIndex: Number.isInteger(Number(item?.evidenceMessageIndex)) ? Number(item.evidenceMessageIndex) : -1,
         evidenceExcerpt: text(item?.evidenceExcerpt),
@@ -93,6 +118,7 @@ export function normalizeWorldState(value) {
     world.fortuneHistory = list(world.fortuneHistory).map(item => normalizeWorldState({ fortune: item }).fortune).filter(Boolean).slice(-30);
     const companion = world.companion && typeof world.companion === 'object' ? world.companion : {};
     world.companion = {
+        life: normalizeCompanionLife(companion.life),
         name: text(companion.name, '团子'),
         species: text(companion.species, '青蛙'),
         avatarUrl: text(companion.avatarUrl),
@@ -100,6 +126,7 @@ export function normalizeWorldState(value) {
         mood: text(companion.mood, '好奇'),
         destination: text(companion.destination),
         carrying: text(companion.carrying),
+        packedItemIds: list(companion.packedItemIds).map(String).slice(0, 6),
         lastFood: text(companion.lastFood),
         message: text(companion.message, '正在家里安静地准备下一次出门。'),
         bond: integer(companion.bond, 0, 0, 100),
@@ -131,6 +158,15 @@ export function normalizeWorldState(value) {
         destination: text(item?.destination, '未知地点'),
         status: ['planned', 'away', 'returned', 'cancelled'].includes(item?.status) ? item.status : 'planned',
         notes: text(item?.notes),
+        packingSummary: text(item?.packingSummary),
+        packingItems: list(item?.packingItems).slice(0, 6).map(entry => ({
+            id: text(entry?.id), name: text(entry?.name), kind: text(entry?.kind),
+            description: text(entry?.description), effect: text(entry?.effect),
+            consumed: entry?.consumed === 1 ? 1 : 0,
+        })),
+        packingEffects: list(item?.packingEffects).map(String).slice(0, 8),
+        baseDurationMinutes: Math.max(0, Number(item?.baseDurationMinutes || 0)),
+        recalled: Boolean(item?.recalled),
         departureMessage: text(item?.departureMessage),
         returnMessage: text(item?.returnMessage),
         souvenir: text(item?.souvenir),
@@ -266,9 +302,69 @@ export function resolveCompanionTravelTiming(moduleSettings = {}, random = Math.
     };
 }
 
-function fallbackJourneyMessages(companionName, destination) {
+const PACKING_ROLES = {
+    food: { label: '食物', letter: '休憩与沿途风味', souvenir: '当地食材或食谱' },
+    navigation: { label: '导航', letter: '路线发现与地标', souvenir: '路线札记或地标小物' },
+    recording: { label: '记录', letter: '风景细节与观察记录', souvenir: '手绘风景或观察笔记' },
+    charm: { label: '护符', letter: '当地传说与友善相遇', souvenir: '民俗饰物或祝福信物' },
+    medical: { label: '照护', letter: '途中休整与互助', souvenir: '草木标本或照护心得' },
+    tool: { label: '随身道具', letter: '物品用途相关的见闻', souvenir: '与道具用途相关的小物' },
+};
+
+export function getCompanionPackingRole(item) {
+    // 道具名称优先，避免把“鱼形护符”“草莓相机”当成可食用物品。
+    const name = text(item?.name);
+    const value = `${name} ${text(item?.description)} ${text(item?.effect)}`;
+    const toolKind = input => /地图|指南针|罗盘|导航|map|compass/i.test(input) ? 'navigation'
+        : /相机|笔记|画册|画笔|望远镜|camera|notebook/i.test(input) ? 'recording'
+            : /护符|符咒|幸运|吊坠|charm|amulet/i.test(input) ? 'charm' : '';
+    const foodPattern = /食物|可食用|零食|饼|鱼|肉|胡萝卜|莓|水果|果干|果汁|苹果|口粮|点心|饮料|谷物|种子|food|snack|cookie|berry/i;
+    const medicalPattern = /药|绷带|敷料|医用|medicine|potion|bandage/i;
+    const kind = toolKind(name) || (/饰品|雕像|模型|玩偶|钥匙|鱼钩|钓竿/.test(name) ? 'tool'
+        : medicalPattern.test(name) ? 'medical' : foodPattern.test(name) ? 'food'
+            : toolKind(value) || (medicalPattern.test(value) ? 'medical' : foodPattern.test(text(item?.description)) ? 'food' : 'tool'));
+    return { kind, ...PACKING_ROLES[kind] };
+}
+
+export function buildCompanionPackingPlan(data, moduleSettings = {}, random = () => 0.5) {
+    const world = data?.world || {};
+    const ids = [...new Set(list(world.companion?.packedItemIds).map(String))];
+    const unavailable = [];
+    const items = ids.slice(0, 6).flatMap(id => {
+        const item = list(world.inventory).find(entry => entry.id === id);
+        if (!item || item.consumed || Number(item.quantity) < 1 || item.usable === false) { unavailable.push(item?.name || id); return []; }
+        return [{ id, name: item.name, description: text(item.description), effect: text(item.effect), quantity: Number(item.quantity), ...getCompanionPackingRole(item) }];
+    });
+    if (ids.length > 6) unavailable.push('最多携带 6 种物品');
+    const foods = items.filter(item => item.kind === 'food');
+    const foodReduction = Math.min(20, foods.length * 10);
+    const navigationReduction = items.some(item => item.kind === 'navigation') ? 5 : 0;
+    const reduction = foodReduction + navigationReduction;
+    const timing = resolveCompanionTravelTiming(moduleSettings, random);
+    const baseDurationMinutes = timing.durationMinutes;
+    const adjusted = value => Math.max(0.25, Math.round(value * (1 - reduction / 100) * 100) / 100);
+    timing.durationMinutes = adjusted(baseDurationMinutes);
+    timing.durationMinimum = adjusted(timing.durationMinimum);
+    timing.durationMaximum = adjusted(timing.durationMaximum);
+    timing.messageCount = Math.min(8, Math.max(1, Math.floor(timing.durationMinutes / Math.max(0.25, (timing.intervalMinimum + timing.intervalMaximum) / 2))));
+    const effects = [foodReduction && `食物使行程缩短 ${foodReduction}%（最多 20%）`, navigationReduction && '导航道具使行程再缩短 5%（同类不叠加）',
+        ...[...new Set(items.map(item => item.kind))].map(kind => `${PACKING_ROLES[kind].label}：来信侧重${PACKING_ROLES[kind].letter}；纪念品倾向${PACKING_ROLES[kind].souvenir}`)].filter(Boolean);
+    const signature = JSON.stringify([ids, items.map(({ id, name, description, effect, quantity, kind }) => ({ id, name, description, effect, quantity, kind }))]);
+    return { items, unavailable, effects, reduction, timing, baseDurationMinutes, signature };
+}
+
+export function assertCompanionPackingReady(plan, expectedSignature = '') {
+    if (plan.unavailable.length) throw new Error(`行囊物品已不足或不可用：${plan.unavailable.join('、')}，请重新准备行囊`);
+    if (expectedSignature && plan.signature !== expectedSignature) throw new Error('规划期间行囊或物品已改变，请重新出发；本次未扣除物品');
+}
+
+export function isInventoryItemTraveling(data, itemId) {
+    return list(data?.world?.trips).some(trip => trip.status === 'away' && list(trip.packingItems).some(item => item.id === itemId && !item.consumed));
+}
+
+function fallbackJourneyMessages(companionName, destination, packing) {
     return [
-        `${companionName}说已经顺利走出熟悉的小路，正朝${destination}前进。`,
+        packing.items.length ? `${companionName}整理了${packing.items.map(item => item.name).join('、')}，正朝${destination}前进，留心${[...new Set(packing.items.map(item => item.letter))].join('、')}。` : `${companionName}说已经顺利走出熟悉的小路，正朝${destination}前进。`,
         `${companionName}在途中停了一会儿，认真观察了附近的声音和气味。`,
         `${companionName}绕过一段陌生的路，发现了一处适合歇脚的地方。`,
         `${companionName}寄来一枚简短讯号：旅途平安，还想再往前看看。`,
@@ -285,10 +381,29 @@ export function prepareCompanionJourney(data, tripId, moduleSettings = {}, optio
     data.world = normalizeWorldState(data.world);
     const trip = data.world.trips.find(item => item.id === tripId);
     if (!trip) return null;
+    if (trip.schedulePreparedAt) return { trip, timing: { durationMinutes: trip.plannedDurationMinutes, messageCount: trip.messages.length } };
     const companion = data.world.companion;
-    const timing = resolveCompanionTravelTiming(moduleSettings, options.random || Math.random);
+    const packing = buildCompanionPackingPlan(data, moduleSettings, options.random || Math.random);
+    const blocked = canCareForCompanion(companion, 'trip', timestamp);
+    if (blocked) throw new Error(blocked);
+    advanceCompanionLife(companion, timestamp);
+    assertCompanionPackingReady(packing, options.packingSignature);
+    const { timing } = packing;
+    const packed = packing.items.map(entry => data.world.inventory.find(item => item.id === entry.id));
+    const foods = packed.filter(item => packing.items.find(entry => entry.id === item.id).kind === 'food');
+    for (const item of foods) { item.quantity -= 1; item.consumed = item.quantity === 0; item.updatedAt = timestamp; }
+    if (packed.length) {
+        companion.carrying = packed.map(item => item.name).join('、');
+        trip.packingSummary = packed.map(item => `${item.name}${foods.includes(item) ? '（消耗 1 份）' : '（随身携带）'}`).join('、');
+        companion.packedItemIds = packed.filter(item => !foods.includes(item)).map(item => item.id);
+    }
+    trip.packingItems = packing.items.map(item => ({ id: item.id, name: item.name, kind: item.kind, description: item.description, effect: item.effect, consumed: item.kind === 'food' ? 1 : 0 }));
+    trip.packingSummary = packed.length ? trip.packingSummary : (companion.carrying ? `${companion.carrying}（行囊备注，不扣背包）` : '轻装出发，无背包消耗');
+    trip.packingEffects = packing.effects;
+    trip.baseDurationMinutes = packing.baseDurationMinutes;
+    trip.recalled = false;
     const durationMs = Math.max(15000, Math.round(timing.durationMinutes * 60000));
-    const fallback = fallbackJourneyMessages(companion.name, trip.destination);
+    const fallback = fallbackJourneyMessages(companion.name, trip.destination, packing);
     const sourceMessages = [...trip.messages];
     while (sourceMessages.length < timing.messageCount) sourceMessages.push({ id: '', content: fallback[sourceMessages.length % fallback.length], mood: '' });
     const selectedMessages = sourceMessages.length <= timing.messageCount
@@ -346,7 +461,6 @@ export function advanceCompanionJourney(data, options = {}) {
             companion.message = message.content;
             companion.mood = message.mood || companion.mood;
             companion.lastAction = 'signal';
-            trip.notes = `${trip.notes ? `${trip.notes} ` : ''}${message.content}`.trim();
         }
     }
     const returnAt = Number(trip.returnAt || companion.expectedReturnAt || 0);
@@ -358,14 +472,21 @@ export function advanceCompanionJourney(data, options = {}) {
     for (const message of trip.messages) if (!message.deliveredAt && !message.skippedAt) message.skippedAt = timestamp;
     trip.status = 'returned';
     trip.returnedAt = timestamp;
+    trip.recalled = Boolean(options.forceReturn);
     trip.updatedAt = timestamp;
     companion.status = 'home';
     companion.destination = '';
+    // Do not apply home decay to the interval spent travelling.
+    advanceCompanionLife({ ...companion, status: 'away' }, timestamp);
+    recordCompanionCare(companion, 'trip', { now: timestamp });
+    addCompanionMilestone(companion, 'first-return', `${companion.name}第一次从${trip.destination}平安归来。`, timestamp);
+    companion.lastInteractionAt = timestamp;
     companion.departedAt = 0;
     companion.expectedReturnAt = 0;
+    if (trip.packingItems.length) companion.carrying = companion.packedItemIds.map(id => data.world.inventory.find(item => item.id === id && !item.consumed && item.quantity > 0)?.name).filter(Boolean).join('、');
     companion.bond = Math.min(100, Number(companion.bond || 0) + 1);
     companion.lastAction = 'return';
-    companion.message = trip.returnMessage || `我从${trip.destination}回来啦。`;
+    companion.message = trip.recalled ? `收到召回消息，我提前从${trip.destination}回家啦。` : trip.returnMessage || `我从${trip.destination}回来啦。`;
     const souvenir = addTravelSouvenirToInventory(data, trip, companion.name, timestamp);
     if (souvenir) companion.message = `${companion.message} “${souvenir}”已经放进背包。`;
     companion.updatedAt = timestamp;
@@ -409,6 +530,10 @@ export function evaluateModuleGeneration(settings, data, moduleId, { automatic =
         return { allowed: false, code: 'quiet-hours', message: '当前处于安静时段，主动生成已顺延' };
     }
     const runtime = normalizeWorldState(data?.world).moduleRuntime?.[moduleId] || {};
+    if (moduleId === 'travel' && data?.world?.companion) {
+        const blocked = canCareForCompanion(data.world.companion, 'trip', date.getTime());
+        if (blocked) return { allowed: false, code: 'pet-busy', message: blocked };
+    }
     const cooldownMs = Math.max(0, Number(module.cooldownMinutes || 0)) * 60000;
     if (automatic && cooldownMs && runtime.lastGeneratedAt && Date.now() - runtime.lastGeneratedAt < cooldownMs) {
         const remaining = Math.ceil((cooldownMs - (Date.now() - runtime.lastGeneratedAt)) / 60000);
@@ -506,12 +631,25 @@ export function findLocalTaskEvidence(task, chat = []) {
     for (let index = start; index < messages.length; index += 1) {
         const content = chatMessageText(messages[index]);
         if (!content || !acquisition.test(content)) continue;
+        if (task?.objectiveType === 'delivery' && !/交付|交给|送达|上交|递交/.test(content)) continue;
+        if (messages[index]?.is_system || /尚未|还没|没有(?:找到|拿到|获得|完成|交付)|未能|没能|打算|准备(?:去|要)|计划(?:去|要)/.test(content)) continue;
         const normalized = compactEvidenceText(content);
         const targetMatched = normalizedTarget.length >= 2 && normalized.includes(normalizedTarget);
         const partialMatched = targetParts.length && targetParts.filter(part => normalized.includes(part)).length >= Math.min(2, targetParts.length);
         const criteriaParts = String(criteria || '').split(/[，。；、\s]+/).map(compactEvidenceText).filter(part => part.length >= 4);
         const criteriaMatched = criteriaParts.some(part => normalized.includes(part));
         if (!targetMatched && !partialMatched && !criteriaMatched) continue;
+        if (Number(task?.objectiveQuantity || 1) > 1) {
+            const quantity = String(Number(task.objectiveQuantity));
+            const numericContent = content.replace(/[一二两三四五六七八九十]+/g, value => {
+                const digits = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+                if (value.includes('十')) { const [tens, units] = value.split('十'); return String((digits[tens] || 1) * 10 + (digits[units] || 0)); }
+                return value.length === 1 ? String(digits[value]) : value;
+            });
+            const escapedTarget = normalizedTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const count = `(?:^|[^0-9])${quantity}(?:个|件|本|枚|份|株|块|瓶|只|次|张|把)`;
+            if (!escapedTarget || !new RegExp(`(?:${count}.{0,10}${escapedTarget}|${escapedTarget}.{0,10}${count})`).test(compactEvidenceText(numericContent))) continue;
+        }
         return {
             eligible: true,
             reason: `在接受任务后的正文中发现了与“${target}”相符的完成记录。`,
@@ -527,6 +665,28 @@ export function findLocalTaskEvidence(task, chat = []) {
     };
 }
 
+export function getTaskProgress(task, chat = []) {
+    const requirements = normalizeDeliveryRequirements(task?.deliveryRequirements);
+    const targets = requirements.length ? [...requirements, ...list(task?.steps).filter(target => !requirements.some(item => item.name === target)).map(name => ({ name, quantity: 1 }))]
+        : (list(task?.steps).length ? task.steps : [text(task?.objectiveTarget, task?.title)]).map(name => ({ name, quantity: task?.objectiveQuantity || 1 }));
+    const steps = targets.map(({ name: target, quantity }) => ({ target, ...findLocalTaskEvidence({ ...task, objectiveTarget: target, objectiveQuantity: quantity, completionCriteria: target }, chat) }));
+    const completed = steps.filter(step => step.eligible).length;
+    const last = [...steps].reverse().find(step => step.eligible);
+    return {
+        steps, completed, total: steps.length, eligible: completed === steps.length,
+        reason: completed === steps.length ? '所有目标均已在接受任务后的正文中找到完成证据。' : `已完成 ${completed}/${steps.length} 步；仍缺少：${steps.filter(step => !step.eligible).map(step => step.target).join('、')}。`,
+        messageIndex: last?.messageIndex ?? -1,
+        excerpt: steps.filter(step => step.eligible).map(step => step.excerpt).join('\n').slice(0, 1000),
+    };
+}
+
+export function hasTaskVerificationEvidence(task, result, chat) {
+    const index = Number(result.evidenceMessageIndex);
+    const excerpt = compactEvidenceText(result.evidenceExcerpt);
+    return Number.isInteger(index) && index >= Number(task.acceptedMessageIndex || 0) && index < chat.length
+        && !chat[index]?.is_system && excerpt.length >= 4 && compactEvidenceText(chatMessageText(chat[index])).includes(excerpt);
+}
+
 export function buildTaskVerificationRequest({ task, chat = [], names = {} } = {}) {
     const messages = list(chat);
     const start = Math.min(messages.length, Math.max(0, Number(task?.acceptedMessageIndex || 0)));
@@ -535,7 +695,7 @@ export function buildTaskVerificationRequest({ task, chat = [], names = {} } = {
         return `[正文消息 ${start + offset}] ${speaker}：${chatMessageText(message)}`;
     }).filter(line => !line.endsWith('：')).join('\n');
     const system = '你是严格的虚构任务验收器。只能依据任务接受后的正文证据判断，不得因为用户点击提交就判定完成，不得把任务说明本身视为证据。';
-    const user = `【待验收任务】\n名称：${text(task?.title)}\n类型：${text(task?.objectiveType, 'other')}\n目标：${text(task?.objectiveTarget, task?.title)} ×${integer(task?.objectiveQuantity, 1, 1, 999)}\n完成条件：${text(task?.completionCriteria, task?.description)}\n\n【接受任务后的正文】\n${evidence || '没有新的正文。'}\n\n只返回 JSON：{"completed":false,"reason":"判断依据","evidenceMessageIndex":-1,"evidenceExcerpt":"直接引用或概述证据"}。只有正文明确表现目标已经取得、行动已经完成或物品已经交付时，completed 才能为 true。`;
+    const user = `【待验收任务】\n名称：${text(task?.title)}\n类型：${text(task?.objectiveType, 'other')}\n目标：${text(task?.objectiveTarget, task?.title)} ×${integer(task?.objectiveQuantity, 1, 1, 999)}\n完成条件：${text(task?.completionCriteria, task?.description)}\n交付清单：${normalizeDeliveryRequirements(task?.deliveryRequirements).map(item => `${item.name} ×${item.quantity}`).join("；") || "按单一目标"}（delivery 类型需要实际交付证据，所有项目均须完成）\n任务步骤：${list(task?.steps).join("；") || "单一目标"}\n\n【接受任务后的正文】\n${evidence || '没有新的正文。'}\n\n只返回 JSON：{"completed":false,"reason":"判断依据","evidenceMessageIndex":-1,"evidenceExcerpt":"逐字引用一段接受任务后正文的原文，不得概述"}。只有正文明确表现目标已经取得、行动已经完成或物品已经交付时，completed 才能为 true。`;
     return { system, user, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] };
 }
 
@@ -561,6 +721,7 @@ export function applyInventoryItemUse(data, itemId, requestedUse = 'auto') {
     data.world = normalizeWorldState(data.world);
     const item = data.world.inventory.find(entry => entry.id === itemId);
     if (!item || item.consumed || item.quantity <= 0 || item.usable === false) return { applied: false, reason: '这个物品现在不能使用' };
+    if (isInventoryItemTraveling(data, itemId)) return { applied: false, reason: '这件道具正随旅伴旅行，返家后才能使用' };
     const kind = ['medical', 'companion', 'story'].includes(requestedUse) ? requestedUse : classifyInventoryItem(item);
     let summary = `使用了 ${item.name}${item.effect ? `：${item.effect}` : ''}`;
     let targetId = '';
@@ -576,10 +737,13 @@ export function applyInventoryItemUse(data, itemId, requestedUse = 'auto') {
         summary = `${item.name}用于照护${health.subject}的“${health.name}”，恢复进度达到 ${health.progress}%`;
     } else if (kind === 'companion') {
         const companion = data.world.companion;
+        advanceCompanionLife(companion);
+        const blocked = canCareForCompanion(companion, 'feed');
+        if (blocked) return { applied: false, reason: blocked };
         companion.satiety = Math.min(100, Number(companion.satiety || 0) + 16);
         companion.energy = Math.min(100, Number(companion.energy || 0) + 4);
         companion.happiness = Math.min(100, Number(companion.happiness || 0) + 8);
-        companion.bond = Math.min(100, Number(companion.bond || 0) + 1);
+        if (recordCompanionCare(companion, 'feed', { food: { id: `inventory:${item.name}`, name: item.name } })) companion.bond = Math.min(100, Number(companion.bond || 0) + 1);
         companion.lastFood = item.name;
         companion.lastAction = 'feed';
         companion.mood = '满足';
@@ -609,7 +773,7 @@ export function testModuleProbability(settings, data, moduleId, runs = 100, rand
 
 function normalizeTask(item) {
     if (!item || typeof item !== 'object') return null;
-    return normalizeWorldState({ tasks: [item] }).tasks[0];
+    return normalizeWorldState({ tasks: [{ ...item, deliveryReceipt: null, verifiedAt: 0 }] }).tasks[0];
 }
 
 function normalizeTrip(item) {
@@ -722,7 +886,8 @@ export function normalizeWorldUpdates(raw) {
     if (Array.isArray(updates.socialActions)) result.socialActions = updates.socialActions.filter(item => item && typeof item === 'object').map(item => ({
         actorHandle: text(item.actorHandle).replace(/^@/, ''),
         targetHandle: text(item.targetHandle).replace(/^@/, ''),
-        action: ['follow', 'unfollow', 'mute', 'block'].includes(item.action) ? item.action : 'follow',
+        action: ['follow', 'unfollow', 'quarrel', 'reconcile'].includes(item.action) ? item.action : '',
+        reason: text(item.reason).slice(0, 600),
     }));
     if (Array.isArray(updates.moderationActions)) result.moderationActions = updates.moderationActions.filter(item => item && typeof item === 'object').map(item => ({
         actorHandle: text(item.actorHandle).replace(/^@/, ''),
@@ -744,6 +909,7 @@ export function normalizeProactiveDirectMessages(raw) {
     if (typeof raw === 'string') root = parseJsonResponse(raw);
     const items = Array.isArray(root?.dmEvents) ? root.dmEvents : Array.isArray(root?.worldUpdates?.dmEvents) ? root.worldUpdates.dmEvents : [];
     return items.map(item => ({
+        ...(text(item?.eventId) ? { eventId: text(item.eventId) } : {}),
         targetHandle: text(item?.targetHandle).replace(/^@/, ''),
         content: text(item?.content),
         reason: text(item?.reason),
@@ -846,6 +1012,8 @@ export function applyWorldUpdates(data, updates, settings) {
     data.world = normalizeWorldState(data.world);
     const applied = [];
     const previousCompanion = { ...data.world.companion };
+    const hasScheduledJourney = data.world.trips.some(trip => trip.status === 'away' && trip.schedulePreparedAt);
+    const companionUnavailable = data.world.companion.status !== 'away' && Boolean(canCareForCompanion(data.world.companion, 'trip'));
     const claimedSouvenirs = new Set();
     if (settings.modules?.tasks?.enabled && updates.tasks?.length) {
         appendUnique(data.world.tasks, updates.tasks, item => `${item.title}|${item.issuer}|${item.description}`);
@@ -855,10 +1023,14 @@ export function applyWorldUpdates(data, updates, settings) {
         data.world.fortune = updates.fortune;
         applied.push('运势');
     }
-    if (settings.modules?.travel?.enabled && updates.travel?.length) {
+    if (settings.modules?.travel?.enabled && updates.travel?.length && !hasScheduledJourney && !companionUnavailable) {
+        if (updates.travel.some(item => item.status === 'away')) assertCompanionPackingReady(buildCompanionPackingPlan(data, settings.modules.travel));
         const companionName = data.world.companion?.name || '旅伴';
-        const journeys = updates.travel.map(item => ({ ...item, traveler: item.traveler === '未知旅人' ? companionName : item.traveler }));
+        const journeys = updates.travel.filter((item, index, entries) => item.status !== "away" || index === entries.findIndex(trip => trip.status === "away")).map(item => ({ ...item, traveler: item.traveler === '未知旅人' ? companionName : item.traveler }));
         appendUnique(data.world.trips, journeys, item => `${item.traveler}|${item.destination}|${item.notes}`);
+        for (const journey of data.world.trips) {
+            if (journey.status === 'away' && !journey.schedulePreparedAt) prepareCompanionJourney(data, journey.id, settings.modules.travel);
+        }
         applied.push(`外出 ${updates.travel.length}`);
         for (const incoming of journeys) {
             const stored = data.world.trips.find(item => `${item.traveler}|${item.destination}|${item.notes}` === `${incoming.traveler}|${incoming.destination}|${incoming.notes}`);
@@ -866,8 +1038,15 @@ export function applyWorldUpdates(data, updates, settings) {
             if (souvenir) claimedSouvenirs.add(souvenir);
         }
     }
-    if (settings.modules?.travel?.enabled && updates.companion) {
+    if (settings.modules?.travel?.enabled && updates.companion && !hasScheduledJourney && !companionUnavailable) {
         data.world.companion = normalizeWorldState({ companion: { ...data.world.companion, ...updates.companion } }).companion;
+        const activeTrip = data.world.trips.find(trip => trip.status === 'away' && trip.schedulePreparedAt);
+        if (activeTrip) {
+            data.world.companion.status = 'away';
+            data.world.companion.expectedReturnAt = activeTrip.returnAt;
+            data.world.companion.destination = activeTrip.destination;
+            data.world.companion.carrying = data.world.companion.departedCarrying;
+        }
         applied.push('旅伴状态');
         const carried = addCompanionCarryingToInventory(data, data.world.companion, previousCompanion, claimedSouvenirs);
         if (carried) {
@@ -887,14 +1066,22 @@ export function applyWorldUpdates(data, updates, settings) {
         for (const action of updates.socialActions) {
             const actor = findNpcByHandle(data, action.actorHandle);
             const target = findNpcByHandle(data, action.targetHandle);
-            if (!actor) continue;
+            if (!actor || actor.blocked || target?.blocked) continue;
+            const userTarget = !target && ['me', 'user', String(settings.profile?.handle || '').replace(/^@/, '').toLocaleLowerCase()].includes(String(action.targetHandle).toLocaleLowerCase());
+            if (['quarrel', 'reconcile'].includes(action.action)) {
+                if (!target && !userTarget) continue;
+                applyRelationshipTransition(actor, action.targetHandle, action.action, action.reason, { userTarget });
+                if (target && target.id !== actor.id) applyRelationshipTransition(target, actor.handle, action.action, action.reason);
+                continue;
+            }
             if (action.action === 'follow') {
                 if (target) {
                     actor.followingHandles ||= [];
-                    if (!actor.followingHandles.includes(target.handle)) actor.followingHandles.push(target.handle);
-                } else if (['me', 'user'].includes(action.targetHandle.toLocaleLowerCase())) {
+                    if (!actor.followingHandles.includes(target.handle)) { actor.followingHandles.push(target.handle); recordRelationshipEvent(actor, '关注了 @' + target.handle, 0); }
+                } else if (userTarget) {
                     const wasFollowing = actor.followsUser;
                     actor.followsUser = true;
+                    if (!wasFollowing) recordRelationshipEvent(actor, action.reason || '角色主动关注了用户', 1);
                     if (!wasFollowing && settings?.notifications?.follow) {
                         data.notifications ||= [];
                         data.notifications.unshift({ id: createId('notification'), type: actor.followedByUser ? 'mutual' : 'follow', actorNpcId: actor.id, actorName: actor.name, postId: '', content: actor.followedByUser ? `${actor.name} 与你互相关注了` : `${actor.name} 关注了你`, read: false, createdAt: Date.now() });
@@ -902,7 +1089,7 @@ export function applyWorldUpdates(data, updates, settings) {
                 }
             } else if (action.action === 'unfollow') {
                 if (target) actor.followingHandles = list(actor.followingHandles).filter(handle => handle !== target.handle);
-                else if (['me', 'user'].includes(action.targetHandle.toLocaleLowerCase())) actor.followsUser = false;
+                else if (userTarget && actor.followsUser) { actor.followsUser = false; recordRelationshipEvent(actor, action.reason || '角色取消关注用户', -1); }
             }
         }
     }
@@ -983,7 +1170,7 @@ export function buildWorldModuleInjection(data, settings, onlyModuleId = '') {
     if (enabled('travel')) {
         const items = world.trips.filter(item => ['planned', 'away', 'returned'].includes(item.status)).slice(-10);
         const companion = world.companion;
-        sections.push(`【旅伴】\n${companion.name}（${companion.species}）目前${companion.status === 'away' ? `正在${companion.destination || '外面'}旅行` : companion.status === 'resting' ? '正在休息' : '在家'}；心情：${companion.mood}；亲密度：${companion.bond}${companion.message ? `；留言：${companion.message}` : ''}${items.length ? `\n近期见闻：\n${items.map(item => `- ${item.destination} [${item.status}]：${item.notes}${item.souvenir ? `；带回：${item.souvenir}` : ''}`).join('\n')}` : ''}`);
+        sections.push(`【旅伴】\n${companion.name}（${companion.species}）目前${companion.status === 'away' ? `正在${companion.destination || '外面'}旅行` : companion.status === 'resting' ? '正在休息' : '在家'}；心情：${companion.mood}；亲密度：${companion.bond}${companion.message ? `；留言：${companion.message}` : ''}${items.length ? `\n近期见闻：\n${items.map(item => `- ${item.destination} [${item.status}]：${item.status === 'returned' && !item.recalled ? item.notes : item.messages.filter(message => message.deliveredAt).map(message => message.content).join('；')}${item.status === 'returned' && item.souvenir ? `；带回：${item.souvenir}` : ''}${item.packingSummary ? `；行囊：${item.packingSummary}` : ''}`).join('\n')}` : ''}`);
     }
     if (enabled('inventory')) {
         const items = world.inventory.filter(item => !item.consumed && item.quantity > 0).slice(-30);
@@ -999,7 +1186,7 @@ export function buildWorldModuleInjection(data, settings, onlyModuleId = '') {
 
 function moduleOutputShape(moduleIds) {
     const fields = [];
-    if (moduleIds.includes('tasks')) fields.push('"tasks":[{"title":"任务名","description":"内容","issuer":"实名发布者或匿名委托人","issuerHandle":"实名时填写已有角色或组织账号，匿名时留空","anonymous":false,"objectiveType":"item|action|delivery|investigation|other","objectiveTarget":"正文中需要取得的物品或完成的目标","objectiveQuantity":1,"completionCriteria":"可由后续正文验证的明确条件","risk":"low|medium|high|unknown","reward":"奖励","failure":"失败影响","scam":false,"secret":"幕后真相"}]');
+    if (moduleIds.includes('tasks')) fields.push('"tasks":[{"title":"任务名","description":"内容","issuer":"实名发布者或匿名委托人","issuerHandle":"实名时填写已有角色或组织账号，匿名时留空","anonymous":false,"objectiveType":"item|action|delivery|investigation|other","objectiveTarget":"正文中需要取得的物品或完成的目标","objectiveQuantity":1,"eventId":"有关联时填已有事件ID","deliveryRequirements":[{"name":"背包中物品的准确名称，仅item或delivery任务填写","quantity":1}],"rewardItems":[{"name":"明确约定的奖励物品","quantity":1}],"completionCriteria":"可由后续正文验证的明确条件","risk":"low|medium|high|unknown","reward":"奖励","failure":"失败影响","scam":false,"secret":"幕后真相"}]');
     if (moduleIds.includes('fortune')) fields.push('"fortune":{"date":"世界内日期","label":"运势名","score":0,"summary":"概述","effects":["轻微影响"]}');
     if (moduleIds.includes('travel')) fields.push('"travel":{"companion":{"name":"旅伴名","species":"宠物种类","status":"away","mood":"出发心情","destination":"目的地","message":"出发留言","bond":0},"journeys":[{"traveler":"旅伴名","destination":"地点","status":"away","departureMessage":"出发留言","messages":[{"content":"途中消息","mood":"当时心情","progress":0.25}],"returnMessage":"返家留言","notes":"完整旅途摘要","souvenir":"返家后才揭晓的小物件","souvenirDescription":"物品描述","souvenirEffect":"轻微用途"}]}');
     if (moduleIds.includes('inventory')) fields.push('"inventory":[{"name":"物品","description":"描述","quantity":1,"effect":"剧情作用","source":"来源"}]');
@@ -1007,7 +1194,7 @@ function moduleOutputShape(moduleIds) {
     if (moduleIds.includes('moderation')) fields.push('"moderationActions":[{"actorHandle":"有管理权限的角色账号","postId":"准确帖子ID","commentId":"举报评论时填写准确评论ID，否则留空","action":"hide|delete|warn|dismiss","reason":"依据"}]');
     if (moduleIds.includes('__npcReports')) fields.push('"reports":[{"reporterHandle":"已有且未拉黑的NPC账号","postId":"已有帖子的准确ID","commentId":"举报评论时填写准确评论ID，否则留空","reason":"该NPC站内举报的具体理由"}]');
     if (moduleIds.includes('__permissionAssignments')) fields.push('"permissionAssignments":[{"targetHandle":"已有论坛成员账号或me","permissionRole":"member|official|moderator|admin","reason":"符合世界观的任命依据"}]');
-    fields.push('"socialActions":[{"actorHandle":"角色账号","targetHandle":"目标账号或me","action":"follow|unfollow"}]');
+    fields.push('"socialActions":[{"actorHandle":"角色账号","targetHandle":"目标账号或me","action":"follow|unfollow|quarrel|reconcile","reason":"本轮公开互动中的具体原因；没有明确冲突或和解则不要改变关系"}]');
     return `{"worldUpdates":{${fields.join(',')}}}`;
 }
 
@@ -1048,8 +1235,14 @@ export function buildWorldStateSummary(data, settings, moduleIds = []) {
     if (ids.includes('travel')) {
         const companion = world.companion;
         parts.push(`当前旅伴：${companion.name}/${companion.species}/${companion.status}/${companion.mood}/${companion.destination || '无去向'}/${companion.carrying || '未带物品'}/亲密度${companion.bond}`);
+        const lifeView = getCompanionLifeView(companion);
+        parts.push(`养成近况：${lifeView.stageLabel}，性格${lifeView.personality}${lifeView.favoriteFood ? `，喜欢${lifeView.favoriteFood.name}` : ''}。可自然体现在旅途见闻中，不修改养成数值。`);
+        if (companion.status !== 'away') {
+            const packing = buildCompanionPackingPlan({ world }, settings?.modules?.travel);
+            parts.push(`【背包行囊约束】\n${packing.items.map(item => `${item.name}（${item.label}，${item.kind === 'food' ? '出发消耗1份' : '不消耗、随行至返家'}）：${item.description}；${item.effect}`).join('\n') || '未选择背包物品。自由填写的行囊只作叙事备注，不产生物品或数值效果。'}\n${packing.effects.join('\n')}\n本地结算后的旅行时长范围：${packing.timing.durationMinimum}～${packing.timing.durationMaximum}分钟。请在来信与返程摘要中自然体现所带物品的用途，纪念品从上述倾向中选择适合世界观的小物；这是题材倾向，不是稀有度或掉落率加成。只规划一趟 away 旅程，提供完整 messages、notes、returnMessage 和 souvenir，扣除物品与计时由插件完成，不要输出背包扣减或在出发留言、途中来信中揭晓纪念品。${packing.unavailable.length ? '行囊存在缺失物品，本轮不要安排出发。' : ''}`);
+        }
         if (world.fortune) parts.push(`影响旅伴的今日运势：${world.fortune.label}/${world.fortune.theme || '日常'}/${JSON.stringify(world.fortune.modifiers || {})}`);
-        if (world.trips.length) parts.push(`既有旅途：${world.trips.slice(-12).map(item => `${item.id}/${item.destination}/${item.status}/${item.notes}`).join('；')}`);
+        if (world.trips.length) parts.push(`既有旅途：${world.trips.slice(-12).map(item => `${item.id}/${item.destination}/${item.status}/${item.status === 'returned' && !item.recalled ? item.notes : item.messages.filter(message => message.deliveredAt).map(message => message.content).join('；')}`).join('；')}`);
     }
     if (ids.includes('inventory') && world.inventory.length) parts.push(`已有背包：${world.inventory.filter(item => !item.consumed).slice(-30).map(item => `${item.id}/${item.name}×${item.quantity}`).join('；')}`);
     if (ids.includes('health') && world.health.length) parts.push(`已有健康状态：${world.health.filter(item => item.status !== 'resolved').slice(-20).map(item => `${item.id}/${item.subject}/${item.name}/${item.status}`).join('；')}`);

@@ -31,6 +31,9 @@ function authHeaders(apiKey, includeContentType = true) {
 
 async function fetchJson(url, init, timeoutMs = 90000) {
     const controller = new AbortController();
+    const abort = () => controller.abort();
+    init.signal?.addEventListener('abort', abort, { once: true });
+    if (init.signal?.aborted) controller.abort();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
         const response = await fetch(url, { ...init, signal: controller.signal });
@@ -47,11 +50,13 @@ async function fetchJson(url, init, timeoutMs = 90000) {
         }
         return payload;
     } catch (error) {
+        if (init.signal?.aborted) throw new DOMException('已取消生成', 'AbortError');
         if (error?.name === 'AbortError') throw new Error('API 请求超时，请检查地址或网络');
         if (error instanceof TypeError) throw new Error(`无法连接 API（可能是地址错误或浏览器 CORS 限制）：${error.message}`);
         throw error;
     } finally {
         clearTimeout(timer);
+        init.signal?.removeEventListener('abort', abort);
     }
 }
 
@@ -109,7 +114,20 @@ export function buildTextRequestBody(config, request) {
     return body;
 }
 
-export async function generateForumTextResult(config, request, { captureTrace = false } = {}) {
+async function receiveUnlessCancelled(promise, signal) {
+    if (!signal) return promise;
+    signal.throwIfAborted();
+    let cancel;
+    const cancelled = new Promise((_, reject) => {
+        cancel = () => reject(new DOMException('已停止接收生成结果', 'AbortError'));
+        signal.addEventListener('abort', cancel, { once: true });
+    });
+    try { return await Promise.race([promise, cancelled]); }
+    finally { signal.removeEventListener('abort', cancel); }
+}
+
+export async function generateForumTextResult(config, request, { captureTrace = false, signal } = {}) {
+    signal?.throwIfAborted();
     if (config?.provider === 'sillytavern') {
         const context = globalThis.SillyTavern?.getContext?.();
         const generateRaw = context?.generateRaw;
@@ -121,7 +139,8 @@ export async function generateForumTextResult(config, request, { captureTrace = 
             ...(request?.jsonSchema ? { jsonSchema: request.jsonSchema } : {}),
         };
         if (captureTrace && !request?.jsonSchema && typeof context.generateRawData === 'function') {
-            const payload = await context.generateRawData(options);
+            const payload = await receiveUnlessCancelled(context.generateRawData(options), signal);
+            signal?.throwIfAborted();
             const text = typeof payload === 'string' ? payload : extractAssistantText(payload);
             if (!String(text || '').trim()) throw new Error('酒馆默认连接返回了空内容');
             return {
@@ -129,7 +148,8 @@ export async function generateForumTextResult(config, request, { captureTrace = 
                 reasoning: typeof payload === 'string' ? '' : extractAssistantReasoning(payload),
             };
         }
-        const text = await generateRaw(options);
+        const text = await receiveUnlessCancelled(generateRaw(options), signal);
+        signal?.throwIfAborted();
         if (!String(text || '').trim()) throw new Error('酒馆默认连接返回了空内容');
         return { text: String(text).trim(), reasoning: '' };
     }
@@ -141,6 +161,7 @@ export async function generateForumTextResult(config, request, { captureTrace = 
         method: 'POST',
         headers: authHeaders(config.apiKey),
         body: JSON.stringify(body),
+        signal,
     });
     const text = extractAssistantText(payload);
     if (!text) throw new Error('文本 API 返回了空内容');

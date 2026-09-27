@@ -461,7 +461,7 @@ test('facts and expanded social state migrate to v11', () => {
     role.socialState = 'quarrel';
     const fact = createFact({ content: '只有甲知道', visibility: 'restricted', knownBy: [role.id] });
     const data = normalizeForumDataShape({ posts: [], npcs: [role], facts: [fact] });
-    assert.equal(data.version, 12);
+    assert.equal(data.version, 13);
     assert.equal(data.npcs[0].socialState, 'quarrel');
     assert.deepEqual(data.facts[0].knownBy, [role.id]);
 });
@@ -509,7 +509,7 @@ test('current Char becomes a bound role with a built-in image avatar', () => {
 test('notifications migrate and preserve social types', () => {
     const notice = createNotification({ type: 'reply', actorName: '小北', postId: 'p1', content: '回复了你' });
     const data = normalizeForumDataShape({ posts: [], npcs: [], notifications: [notice] });
-    assert.equal(data.version, 12);
+    assert.equal(data.version, 13);
     assert.equal(data.notifications[0].type, 'reply');
     assert.equal(data.notifications[0].read, false);
 });

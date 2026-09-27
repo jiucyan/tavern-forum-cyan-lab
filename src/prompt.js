@@ -1,3 +1,4 @@
+import { formatMemoryContinuity } from './memory.js';
 import { DEFAULT_BUILTIN_PROMPTS } from './constants.js';
 
 const DEFAULT_AUTHOR = '匿名网友';
@@ -16,6 +17,7 @@ export const FORUM_GENERATION_JSON_SCHEMA = Object.freeze({
                 description: 'Optional updates for linked world modules requested by the caller.',
                 additionalProperties: true,
             },
+            eventUpdates: { type: 'array', items: { type: 'object', additionalProperties: true }, description: 'Optional story event links and outcomes, when requested.' },
             dmEvents: {
                 type: 'array',
                 description: 'Optional proactive direct messages requested by the caller.',
@@ -23,6 +25,7 @@ export const FORUM_GENERATION_JSON_SCHEMA = Object.freeze({
                     type: 'object',
                     properties: {
                         targetHandle: { type: 'string' },
+                        eventId: { type: 'string' },
                         content: { type: 'string' },
                         reason: { type: 'string' },
                     },
@@ -43,6 +46,7 @@ export const FORUM_GENERATION_JSON_SCHEMA = Object.freeze({
                         reposts: { type: 'integer', minimum: 0, description: 'Optional believable initial repost count.' },
                         repostOf: { type: 'string', description: 'Optional exact ID of an existing post being reposted. Omit for an original post.' },
                         quoteText: { type: 'string', description: 'Optional snapshot of the reposted post. Use only with repostOf.' },
+                        eventId: { type: 'string', description: 'Existing story event ID or new: key requested by the caller.' },
                         storyRelevance: { type: 'integer', minimum: 0, maximum: 100, description: 'Optional relevance to current story events.' },
                         tags: {
                             type: 'array',
@@ -207,7 +211,7 @@ function normalizePoll(poll) {
     };
 }
 
-function formatMemory(npc) {
+function formatMemory(npc, options = {}) {
     const memory = npc?.memory || {};
     return [
         `@${safeString(npc?.handle)}（${safeString(npc?.name)}）`,
@@ -216,8 +220,10 @@ function formatMemory(npc) {
         memory.knownFacts?.length && `确定知道：${memory.knownFacts.join('；')}`,
         memory.unknownFacts?.length && `明确不知道：${memory.unknownFacts.join('；')}`,
         memory.attitudes?.length && `对其他角色态度：${memory.attitudes.join('；')}`,
-        memory.publicHistory?.length && `公开经历：${memory.publicHistory.slice(-12).join('；')}`,
+        memory.publicHistory?.length && `最新公开经历：${memory.publicHistory.slice(memory.publicSummary ? -4 : -12).join('；')}`,
         memory.notes && `用户备注：${memory.notes}`,
+        formatMemoryContinuity(npc, options),
+        memory.relationshipEvents?.some(event => !event.private) && `近期关系变化：${memory.relationshipEvents.filter(event => !event.private).slice(-5).map(event => event.reason).join('；')}`,
     ].filter(Boolean).join('\n');
 }
 
@@ -732,6 +738,7 @@ export function normalizeGeneratedForum(raw, now = Date.now()) {
             tags,
             likes: generatedEngagement(post?.likes, fallbackLikes),
             reposts: generatedEngagement(post?.reposts, fallbackReposts),
+            eventId: safeString(post?.eventId).slice(0, 100),
             storyRelevance: safeInteger(post?.storyRelevance, 0, 0, 100),
             mentions: extractMentions(post?.content),
             repostOf: safeString(post?.repostOf),
@@ -963,11 +970,16 @@ export function normalizeNpcProfile(raw) {
 }
 
 export function buildDirectMessageRequest({ conversation, messages = [], npc = null, sourceContext = {}, userName = 'User', settings = {} }) {
+    const memoryRole = npc || (sourceContext.roleMemories || []).find(role =>
+        (conversation?.handle && safeString(role.handle).replace(/^@/, '').toLocaleLowerCase() === safeString(conversation.handle).replace(/^@/, '').toLocaleLowerCase())
+        || (conversation?.type === 'char' && conversation.targetId && role.bindingType === 'char' && role.bindingTarget === conversation.targetId));
     const recent = messages.slice(-30).map(message => `${message.role === 'assistant' ? conversation.name : userName}：${safeString(message.content)}`).join('\n');
     const identity = conversation?.type === 'char'
         ? `你正在扮演当前故事角色“${safeString(conversation?.name, 'Char')}”。请严格保持 Char 人设、故事记忆与说话方式。`
         : `你正在扮演论坛角色“${safeString(conversation?.name, '角色')}”（@${safeString(conversation?.handle, 'role')}）。\n角色人设：${safeString(npc?.persona, '根据其论坛身份和已有发言保持自然一致。')}`;
     const references = [
+        memoryRole && formatMemory(memoryRole, { privateChannel: true }),
+        ...(sourceContext.facts || []).map(fact => `该角色可知事实：${fact.content}`),
         sourceContext.characterPersona && `Char 人设与场景：\n${sourceContext.characterPersona}`,
         sourceContext.userPersona && `User 人设：\n${sourceContext.userPersona}`,
         sourceContext.chat && `最近故事正文：\n${sourceContext.chat}`,
@@ -991,7 +1003,7 @@ export function buildRoleDirectMessageRequest({ conversation, messages = [], spe
         ...(sourceContext.facts || []).map(fact => `可知事实：${fact.content}`),
     ].filter(Boolean).join('\n\n');
     return {
-        system: `${builtinPrompt(settings, 'roleDirectMessage')}\n你正在扮演“${safeString(speaker?.name)}”（@${safeString(speaker?.handle)}），与“${safeString(otherRole?.name)}”进行绝对私密的一对一私信。\n${formatMemory(speaker)}${speaker?.memory?.privateTalks?.length ? `\n该角色自己的私密记忆：${speaker.memory.privateTalks.join('；')}` : ''}\n人设：${safeString(speaker?.persona) || safeString(speaker?.bindingContent, '根据已有资料自然保持一致。')}\n只能使用该角色明确知道的资料和这段私信历史；不得知道第三人的私信，不得把秘密公开，不替另一位角色发言。只输出一条自然私信，不写旁白或 JSON。`,
+        system: `${builtinPrompt(settings, 'roleDirectMessage')}\n你正在扮演“${safeString(speaker?.name)}”（@${safeString(speaker?.handle)}），与“${safeString(otherRole?.name)}”进行绝对私密的一对一私信。\n${formatMemory(speaker, { privateChannel: true })}\n人设：${safeString(speaker?.persona) || safeString(speaker?.bindingContent, '根据已有资料自然保持一致。')}\n只能使用该角色明确知道的资料和这段私信历史；不得知道第三人的私信，不得把秘密公开，不替另一位角色发言。只输出一条自然私信，不写旁白或 JSON。`,
         user: `${references ? `【允许读取的资料】\n${references}\n\n` : ''}【A-B 私密记录】\n${recent || '暂无记录'}${direction ? `\n\n【用户给本轮的幕后方向（不要逐字复述）】\n${safeString(direction)}` : ''}\n\n请由“${safeString(speaker?.name)}”发送下一条消息。`,
     };
 }
@@ -1009,12 +1021,12 @@ export function buildNpcInjection(npcs, options = {}) {
     return applyTemplate(options.template || DEFAULT_BUILTIN_PROMPTS.roleInjection, content);
 }
 
-export function prunePosts(posts, maxPosts) {
+export function prunePosts(posts, maxPosts, protectedIds = new Set()) {
     const list = Array.isArray(posts) ? posts : [];
     const limit = safeInteger(maxPosts, 100, 1, 5000);
     if (list.length <= limit) return { posts: list, removed: [] };
-    const favorites = list.filter(post => post?.favorite);
-    const nonFavorites = list.filter(post => !post?.favorite);
+    const favorites = list.filter(post => post?.favorite || protectedIds.has(post?.id));
+    const nonFavorites = list.filter(post => !post?.favorite && !protectedIds.has(post?.id));
     const availableSlots = Math.max(0, limit - favorites.length);
     const keptNonFavorites = nonFavorites.slice(-availableSlots || nonFavorites.length);
     const keepIds = new Set([...favorites, ...keptNonFavorites].map(post => post.id));
