@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { DEFAULT_SETTINGS } from '../src/constants.js';
+import { COMPANION_HABITATS } from '../src/companion-scenes.js';
 import { createNpc, normalizeForumDataShape } from '../src/forum.js';
+
 import {
     applyModerationProposal,
     applyInventoryItemUse,
@@ -29,6 +31,18 @@ import {
 function settings() {
     return JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
 }
+
+test('all companion scenes survive save normalization and legacy data still defaults to meadow', () => {
+    for (const { id } of COMPANION_HABITATS) {
+        const saved = normalizeForumDataShape({ world: { companion: { name: '团子', habitat: id } } });
+        const restored = normalizeForumDataShape(JSON.parse(JSON.stringify(saved)));
+        assert.equal(restored.world.companion.habitat, id);
+        assert.equal(restored.world.companion.name, '团子');
+    }
+    for (const habitat of [undefined, null, '', 'unknown-scene', '__proto__']) {
+        assert.equal(normalizeForumDataShape({ world: { companion: { habitat } } }).world.companion.habitat, 'meadow');
+    }
+});
 
 test('world state migrates tasks, fortune, inventory and reports', () => {
     const data = normalizeForumDataShape({

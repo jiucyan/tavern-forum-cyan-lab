@@ -23,6 +23,20 @@ export const PET_SHOP = [
     { id: 'lamp', name: '星星夜灯', cost: 30, symbol: '✦', kind: 'furniture' },
 ];
 
+function growthPhoto(value) {
+    if (!value || !STAGES.includes(value.stage) || !text(value.species)) return null;
+    const color = key => /^#[0-9a-f]{6}$/i.test(String(value[key] || '')) ? value[key].toLowerCase() : '';
+    return { stage: value.stage, at: number(value.at, 0), name: text(value.name), species: text(value.species),
+        bodyColor: color('bodyColor'), accentColor: color('accentColor'), accessoryColor: color('accessoryColor'), accessory: text(value.accessory) || 'none' };
+}
+function rememberGrowthAppearance(companion, now) {
+    const life = companion.life;
+    life.growthAlbum ||= [];
+    if (life.growthAlbum.some(photo => photo.stage === life.stage)) return;
+    const photo = growthPhoto({ ...companion, stage: life.stage, at: now });
+    if (photo) life.growthAlbum.push(photo);
+}
+
 export function normalizeCompanionLife(value, now = Date.now()) {
     const life = value && typeof value === 'object' ? value : {};
     const counts = values => Object.fromEntries(Object.entries(values || {}).slice(-30).map(([key, value]) => [key, number(value, 0, 0, 10000)]));
@@ -32,6 +46,8 @@ export function normalizeCompanionLife(value, now = Date.now()) {
         cleanliness: number(life.cleanliness, 85, 0, 100), sleepStart: Math.floor(number(life.sleepStart, 22, 0, 23)), sleepEnd: Math.floor(number(life.sleepEnd, 8, 0, 23)),
         autoSleep: life.autoSleep !== false, awakeUntil: number(life.awakeUntil, 0), sleepUntil: number(life.sleepUntil, 0),
         growthMinutes: number(life.growthMinutes, 0), stage: STAGES.includes(life.stage) ? life.stage : 'baby',
+        growthAlbum: [...new Map(list(life.growthAlbum).slice(0, 12).map(growthPhoto).filter(Boolean).map(photo => [photo.stage, photo])).values()].slice(0, 3),
+        growthNotice: life.growthNotice && text(life.growthNotice.id) && STAGES.includes(life.growthNotice.from) && STAGES.indexOf(life.growthNotice.to) > STAGES.indexOf(life.growthNotice.from) && STAGES.indexOf(life.growthNotice.to) <= STAGES.indexOf(life.stage) ? { id: text(life.growthNotice.id), from: life.growthNotice.from, to: life.growthNotice.to, at: number(life.growthNotice.at, now) } : null,
         careDays: [...new Set(list(life.careDays).map(String))].slice(-90),
         traits: Object.fromEntries(Object.keys(PET_PERSONALITIES).map(key => [key, number(life.traits?.[key], 0, 0, 10000)])),
         actionAt: Object.fromEntries(Object.entries(life.actionAt || {}).slice(-30).map(([key, at]) => [key, number(at, 0)])), foodLikes: list(life.foodLikes).filter(item => text(item?.id)).slice(-16).map(item => ({ id: text(item.id), name: text(item.name), count: number(item.count, 0, 0, 999) })),
@@ -101,9 +117,13 @@ export function getCompanionLifeView(companion, now = Date.now()) {
 
 function grow(companion, now) {
     const life = companion.life;
+    rememberGrowthAppearance(companion, now);
     const stage = life.growthMinutes >= 2880 && life.careDays.length >= 4 ? 'adult' : life.growthMinutes >= 720 && life.careDays.length >= 2 ? 'young' : 'baby';
     if (STAGES.indexOf(stage) > STAGES.indexOf(life.stage)) {
+        const from = life.stage;
         life.stage = stage;
+        rememberGrowthAppearance(companion, now);
+        life.growthNotice = { id: id('pet-growth'), from, to: stage, at: now };
         addCompanionMilestone(companion, `stage-${stage}`, `一起生活的日子里，${companion.name}进入了${PET_STAGES[stage]}，学会了新的游戏。`, now);
     }
 }

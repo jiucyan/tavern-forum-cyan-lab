@@ -1,5 +1,5 @@
 import { clearAllData, clearInjection, getSettings, syncInjection } from './src/store.js';
-const { initializeForumUi, refreshForumUi } = await import(`./src/ui-v3.js?v=companion-games-20260927-1`);
+const { initializeForumUi, refreshForumUi } = await import(`./src/ui-v3.js?v=companion-scene-detail-20260929-1`);
 
 let initializationPromise = null;
 

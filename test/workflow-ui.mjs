@@ -1,3 +1,4 @@
+import { openCompanionMenu } from './companion-navigation.mjs';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
@@ -160,6 +161,7 @@ try {
         SillyTavern.getContext().generateRaw = async () => { globalThis.travelCalls++; return JSON.stringify({ worldUpdates: { travel: { journeys: [{ destination: '溪边', status: 'away', departureMessage: '带着行囊出门啦', messages: [{ content: '沿地图找到溪流', progress: .2 }, { content: '尚未到达的瀑布', progress: .8 }], notes: '完整结局隐藏文字', returnMessage: '平安回来啦', souvenir: '溪石纪念章' }] } } }); };
         workflowTest.render();
     });
+    await openCompanionMenu(page, 'travel', 'click');
     await page.locator('[data-packed-item-id="test-food"]').check();
     await page.locator('[data-packed-item-id="test-map"]').check();
     assert.match(await page.locator('.tf-packing-preview').innerText(), /缩短 15%/);
@@ -365,14 +367,17 @@ try {
         globalThis.petApiCalls = 0; SillyTavern.getContext().generateRaw = async () => { petApiCalls++; throw new Error('local pet requested a model'); };
         await saveForumData(data, true); workflowTest.render();
     });
-    await page.locator('.tf-pet-life [data-action="pet-tend"][data-tend="clean"]').click();
+    await openCompanionMenu(page, 'status', 'click');
+    await page.locator('.tf-pet-care-settings > summary').click();
+    await page.locator('.tf-pet-care-settings [data-action="pet-tend"][data-tend="clean"]').click();
     assert.equal(await page.locator('.tf-pet-life meter').getAttribute('value'), '55');
-    await page.locator('.tf-pet-life [data-action="pet-mode"][data-mode="paused"]').click();
-    assert.equal(await page.locator('.tf-pet-life [data-action="pet-tend"][data-tend="clean"]').isDisabled(), true);
-    await page.locator('.tf-pet-life [data-action="pet-mode"][data-mode="active"]').click();
-    await page.locator('.tf-pet-life [data-action="pet-tend"][data-tend="rest"]').click();
+    await page.locator('.tf-pet-care-settings [data-action="pet-mode"][data-mode="paused"]').click();
+    assert.equal(await page.locator('.tf-pet-care-settings [data-action="pet-tend"][data-tend="clean"]').isDisabled(), true);
+    await page.locator('.tf-pet-care-settings [data-action="pet-mode"][data-mode="active"]').click();
+    await page.locator('.tf-pet-care-settings [data-action="pet-tend"][data-tend="rest"]').click();
     assert.equal(await page.locator('.is-living-sleep').count(), 1);
-    await page.locator('.tf-pet-life [data-action="pet-tend"][data-tend="wake"]').click();
+    await page.locator('.tf-pet-care-settings [data-action="pet-tend"][data-tend="wake"]').click();
+    await openCompanionMenu(page, 'dress', 'click');
     const shop = page.locator('.tf-pet-life-details').filter({ has: page.locator('.tf-pet-shop') });
     await shop.locator('summary').click();
     await page.locator('[data-action="pet-buy"][data-item="snack"]').click();
@@ -382,8 +387,9 @@ try {
     const shelf = page.locator('.tf-pet-life-details').filter({ has: page.locator('[data-pet-setting="displayItemId"]') });
     await shelf.locator('summary').click();
     await page.locator('[data-pet-setting="displayItemId"]').selectOption('pet-souvenir');
-    assert.match(await page.locator('.tf-pet-keepsake').innerText(), /湖边贝壳/);
-    await page.locator('.tf-pet-life').evaluate(node => { node.querySelectorAll('details').forEach(panel => { panel.open = false; }); node.scrollIntoView({ block: 'start' }); });
+    assert.match(await page.locator('.tf-pet-keepsake').textContent(), /湖边贝壳/);
+    await page.locator('[data-action="companion-menu-nav"][data-direction="1"]').click();
+    await page.locator('.tf-pet-console').scrollIntoViewIfNeeded();
     await page.screenshot({ path: resolve(output, 'pet-life-mobile.png') });
     assert.equal(await page.locator('.tf-app').evaluate(node => node.scrollWidth > node.clientWidth + 2), false);
     const beforeGame = await page.evaluate(async () => {
@@ -391,6 +397,7 @@ try {
         return { coins: data.world.companion.life.coins, quantity: data.world.inventory.find(item => item.id === 'pet-souvenir').quantity, snacks: data.world.inventory.find(item => item.source === '陪伴小铺').quantity };
     });
     assert.deepEqual(beforeGame, { coins: 26, quantity: 1, snacks: 1 });
+    await openCompanionMenu(page, 'games', 'click');
     await page.locator('[data-action="pet-game-start"][data-game="catch"]').click();
     await page.locator('.tf-pet-game').waitFor();
     await page.waitForTimeout(2200);
@@ -401,7 +408,7 @@ try {
     await page.screenshot({ path: resolve(output, 'pet-game-mobile.png') });
     await page.waitForFunction(async () => { const { getForumData } = await import('/src/store.js'); return !getForumData().world.companion.life.game; }, null, { timeout: 45000 });
     await page.waitForFunction(() => /获得 .*陪伴币/.test(document.querySelector('.tf-pet-message')?.textContent || ''));
-    assert.match(await page.locator('.tf-pet-message').innerText(), /获得 .*陪伴币/);
+    assert.match(await page.locator('.tf-pet-message').textContent(), /获得 .*陪伴币/);
     const gameCoins = await page.evaluate(async () => { const { getForumData } = await import('/src/store.js'); return getForumData().world.companion.life.coins; });
     assert.ok(gameCoins > beforeGame.coins);
     await page.locator('[data-action="companion-menu-confirm"]').click();
@@ -415,6 +422,7 @@ try {
         getSettings().modules.travel.enabled = true; getSettings().ui.activeTab = 'services'; workflowTest.viewState.worldPage = 'travel';
         getForumData().world.companion.life.autoSleep = false; workflowTest.render();
     });
+    await openCompanionMenu(page, 'games', 'click');
     await page.locator('[data-action="pet-game-start"][data-game="catch"]').click();
     await page.locator('[data-action="companion-menu-nav"][data-direction="1"]').click();
     await page.evaluate(() => {
@@ -426,7 +434,7 @@ try {
     assert.deepEqual(switchedPet, { name: '第二只', coins: 7, game: null });
     await page.locator('.tf-companion-home').scrollIntoViewIfNeeded();
     await page.screenshot({ path: resolve(output, 'pet-life-desktop.png') });
-    await page.locator('.tf-pet-life').evaluate(node => node.scrollIntoView({ block: 'start' }));
+    await openCompanionMenu(page, 'status', 'click');
     await page.screenshot({ path: resolve(output, 'pet-life-panel-desktop.png') });
     console.log('PASS pet clock and game state remain isolated after switching chats');
     await page.close();

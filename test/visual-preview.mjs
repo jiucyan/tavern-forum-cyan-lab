@@ -1,8 +1,26 @@
+import { openCompanionMenu } from './companion-navigation.mjs';
+import { COMPANION_HABITATS } from '../src/companion-scenes.js';
 import { chromium } from 'playwright';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
+
+
+// Navigate the actual screen menus before operating controls in the compact device.
+async function companionControl(page, selector) {
+    const panel = selector.includes('data-care=') ? 'games' : 'dress';
+    if (await page.locator('.tf-companion-device').getAttribute('data-device-page') !== panel)
+        await openCompanionMenu(page, panel);
+    const control = page.locator(selector).first();
+    const groups = await control.evaluate(node => {
+        const all = [...document.querySelectorAll('.tf-pet-life-details')], indices = [];
+        for(let parent=node.parentElement;parent;parent=parent.parentElement) if(parent.matches('details')&&!parent.open) indices.unshift(all.indexOf(parent));
+        return indices;
+    });
+    for(const index of groups) await page.locator('.tf-pet-life-details').nth(index).locator(':scope > summary').click();
+    return control;
+}
 
 const contentTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml' };
 const previewRoot = resolve(process.cwd());
@@ -470,12 +488,13 @@ try {
     if (!await desktop.locator('.tf-world-hub.is-layout-bento').count()) throw new Error('world home did not switch back to bento');
     if (await desktop.locator('.tf-app').getAttribute('data-render-sentinel') !== 'stable-desktop') throw new Error('returning to the card layout replaced the app shell');
     await desktop.locator('.tf-service-card[data-action="open-world-page"][data-module-id="travel"]').click();
-    if (await desktop.locator('.tf-pet-screen-menu').count() !== 1) throw new Error('in-device care menu is missing');
-    if (await desktop.locator('.tf-companion-status [data-action="companion-care"]').count()) throw new Error('care actions should not be duplicated beside the device');
+    if (await desktop.locator('.tf-device-icon-menu button').count() !== 8) throw new Error('in-device care menu is missing');
+    if (await desktop.locator('.tf-pet-need button').count() !== 1) throw new Error('home should expose one contextual care shortcut');
     if (await desktop.locator('[data-companion-field="avatarUrl"]').count()) throw new Error('companion avatar URL field should stay hidden');
     if (await desktop.getByText('寄回的见闻', { exact: true }).count()) throw new Error('companion travel log should stay hidden');
     const companionPackShortcut = desktop.locator('.tf-pet-pack-shortcut');
-    if (!/行囊\s*点击准备/.test(await companionPackShortcut.innerText())) throw new Error('empty companion pack does not expose a clean preparation action');
+    if (!/行囊/.test(await companionPackShortcut.innerText())) throw new Error('empty companion pack does not expose a clean preparation action');
+    await openCompanionMenu(desktop, 'status', 'click');
     await companionPackShortcut.click();
     if (!await desktop.locator('.tf-packing').isVisible()) throw new Error('companion pack shortcut did not reveal backpack packing');
     await desktop.waitForFunction(() => {
@@ -485,7 +504,7 @@ try {
         const box = panel.getBoundingClientRect(), viewBox = view.getBoundingClientRect();
         return box.top >= viewBox.top - 2 && box.top < viewBox.bottom;
     });
-    if (!await desktop.locator('.tf-companion-profile-card').evaluate(node => node.open)) await desktop.locator('[data-action="toggle-companion-profile"]').click();
+    await openCompanionMenu(desktop, 'dress', 'click');
     if (await desktop.locator('[data-action="choose-companion-species"]').count() !== 9) throw new Error('expected nine built-in pixel companions');
     if (await desktop.locator('[data-action="choose-companion-device"]').count() !== 10) throw new Error('expected ten device structures');
     if (await desktop.locator('.tf-pet-appearance-controls input[type="color"]').count() !== 3) throw new Error('companion body, accent and accessory palettes are incomplete');
@@ -508,10 +527,10 @@ try {
     await desktop.locator('#tf-species-contact-sheet').evaluate(node => node.remove());
     const accessoryPreviews = [];
     for (const speciesId of companionSpecies) {
-        await desktop.locator(`[data-action="choose-companion-species"][data-species-id="${speciesId}"]`).click();
+        await (await companionControl(desktop, `[data-action="choose-companion-species"][data-species-id="${speciesId}"]`)).click();
         const bodyFillBeforeAccessories = await desktop.locator('.tf-pet-stage .tf-pixel-body').first().evaluate(node => getComputedStyle(node).fill);
         for (const accessoryId of companionAccessories) {
-            await desktop.locator('[data-companion-appearance-field="accessory"]').selectOption(accessoryId);
+            await (await companionControl(desktop, '[data-companion-appearance-field="accessory"]')).selectOption(accessoryId);
             const visibleAccessory = desktop.locator(`.tf-pet-stage .tf-pixel-accessory[data-accessory="${accessoryId}"]`);
             if (!await visibleAccessory.count()) throw new Error(`${speciesId} did not render ${accessoryId}`);
             if (await desktop.locator(`.tf-pet-stage .tf-pixel-accessory:not([data-accessory="${accessoryId}"])`).count()) throw new Error(`${speciesId} rendered inactive accessory layers beside ${accessoryId}`);
@@ -530,23 +549,23 @@ try {
     }, accessoryPreviews);
     await desktop.locator('#tf-accessory-contact-sheet').screenshot({ path: 'preview-companion-accessories-v3.png' });
     await desktop.locator('#tf-accessory-contact-sheet').evaluate(node => node.remove());
-    await desktop.locator('[data-action="choose-companion-species"][data-species-id="goldfish"]').click();
+    await (await companionControl(desktop, '[data-action="choose-companion-species"][data-species-id="goldfish"]')).click();
     const callsBeforeBettaBubbles = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
-    if (await desktop.locator('[data-action="companion-care"][data-care="talk"]').count()) throw new Error('secondary care actions should stay behind the in-device more menu');
-    await desktop.locator('[data-action="companion-menu-more"]').click();
+    if (await desktop.locator('[data-action="companion-care"][data-care="talk"]').isVisible()) throw new Error('secondary care actions should stay behind the in-device more menu');
+    await companionControl(desktop, '[data-action="companion-care"][data-care="talk"]');
     if (!await desktop.locator('[data-action="companion-care"][data-care="talk"]').count()) throw new Error('the in-device more menu did not reveal secondary care actions');
-    await desktop.locator('[data-action="companion-care"][data-care="talk"]').click();
+    await (await companionControl(desktop, '[data-action="companion-care"][data-care="talk"]')).click();
     if (await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls) !== callsBeforeBettaBubbles) throw new Error('local betta bubble interaction unexpectedly called the API');
     if (!await desktop.locator('.tf-companion-v3.is-species-goldfish.is-action-talk .tf-betta-bubbles').isVisible()) throw new Error('betta talk interaction did not reveal its local bubble trail');
     const bettaBubbleAnimation = await desktop.locator('.tf-betta-bubbles i').first().evaluate(node => getComputedStyle(node).animationName);
     if (!bettaBubbleAnimation.includes('tf-betta-bubble')) throw new Error(`betta bubble animation is inactive: ${bettaBubbleAnimation}`);
     await desktop.waitForTimeout(980);
     await desktop.locator('.tf-pet-screen').screenshot({ path: 'preview-companion-betta-bubbles-v3.png' });
-    await desktop.locator('[data-action="choose-companion-species"][data-species-id="fox"]').click();
-    await desktop.locator('[data-companion-appearance-field="bodyColor"]').fill('#2f6f9f');
-    await desktop.locator('[data-companion-appearance-field="accentColor"]').fill('#f1b54a');
-    await desktop.locator('[data-companion-appearance-field="accessoryColor"]').fill('#cf6f91');
-    await desktop.locator('[data-companion-appearance-field="accessory"]').selectOption('scarf');
+    await (await companionControl(desktop, '[data-action="choose-companion-species"][data-species-id="fox"]')).click();
+    await (await companionControl(desktop, '[data-companion-appearance-field="bodyColor"]')).fill('#2f6f9f');
+    await (await companionControl(desktop, '[data-companion-appearance-field="accentColor"]')).fill('#f1b54a');
+    await (await companionControl(desktop, '[data-companion-appearance-field="accessoryColor"]')).fill('#cf6f91');
+    await (await companionControl(desktop, '[data-companion-appearance-field="accessory"]')).selectOption('scarf');
     if (!await desktop.locator('.tf-pet-stage .tf-pixel-pet.is-accessory-scarf').count()) throw new Error('selected companion accessory did not appear on the device');
     if (await desktop.locator('[data-action="save-companion-appearance"]').isDisabled()) throw new Error('editing companion colors did not enable explicit saving');
     const colorsBeforeSave = await desktop.evaluate(() => ({ ...globalThis.SillyTavern.getContext().chatMetadata.tavern_forum_data.world.companion }));
@@ -555,12 +574,14 @@ try {
     const savedAppearance = await desktop.evaluate(() => ({ ...globalThis.SillyTavern.getContext().chatMetadata.tavern_forum_data.world.companion }));
     if (savedAppearance.bodyColor !== '#2f6f9f' || savedAppearance.accentColor !== '#f1b54a' || savedAppearance.accessoryColor !== '#cf6f91' || savedAppearance.accessory !== 'scarf') throw new Error(`companion appearance did not persist: ${JSON.stringify(savedAppearance)}`);
     await desktop.locator('[data-action="back-world-home"]').click();
+    // This suite verifies the original adult anatomy; juvenile forms have their own growth UI coverage.
+    await desktop.evaluate(() => { globalThis.SillyTavern.getContext().chatMetadata.tavern_forum_data.world.companion.life.stage = 'adult'; });
     await desktop.locator('.tf-service-card[data-module-id="travel"]').click();
     if (await desktop.locator('[data-companion-appearance-field="bodyColor"]').inputValue() !== '#2f6f9f') throw new Error('saved companion color disappeared after re-entering the app');
     if (await desktop.locator('[data-companion-appearance-field="accessory"]').inputValue() !== 'scarf') throw new Error('saved companion accessory disappeared after re-entering the app');
     if (await desktop.locator('.tf-pet-screen-menu.is-extra').count()) await desktop.locator('[data-action="companion-menu-more"]').click();
     const callsBeforePet = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
-    await desktop.locator('[data-action="companion-care"][data-care="feed"]').last().click();
+    await openCompanionMenu(desktop, 'feed', 'click');
     if (await desktop.locator('[data-action="companion-feed-food"]').count() !== 10) throw new Error('pet food selector did not expose all ten foods inside the device');
     await desktop.locator('[data-action="companion-feed-food"][data-food-id="berry"]').click();
     const callsAfterPet = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
@@ -598,8 +619,8 @@ try {
         ['robo-bird', '.tf-pixel-antenna'], ['octopus', '.tf-octopus-arm.is-front-left'], ['goldfish', '.tf-betta-fin.is-pectoral'], ['soot', '.tf-pixel-arms'], ['fox', '.tf-pixel-tail'],
     ];
     for (const [speciesId, anatomySelector] of feedingSpecies) {
-        await desktop.locator(`[data-action="choose-companion-species"][data-species-id="${speciesId}"]`).click();
-        await desktop.locator('[data-action="companion-care"][data-care="feed"]').last().click();
+        await (await companionControl(desktop, `[data-action="choose-companion-species"][data-species-id="${speciesId}"]`)).click();
+        await openCompanionMenu(desktop, 'feed', 'click');
         await desktop.locator('[data-action="companion-feed-food"][data-food-id="berry"]').click();
         const anatomyMotion = await desktop.locator('.tf-pet-sprite-control').evaluate((node, selector) => getComputedStyle(node.querySelector(selector)).animationName, anatomySelector);
         if (anatomyMotion === 'none') throw new Error(`${speciesId} has no species-aware feeding anatomy`);
@@ -607,14 +628,14 @@ try {
     }
     if (await desktop.locator('[data-action="choose-companion-species"][data-species-id="fox"]').getAttribute('aria-pressed') !== 'true') throw new Error('pixel companion selection did not update species');
     if (!await desktop.locator('.tf-companion-v3.is-action-feed .tf-feed-drop').isVisible()) throw new Error('feed animation did not activate');
-    await desktop.locator('[data-action="companion-care"][data-care="pet"]').first().click();
+    await desktop.locator('.tf-pet-sprite-control').click();
     const petMotionRig = await desktop.locator('.tf-pet-sprite-control').evaluate(node => ({
         control: getComputedStyle(node).animationName,
         body: getComputedStyle(node.querySelector('.tf-pixel-body-rig')).animationName,
         face: getComputedStyle(node.querySelector('.tf-pixel-face-rig')).animationName,
     }));
     if (petMotionRig.control !== 'none' || !petMotionRig.body.includes('tf-living-nuzzle-body-v3') || !petMotionRig.face.includes('tf-living-nuzzle-face')) throw new Error(`companion petting did not use the internal motion rig: ${JSON.stringify(petMotionRig)}`);
-    const namedReaction = await desktop.locator('.tf-pet-message').innerText();
+    const namedReaction = await desktop.locator('.tf-pet-message').textContent();
     if (!/团子/.test(namedReaction) || /赤狐绕过/.test(namedReaction)) throw new Error(`companion interaction used the species instead of its name: ${namedReaction}`);
     await desktop.waitForTimeout(2450);
     if (!await desktop.locator('.tf-companion-v4.is-action-idle').count()) throw new Error('companion expression stayed locked after the interaction ended');
@@ -624,8 +645,8 @@ try {
         pupils: getComputedStyle(node.querySelector('.tf-pixel-pupils')).animationName,
     }));
     if (idleFace.open === 'none' || idleFace.happy !== 'none' || !idleFace.pupils.includes('tf-expression-idle-pupils')) throw new Error(`companion did not return to an alert idle face: ${JSON.stringify(idleFace)}`);
-    await desktop.locator('[data-action="choose-companion-species"][data-species-id="rabbit"]').click();
-    await desktop.locator('[data-action="companion-care"][data-care="play"]').first().click();
+    await (await companionControl(desktop, '[data-action="choose-companion-species"][data-species-id="rabbit"]')).click();
+    await (await companionControl(desktop, '[data-action="companion-care"][data-care="play"]')).click();
     await desktop.waitForTimeout(260);
     const rabbitPlayFrameA = await desktop.locator('.tf-pet-sprite-control').evaluate(node => {
         const value = selector => getComputedStyle(node.querySelector(selector)).transform;
@@ -650,8 +671,8 @@ try {
         ['soot', '.tf-pixel-arms'],
     ];
     for (const [speciesId, anatomySelector] of articulatedSpecies) {
-        await desktop.locator(`[data-action="choose-companion-species"][data-species-id="${speciesId}"]`).click();
-        await desktop.locator('[data-action="companion-care"][data-care="play"]').first().click();
+        await (await companionControl(desktop, `[data-action="choose-companion-species"][data-species-id="${speciesId}"]`)).click();
+        await (await companionControl(desktop, '[data-action="companion-care"][data-care="play"]')).click();
         await desktop.waitForTimeout(70);
         const motion = await desktop.locator('.tf-pet-sprite-control').evaluate((node, selector) => ({
             anatomy: getComputedStyle(node.querySelector(selector)).animationName,
@@ -667,7 +688,7 @@ try {
         companion.satiety = 100;
     });
     await desktop.waitForTimeout(2750);
-    await desktop.locator('[data-action="choose-companion-species"][data-species-id="fox"]').click();
+    await (await companionControl(desktop, '[data-action="choose-companion-species"][data-species-id="fox"]')).click();
     const companionDevices = [
         ['classic', '经典蛋机'], ['pocket', '口袋掌机'], ['crystal', '透明糖果机'], ['arcane', '魔法通讯器'], ['terminal', '机械终端'],
         ['camp', '露营电台'], ['marine', '深海观察窗'], ['arcade', '迷你街机'], ['lunar', '月相怀表'], ['berry', '莓果翻盖机'],
@@ -677,7 +698,7 @@ try {
     const deviceSignatures = new Set();
     for (const [deviceId, deviceName] of companionDevices) {
         const option = desktop.locator(`[data-action="choose-companion-device"][data-device-skin="${deviceId}"]`);
-        await option.click();
+        await (await companionControl(desktop, '[data-action="choose-companion-device"][data-device-skin="'+deviceId+'"]')).click();
         if (!await desktop.locator(`.tf-companion-v3.is-device-${deviceId}`).count()) throw new Error(`${deviceId} device structure selection did not persist`);
         if (await option.getAttribute('aria-pressed') !== 'true') throw new Error(`${deviceId} device option does not expose its selected state`);
         const shell = await desktop.locator('.tf-pet-console').evaluate(node => ({
@@ -692,7 +713,7 @@ try {
         devicePreviews.push({ id: deviceId, name: deviceName, html: shell.html });
     }
     if (deviceSignatures.size !== companionDevices.length) throw new Error(`device shells are not visually distinct enough: ${deviceSignatures.size}/${companionDevices.length}`);
-    if (!await desktop.locator('.tf-companion-profile-card').evaluate(node => node.hasAttribute('open'))) throw new Error('companion profile collapsed after changing a device');
+    if (!await desktop.locator('.tf-device-setting-group').nth(3).evaluate(node => node.open)) throw new Error('device selection collapsed after changing a device');
     await desktop.evaluate(previews => {
         const sheet = document.createElement('section');
         sheet.id = 'tf-device-contact-sheet';
@@ -702,91 +723,59 @@ try {
     }, devicePreviews);
     await desktop.locator('#tf-device-contact-sheet').screenshot({ path: 'preview-companion-devices-v2.png' });
     await desktop.locator('#tf-device-contact-sheet').evaluate(node => node.remove());
-    if (await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="habitat"]').count() !== 8) throw new Error('visual habitat picker does not expose all eight scenes');
+    if (await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="habitat"]').count() !== COMPANION_HABITATS.length) throw new Error('visual habitat picker does not expose all scenes');
     if (await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="weather"]').count() !== 6) throw new Error('visual weather picker does not expose all weather modes');
     if (await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="timeOfDay"]').count() !== 5) throw new Error('visual time picker does not expose all time modes');
     const nativeHabitatControl = await desktop.locator('[data-companion-environment="habitat"]').evaluate(node => ({ width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height, pointerEvents: getComputedStyle(node).pointerEvents, tabIndex: node.tabIndex }));
     if (nativeHabitatControl.width > 1 || nativeHabitatControl.height > 1 || nativeHabitatControl.pointerEvents !== 'none' || nativeHabitatControl.tabIndex !== -1) throw new Error(`native habitat dropdown is still interactive: ${JSON.stringify(nativeHabitatControl)}`);
-    await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="weather"][data-environment-value="sunny"]').click();
-    await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="timeOfDay"][data-environment-value="day"]').click();
+    await (await companionControl(desktop, '[data-action="choose-companion-environment"][data-environment-field="weather"][data-environment-value="sunny"]')).click();
+    await (await companionControl(desktop, '[data-action="choose-companion-environment"][data-environment-field="timeOfDay"][data-environment-value="day"]')).click();
     const habitatPreviews = [];
-    for (const habitat of [['meadow', '风吹草地'], ['pond', '荷叶池塘'], ['bedroom', '暖灯卧室'], ['forest', '林间树屋'], ['snowfield', '雪原营地'], ['city', '城市天台'], ['space', '星际舷窗'], ['arcade', '像素街机厅']]) {
-        await desktop.locator(`[data-action="choose-companion-environment"][data-environment-field="habitat"][data-environment-value="${habitat[0]}"]`).click();
-        habitatPreviews.push({ id: habitat[0], name: habitat[1], stage: await desktop.locator('.tf-pet-stage').evaluate(node => node.outerHTML) });
+    for (const habitat of COMPANION_HABITATS.map(({ id, name }) => [id, name])) {
+        await (await companionControl(desktop, `[data-action="choose-companion-environment"][data-environment-field="habitat"][data-environment-value="${habitat[0]}"]`)).click();
+        habitatPreviews.push({ id: habitat[0], name: habitat[1], stage: await desktop.locator('.tf-pet-stage').evaluate(node => node.outerHTML.replace(' hidden=""','')) });
     }
     await desktop.evaluate(previews => {
         const sheet = document.createElement('section');
         sheet.id = 'tf-habitat-contact-sheet';
-        sheet.style.cssText = 'position:fixed;inset:10px;z-index:99999;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:10px;padding:12px;background:#e8e1d6;color:#29352f;font:800 12px/1.2 sans-serif';
+        sheet.style.cssText = `position:fixed;inset:10px;z-index:99999;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(${Math.ceil(previews.length / 4)},minmax(0,1fr));gap:10px;padding:12px;background:#e8e1d6;color:#29352f;font:800 12px/1.2 sans-serif`;
         sheet.innerHTML = previews.map(item => `<article class="tf-companion-v3 tf-companion-v4 is-device-classic is-weather-sunny is-time-day is-habitat-${item.id}" style="display:grid;grid-template-rows:auto 1fr;gap:7px;min-width:0;padding:9px;background:#fff;border:1px solid #d3c9bc;border-radius:15px"><header style="display:flex;justify-content:space-between"><b>${item.name}</b><small style="color:#8b8278">${item.id}</small></header>${item.stage}</article>`).join('');
         document.querySelector('#tavern-forum-root').append(sheet);
     }, habitatPreviews);
     await desktop.locator('#tf-habitat-contact-sheet').screenshot({ path: 'preview-companion-habitats-v2.png' });
     await desktop.locator('#tf-habitat-contact-sheet').evaluate(node => node.remove());
-    await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="habitat"][data-environment-value="snowfield"]').click();
+    await (await companionControl(desktop, '[data-action="choose-companion-environment"][data-environment-field="habitat"][data-environment-value="snowfield"]')).click();
     if (!await desktop.locator('.tf-companion-v4.is-habitat-snowfield').count()) throw new Error('visual habitat selection did not update the device scene');
     if (await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="habitat"][data-environment-value="snowfield"]').getAttribute('aria-selected') !== 'true') throw new Error('visual habitat selection did not expose its selected state');
-    await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="weather"][data-environment-value="rain"]').click();
-    await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="timeOfDay"][data-environment-value="night"]').click();
+    await (await companionControl(desktop, '[data-action="choose-companion-environment"][data-environment-field="weather"][data-environment-value="rain"]')).click();
+    await (await companionControl(desktop, '[data-action="choose-companion-environment"][data-environment-field="timeOfDay"][data-environment-value="night"]')).click();
     if (!await desktop.locator('.tf-companion-v3.is-weather-rain.is-time-night').count()) throw new Error('manual weather and room time did not update the pet screen');
     if (await desktop.locator('[data-companion-environment="weather"]').inputValue() !== 'rain') throw new Error('manual weather did not persist');
     await desktop.locator('.tf-pet-environment-controls').screenshot({ path: 'preview-companion-environment-v2.png' });
-    await desktop.locator('[data-action="choose-companion-environment"][data-environment-field="habitat"][data-environment-value="meadow"]').click();
-    await desktop.locator('[data-action="choose-companion-device"][data-device-skin="classic"]').click();
+    await (await companionControl(desktop, '[data-action="choose-companion-environment"][data-environment-field="habitat"][data-environment-value="meadow"]')).click();
+    await (await companionControl(desktop, '[data-action="choose-companion-device"][data-device-skin="classic"]')).click();
     await desktop.locator('.tf-companion-home').scrollIntoViewIfNeeded();
     await desktop.screenshot({ path: 'preview-companion.png' });
-    const profileLayout = await desktop.locator('.tf-companion-profile-card').evaluate(node => {
-        const box = selector => {
-            const rect = node.querySelector(selector).getBoundingClientRect();
-            return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-        };
-        const content = node.querySelector('.tf-companion-profile-content');
-        const deviceRows = [...node.querySelectorAll('.tf-device-skin-option')].map(item => Math.round(item.getBoundingClientRect().y));
-        const habitatRows = [...node.querySelectorAll('.tf-environment-group.is-habitat .tf-environment-option')].map(item => Math.round(item.getBoundingClientRect().y));
-        return {
-            directSections: [...content.children].map(item => item.className),
-            gridColumns: getComputedStyle(content).gridTemplateColumns.split(' ').length,
-            identity: box('.tf-companion-identity-section'),
-            appearance: box('.tf-pet-appearance-controls'),
-            environment: box('.tf-pet-environment-controls'),
-            weather: box('.tf-environment-group.is-weather'),
-            time: box('.tf-environment-group.is-timeOfDay'),
-            devices: box('.tf-device-skin-section'),
-            deviceRows: [...new Set(deviceRows)],
-            habitatRows: [...new Set(habitatRows)],
-            autoAccessoryWidth: node.querySelector('.tf-pet-auto-accessory input').getBoundingClientRect().width,
-            cardHeight: node.getBoundingClientRect().height,
-        };
-    });
-    if (profileLayout.directSections.length !== 4 || !profileLayout.directSections[0].includes('tf-companion-identity-section') || !profileLayout.directSections[1].includes('tf-pet-appearance-controls') || !profileLayout.directSections[2].includes('tf-pet-environment-controls') || !profileLayout.directSections[3].includes('tf-device-skin-section')) throw new Error(`desktop companion profile has the wrong information order: ${JSON.stringify(profileLayout.directSections)}`);
-    if (profileLayout.gridColumns !== 12 || Math.abs(profileLayout.identity.y - profileLayout.appearance.y) > 2 || profileLayout.identity.width <= profileLayout.appearance.width) throw new Error(`desktop profile header zones are not balanced: ${JSON.stringify(profileLayout)}`);
-    if (Math.abs(profileLayout.weather.y - profileLayout.time.y) > 2 || profileLayout.environment.y <= profileLayout.identity.y || profileLayout.devices.y <= profileLayout.environment.y) throw new Error(`desktop profile sections do not follow the intended hierarchy: ${JSON.stringify(profileLayout)}`);
-    if (profileLayout.deviceRows.length !== 2 || profileLayout.habitatRows.length !== 1) throw new Error(`desktop profile choices are not compact: ${JSON.stringify({ deviceRows: profileLayout.deviceRows, habitatRows: profileLayout.habitatRows })}`);
-    if (profileLayout.autoAccessoryWidth > 20 || profileLayout.cardHeight > 1450) throw new Error(`desktop profile controls or height are oversized: ${JSON.stringify(profileLayout)}`);
-    await desktop.evaluate(() => {
-        const page = document.querySelector('.tf-companion-v4');
-        const stage = document.createElement('section');
-        stage.id = 'tf-profile-qa-stage';
-        stage.className = page.className;
-        stage.style.cssText = 'position:absolute;top:0;left:50%;z-index:99999;display:block;width:900px;padding:12px;background:#eee9e1;transform:translateX(-50%)';
-        stage.append(document.querySelector('.tf-companion-profile-card').cloneNode(true));
-        document.querySelector('#tavern-forum-root').append(stage);
-    });
-    await desktop.locator('#tf-profile-qa-stage').screenshot({ path: 'preview-companion-profile-v2.png' });
-    await desktop.locator('#tf-profile-qa-stage').evaluate(node => node.remove());
+    const screenLayout = await desktop.locator('[data-companion-panel="dress"] .tf-pet-device-content').evaluate(node => ({
+        groups: [...node.querySelectorAll('.tf-device-setting-group > summary')].map(summary=>summary.textContent),
+        fits: node.scrollWidth <= node.clientWidth + 1,
+    }));
+    if (screenLayout.groups.length !== 4 || !screenLayout.fits) throw new Error('device settings lost their four groups or overflow the screen');
+    await desktop.locator('.tf-pet-console').screenshot({ path: 'preview-companion-profile-v2.png' });
 
     await desktop.evaluate(() => { Math.random = () => 0; });
+    await openCompanionMenu(desktop, 'travel', 'click');
     const callsBeforeJourney = await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls);
     await desktop.locator('[data-action="companion-depart-ai"]').click();
     await desktop.locator('.tf-companion-trip-schedule').waitFor();
     await desktop.waitForFunction(before => globalThis.SillyTavern.getContext().generateCalls === before + 1, callsBeforeJourney);
     if (!/2 则来信/.test(await desktop.locator('.tf-companion-trip-schedule').innerText())) throw new Error('the one-call journey did not persist its full message schedule');
-    await desktop.locator('.tf-companion-home').scrollIntoViewIfNeeded();
+    await desktop.locator('.tf-pet-travel-panel').scrollIntoViewIfNeeded();
     await desktop.screenshot({ path: 'preview-companion-journey-v2.png' });
     await desktop.locator('[data-action="companion-signal-local"]').click();
     if (await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls) !== callsBeforeJourney + 1) throw new Error('checking journey progress unexpectedly called the API again');
     await desktop.locator('[data-action="companion-return"]').click();
-    await desktop.getByText(/已经放进背包/).waitFor();
+    await desktop.locator('.tf-pet-travel-message').filter({hasText:/已经放进背包/}).waitFor();
     if (await desktop.evaluate(() => globalThis.SillyTavern.getContext().generateCalls) !== callsBeforeJourney + 1) throw new Error('returning and settling the journey unexpectedly called the API again');
     if (!/背包/.test(await desktop.locator('.tf-pet-message').innerText())) throw new Error('companion return did not confirm souvenir inventory settlement');
 
@@ -1018,12 +1007,13 @@ try {
     const mobileTravelToggle = mobile.locator('[data-action="toggle-world-module"][data-module-id="travel"]');
     if (!await mobileTravelToggle.isChecked()) await mobileTravelToggle.check({ force: true });
     await mobile.locator('[data-action="open-module-context"][data-module-id="travel"]').click();
-    await mobile.locator('[data-action="toggle-companion-profile"]').click();
-    await mobile.locator('[data-action="choose-companion-device"][data-device-skin="lunar"]').click();
+    await openCompanionMenu(mobile, 'dress', 'click');
+    await (await companionControl(mobile, '[data-action="choose-companion-device"][data-device-skin="lunar"]')).click();
     if (!await mobile.locator('.tf-companion-v4.is-device-lunar').count()) throw new Error('new device shell did not persist on mobile');
-    await mobile.locator('[data-action="toggle-companion-profile"]').click();
+    await mobile.locator('[data-action="companion-menu-nav"][data-direction="1"]').click();
     const mobileConsoleBox = await mobile.locator('.tf-pet-console').boundingBox();
-    if (!mobileConsoleBox || mobileConsoleBox.width > 370) throw new Error('mobile companion console overflowed the viewport');
+    const mobileViewport = mobile.viewportSize();
+    if (!mobileConsoleBox || !mobileViewport || mobileConsoleBox.x < 0 || mobileConsoleBox.x + mobileConsoleBox.width > mobileViewport.width) throw new Error('mobile companion console overflowed the viewport');
     await mobile.locator('.tf-view').evaluate(node => { node.scrollTop = Math.min(480, node.scrollHeight - node.clientHeight); });
     const mobileScrollBefore = await mobile.locator('.tf-view').evaluate(node => node.scrollTop);
     await mobile.locator('[data-action="companion-care"][data-care="pet"]').first().evaluate(node => node.click());
@@ -1033,8 +1023,9 @@ try {
     await mobile.locator('.tf-view').evaluate(node => { node.scrollTop = 0; });
     await mobile.waitForTimeout(80);
     const mobileConsoleAtTop = await mobile.locator('.tf-pet-console').boundingBox();
-    const mobileViewport = mobile.viewportSize();
-    if (!mobileConsoleAtTop || !mobileViewport || mobileConsoleAtTop.y < 90 || mobileConsoleAtTop.y + mobileConsoleAtTop.height > mobileViewport.height - 70) throw new Error('mobile companion console is not fully visible between the app header and bottom navigation');
+    const mobileCompanionHeader = await mobile.locator('.tf-world-app-header').boundingBox();
+    if (await mobile.locator('.tf-topbar').isVisible() || await mobile.locator('.tf-mobile-main-nav').isVisible()) throw new Error('forum navigation remained visible in companion focus mode');
+    if (!mobileConsoleAtTop || !mobileCompanionHeader || mobileConsoleAtTop.y < mobileCompanionHeader.y + mobileCompanionHeader.height || mobileConsoleAtTop.y + mobileConsoleAtTop.height > mobileViewport.height - 8) throw new Error('mobile companion console or exit controls are outside the viewport');
     await mobile.screenshot({ path: 'preview-companion-mobile.png', fullPage: true });
     await mobile.locator('[data-action="back-world-home"]').click();
     await mobile.locator('.tf-mobile-main-nav [data-tab="home"]').click();

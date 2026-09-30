@@ -1,3 +1,5 @@
+import { getCompanionGrowthArt } from './companion-growth-art.js';
+
 const SPECIES_ART = Object.freeze({
     frog: {
         back: '',
@@ -431,21 +433,45 @@ function renderEyes({ left, right, y, robot = false, soot = false, cat = false, 
     `;
 }
 
-function renderAccessory(kind, accessory, layer) {
-    const species = SPECIES_ACCESSORIES[kind] || SPECIES_ACCESSORIES.frog;
-    const definition = species?.[accessory];
-    const art = definition?.[layer];
-    if (!art) return '';
-    return `<g class="tf-pixel-accessory is-${accessory} is-slot-${definition.slot} is-layer-${layer}" data-accessory="${accessory}" data-slot="${definition.slot}" data-fit="${kind}" data-anchor="${definition.anchor}" data-material="${definition.material}" data-design="${kind}:${accessory}"><g class="tf-pixel-accessory-art">${art}</g></g>`;
+function growingAccessory(kind, accessory, layer, fit) {
+    const { cx, top, width, neck, left, right, eyeY, bagX, bagY, single } = fit;
+    const pin = markup => `<g transform="translate(${cx - 7} ${top - 7}) scale(.8)">${markup}</g>`;
+    const sidePin = markup => `<g transform="translate(${cx + width / 2 - 8} ${top - 2}) scale(.65)">${markup}</g>`;
+    if (accessory === 'headphones') { const parts = headphones(cx - width / 2 - 3, cx + width / 2 + 3, top - 4, eyeY - 1, 11); return parts[layer] || ''; }
+    if (accessory === 'cape') return layer === 'back' ? `<path d="M${cx - 14} ${neck - 10}h13l5 7-6 14H${cx - 21}l4-16z"/>` : '';
+    if (layer === 'back') return accessory === 'satchel' ? `<path class="tf-pixel-accessory-line is-thin" d="M${cx} ${neck - 10}L${bagX + 4} ${bagY + 5}"/>` : '';
+    if (accessory === 'flower') return sidePin(flowerPin(0, 0));
+    if (accessory === 'ribbon') return sidePin(ribbonPin(0, 0));
+    if (accessory === 'leaf') return sidePin(leafPin(0, 0));
+    if (accessory === 'crown') return pin(crownPin(0, 0));
+    if (accessory === 'glasses') {
+        const size = ['cat', 'soot', 'octopus'].includes(kind) ? 12 : 10;
+        return single ? `<rect class="tf-pixel-accessory-frame" x="${left - 2}" y="${eyeY - 2}" width="13" height="13"/><path class="tf-pixel-accessory-line is-thin" d="M${left - 6} ${eyeY + 3}h4m13 0h4"/>` : pairGlasses(left - 2, right - 2, eyeY - 1, size, size - 1);
+    }
+    if (accessory === 'satchel') return `<path class="tf-pixel-accessory-shadow" d="M${bagX + 1} ${bagY + 1}h10v10h-10z"/><path d="M${bagX} ${bagY}h10v10h-10z"/><rect class="tf-pixel-accessory-light" x="${bagX + 2}" y="${bagY + 2}" width="6" height="2"/>`;
+    if (accessory === 'scarf') return `<path d="M${cx - 11} ${neck}h22v4h-4v6h-4v-6H${cx - 11}z"/><rect class="tf-pixel-accessory-light" x="${cx - 8}" y="${neck + 1}" width="12" height="1"/>`;
+    if (accessory === 'charm' || accessory === 'bell') return `<g transform="translate(${cx - 2} ${neck}) scale(.55)">${accessory === 'charm' ? charmDrop(0, 0, -15, 20, -2) : bellDrop(0, 0, -15, 20, -2)}</g>`;
+    return '';
 }
 
-export function renderCompanionArtwork(kind = 'mystery', accessory = 'none') {
-    const species = SPECIES_ART[kind] || SPECIES_ART.mystery;
+function renderAccessory(kind, accessory, layer, growth, stage) {
+    const species = SPECIES_ACCESSORIES[kind] || SPECIES_ACCESSORIES.frog;
+    const definition = species?.[accessory];
+    const art = definition && growth ? growingAccessory(kind, accessory, layer, growth.fit) : definition?.[layer];
+    if (!art) return '';
+    return `<g class="tf-pixel-accessory is-${accessory} is-slot-${definition.slot} is-layer-${layer}" data-accessory="${accessory}" data-slot="${definition.slot}" data-fit="${kind}" data-anchor="${definition.anchor}" data-material="${definition.material}" data-growth-fit="${stage}" data-design="${kind}:${accessory}"><g class="tf-pixel-accessory-art">${art}</g></g>`;
+}
+
+export function renderCompanionArtwork(kind = 'mystery', accessory = 'none', stage = 'adult') {
+    kind = Object.hasOwn(SPECIES_ART, kind) ? kind : 'mystery';
+    stage = ['baby', 'young', 'adult'].includes(stage) ? stage : 'adult';
+    const growth = getCompanionGrowthArt(kind, stage);
+    const species = growth || SPECIES_ART[kind];
     const selectedAccessory = ACCESSORY_KEYS.includes(accessory) && SPECIES_ACCESSORIES[kind]?.[accessory] ? accessory : 'none';
     const scale = Number(species.canvas || 64) / 64;
     const scaleLegacyLayer = markup => markup && scale !== 1 ? `<g transform="scale(${scale})">${markup}</g>` : markup;
     const eyes = species.eyesMarkup || renderEyes(species.eyes);
     const faces = `<g class="tf-pixel-mouth tf-pixel-mouth-default">${species.faces.default}</g><g class="tf-pixel-mouth tf-pixel-mouth-feed">${species.faces.feed}</g><g class="tf-pixel-mouth tf-pixel-mouth-sleep">${species.faces.sleep}</g>`;
     const travelKit = '<g class="tf-pixel-travel-kit"><path class="tf-pixel-body-shadow" d="M45 23h11v21H45z"/><path class="tf-pixel-accent" d="M43 21h12v21H43z"/><rect class="tf-pixel-light" x="46" y="25" width="6" height="5"/><rect class="tf-pixel-ink" x="41" y="27" width="4" height="12"/></g>';
-    return `<g class="tf-pixel-wearable-rig is-back-rig">${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'back'))}</g><g class="tf-pixel-character"><g class="tf-pixel-back-rig">${species.back}</g><g class="tf-pixel-body-rig">${species.body}</g><g class="tf-pixel-face-rig">${eyes}${faces}</g></g><g class="tf-pixel-carry-rig">${scaleLegacyLayer(travelKit)}</g><g class="tf-pixel-wearable-rig is-front-rig">${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'front'))}</g>`;
+    return `<g class="tf-pixel-growth-motion" data-growth-stage="${stage}"><g class="tf-pixel-wearable-rig is-back-rig">${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'back', growth, stage))}</g><g class="tf-pixel-character"><g class="tf-pixel-back-rig">${species.back}</g><g class="tf-pixel-body-rig">${species.body}</g><g class="tf-pixel-face-rig">${eyes}${faces}</g></g><g class="tf-pixel-carry-rig">${scaleLegacyLayer(travelKit)}</g><g class="tf-pixel-wearable-rig is-front-rig">${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'front', growth, stage))}</g></g>`;
 }

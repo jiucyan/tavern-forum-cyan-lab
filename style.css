@@ -10726,6 +10726,46 @@ button.tf-avatar {
     font-style: normal;
 }
 
+/* Illustrated rooms share their artwork with the scene-picker thumbnails. */
+#tavern-forum-root .tf-companion-v4 .tf-scene-art { display: block; width: 100%; height: 100%; overflow: hidden; pointer-events: none; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-stage:has(.tf-scene-art) > .tf-pet-ground { display: none; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-stage:has(.tf-scene-art[data-indoor="true"]) .tf-pet-weather > span { display: none; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-stage:has(.tf-scene-art) .tf-weather-sun {
+    width: 18px; height: 18px; border: 0; border-radius: 0; background: #f5d99f; opacity: .75; animation: none;
+    clip-path: polygon(20% 0, 80% 0, 80% 20%, 100% 20%, 100% 80%, 80% 80%, 80% 100%, 20% 100%, 20% 80%, 0 80%, 0 20%, 20% 20%);
+}
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-stage:has(.tf-scene-art) .tf-weather-sun::before,
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-stage:has(.tf-scene-art) .tf-weather-sun::after,
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-stage:has(.tf-scene-art) .tf-weather-sun > i { display: none; }
+#tavern-forum-root .tf-companion-v4.is-time-dawn .tf-pet-habitat-layer .tf-scene-sky { fill: #e9d9c3; }
+#tavern-forum-root .tf-companion-v4.is-time-dusk .tf-pet-habitat-layer .tf-scene-sky { fill: #dfc6bd; }
+#tavern-forum-root .tf-companion-v4.is-time-night .tf-pet-habitat-layer .tf-scene-sky { fill: #7c929e; }
+#tavern-forum-root .tf-companion-v4.is-time-night .tf-pet-habitat-layer .tf-scene-daylight { opacity: 0; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-habitat-layer .tf-scene-lamplight { opacity: .35; }
+#tavern-forum-root .tf-companion-v4:is(.is-time-dusk, .is-time-night) .tf-pet-habitat-layer .tf-scene-lamplight { opacity: 1; }
+#tavern-forum-root .tf-companion-v4 .tf-environment-preview:has(.tf-scene-art) { border-radius: 6px; }
+#tavern-forum-root .tf-companion-v4 .tf-environment-preview .tf-scene-art { position: absolute; inset: 0; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-habitat-layer .tf-scene-steam { animation: tf-scene-steam 3.8s ease-out infinite; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-habitat-layer .tf-scene-bubbles { animation: tf-scene-steam 5.2s ease-in-out infinite; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-habitat-layer .tf-scene-dust { animation: tf-scene-dust 7s ease-in-out infinite; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-habitat-layer .tf-scene-butterfly { animation: tf-scene-butterfly 8s ease-in-out infinite; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-habitat-layer .tf-scene-surf { animation: tf-scene-surf 6s ease-in-out infinite; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-habitat-layer .tf-scene-boat { animation: tf-scene-boat 5s ease-in-out infinite; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-habitat-layer .tf-scene-wheel { transform-origin: 248px 71px; animation: tf-scene-wheel 60s linear infinite; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-habitat-layer .tf-scene-cabin { transform-box: fill-box; transform-origin: 50% 0; animation: tf-scene-wheel 60s linear infinite reverse; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-habitat-layer .tf-scene-water-glints { animation: tf-scene-lights 5s ease-in-out infinite; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-habitat-layer .tf-scene-lights { animation: tf-scene-lights 4s ease-in-out infinite; }
+@keyframes tf-scene-steam { 0% { opacity: 0; transform: translateY(3px); } 25%, 65% { opacity: .8; } 100% { opacity: 0; transform: translateY(-12px); } }
+@keyframes tf-scene-dust { 0%, 100% { opacity: .35; transform: translateY(0); } 50% { opacity: .85; transform: translateY(-5px); } }
+@keyframes tf-scene-butterfly { 0%, 100% { transform: translate(0, 0); } 35% { transform: translate(12px, -7px); } 70% { transform: translate(-4px, 5px); } }
+@keyframes tf-scene-surf { 0%, 100% { opacity: .65; transform: translateY(-2px); } 50% { opacity: 1; transform: translateY(4px); } }
+@keyframes tf-scene-boat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
+@keyframes tf-scene-wheel { to { transform: rotate(360deg); } }
+@keyframes tf-scene-lights { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+    #tavern-forum-root .tf-companion-v4 .tf-scene-art * { animation: none !important; }
+}
+
 /* Windy meadow */
 #tavern-forum-root .tf-companion-v4.is-habitat-meadow .tf-pet-stage {
     background: linear-gradient(#cad8b1 0 58%, #9caf83 59% 78%, #7f986d 79%);
@@ -14544,8 +14584,6 @@ button.tf-avatar {
 .tf-pet-room-furniture { position: absolute; bottom: 10%; left: 14%; color: #c1a464; font-size: 38px; text-shadow: 0 2px #817652; }
 .tf-pet-keepsake { position: absolute; bottom: 16%; right: 4%; width: 66px; font-size: 24px; color: #886638; text-align: center; }
 .tf-pet-keepsake small { display: block; font-size: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tf-companion-v4.is-growing-baby .tf-pixel-avatar { scale: .82; transform-origin: center bottom; }
-.tf-companion-v4.is-growing-young .tf-pixel-avatar { scale: .92; transform-origin: center bottom; }
 .tf-companion-v4.is-living-sleep .tf-pixel-eyes-open,
 .tf-companion-v4.is-living-sleep .tf-pixel-eyes-happy { display: none !important; }
 .tf-companion-v4.is-living-sleep .tf-pixel-eyes-sleep { display: block !important; }
@@ -14606,6 +14644,43 @@ button.tf-avatar {
 @media (prefers-reduced-motion: reduce) { #tavern-forum-root .tf-pet-bath-bubbles i, #tavern-forum-root .tf-pet-touch-heart { animation: none; } }
 
 /* Games retain the handheld's LCD palette and a stable canvas throughout a round. */
+/* Growth photos use the actual stage silhouette and preserve the saved palette. */
+#tavern-forum-root .tf-pet-growth-album { margin-bottom: 14px; }
+#tavern-forum-root .tf-growth-photos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-width: 560px; }
+#tavern-forum-root .tf-growth-photos figure { margin: 0; min-width: 0; padding: 9px; border: 1px solid var(--pet-life-line); border-radius: 12px; background: var(--tf-card); }
+#tavern-forum-root .tf-growth-photos figure.is-current { border-color: var(--pet-case-edge); background: var(--pet-life-tint); }
+#tavern-forum-root .tf-growth-photo { display: grid; place-items: center; height: 116px; background: var(--pet-life-soft); border-radius: 7px; }
+#tavern-forum-root .tf-growth-photo .tf-pixel-pet { display: block; width: 104px; max-width: 100%; height: 104px; }
+#tavern-forum-root .tf-growth-photos figcaption { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; text-align: center; font-size: 12px; }
+#tavern-forum-root .tf-growth-photos figcaption small { color: var(--tf-muted); font-size: 10px; overflow-wrap: anywhere; }
+#tavern-forum-root .tf-growth-unknown { font: 700 32px monospace; color: var(--tf-muted); opacity: .5; }
+#tavern-forum-root .tf-pet-growth-news { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px 12px; margin: 16px 0; border: 1px solid var(--pet-life-line); border-radius: 16px; background: var(--pet-life-tint); text-align: center; }
+#tavern-forum-root .tf-growth-kicker { color: var(--pet-case-edge); font-size: 11px; letter-spacing: .12em; }
+#tavern-forum-root .tf-growth-reveal { display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--pet-case-edge); }
+#tavern-forum-root .tf-growth-reveal > span { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+#tavern-forum-root .tf-growth-reveal .tf-pixel-pet { width: 92px; height: 92px; }
+#tavern-forum-root .tf-growth-before { opacity: .65; }
+#tavern-forum-root .tf-pet-growth-news.is-replaying .tf-growth-after { animation: tf-growth-reveal 1.4s ease-out both; }
+#tavern-forum-root .tf-pet-growth-news p { margin: 0; font-size: 12px; color: var(--tf-muted); }
+#tavern-forum-root :is(.tf-growth-photo,.tf-growth-reveal) .tf-pixel-pet * { animation: none !important; }
+#tavern-forum-root .tf-pixel-growth-motion { transform-box: view-box; transform-origin: 50% 85%; }
+#tavern-forum-root .tf-companion-v4.is-action-idle:is(.is-living-look,.is-living-toy,.is-living-cuddle) .tf-pet-sprite-control .is-growth-baby .tf-pixel-growth-motion { animation: tf-growth-baby-step 7s steps(3, end) infinite; }
+#tavern-forum-root .tf-companion-v4.is-action-idle:is(.is-living-look,.is-living-toy) .tf-pet-sprite-control .is-growth-young .tf-pixel-growth-motion { animation: tf-growth-young-hop 5.8s steps(4, end) infinite; }
+#tavern-forum-root .tf-pixel-pet:not(.is-mini).is-growth-baby .tf-growth-swim-tail { transform-box: fill-box; transform-origin: left center; animation: tf-growth-tail 2.4s ease-in-out infinite; }
+@keyframes tf-growth-baby-step { 0%,60%,100% { transform: translateX(0) rotate(0); } 70% { transform: translateX(1px) rotate(2deg); } 82% { transform: translateX(-1px) rotate(-2deg); } }
+@keyframes tf-growth-young-hop { 0%,60%,100% { transform: translateY(0); } 68%,84% { transform: translateY(-3px); } 76%,92% { transform: translateY(0); } }
+@keyframes tf-growth-tail { 0%,100% { transform: skewY(-5deg); } 50% { transform: skewY(7deg); } }
+@keyframes tf-growth-reveal { 0% { opacity: 0; transform: translateY(6px) scale(.9); } 55% { opacity: 1; transform: translateY(-3px) scale(1.04); } 100% { opacity: 1; transform: none; } }
+@media (max-width: 600px) {
+    #tavern-forum-root .tf-growth-photos { gap: 6px; }
+    #tavern-forum-root .tf-growth-photos figure { padding: 6px; }
+    #tavern-forum-root .tf-growth-photo { height: 86px; }
+    #tavern-forum-root .tf-growth-photo .tf-pixel-pet { width: 78px; height: 78px; }
+    #tavern-forum-root .tf-growth-photos figcaption { font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #tavern-forum-root :is(.tf-pixel-growth-motion,.tf-growth-swim-tail,.tf-growth-after) { animation: none !important; }
+}
 #tavern-forum-root .tf-companion-v4.is-playing-game .tf-pet-stage { min-height: 270px; }
 #tavern-forum-root .tf-pet-arcade { padding: 10px; gap: 6px; user-select: none; -webkit-user-select: none; }
 #tavern-forum-root .tf-pet-arcade header { align-items: center; flex-shrink: 0; font-variant-numeric: tabular-nums; }
@@ -14642,4 +14717,569 @@ button.tf-avatar {
     #tavern-forum-root .tf-pet-arcade { padding: 8px; gap: 4px; }
     #tavern-forum-root .tf-arcade-pads { gap: 7px; }
     #tavern-forum-root .tf-arcade-pads button { width: 46px; height: 52px; }
+}
+
+#tavern-forum-root .tf-pet-growth-invitation { position: absolute; z-index: 2; pointer-events: auto; top: 4px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 12px); padding: 5px 8px; border: 1px solid var(--pet-ink); border-radius: 6px; background: var(--pet-screen); color: var(--pet-ink); font: 700 10px/1.5 monospace; cursor: pointer; touch-action: manipulation; }
+#tavern-forum-root .tf-pet-growth-invitation:focus-visible { outline: 2px dashed var(--pet-ink); outline-offset: 2px; }
+
+#tavern-forum-root .tf-companion-v4.is-action-feed .is-growth-baby.is-kind-frog .tf-growth-swim-tail { animation: tf-growth-tail .4s ease-in-out 6; }
+/* Companion rooms: a focused home, a keepsake album, travel desk and dressing room. */
+#tavern-forum-root .tf-companion-v4 {
+    --pet-life-paper: color-mix(in srgb, var(--tf-card) 84%, #f1e8d5);
+    --pet-life-soft: color-mix(in srgb, var(--tf-card) 88%, var(--pet-case));
+    --pet-life-line: color-mix(in srgb, var(--tf-text) 16%, var(--pet-life-paper));
+    gap: 18px;
+}
+#tavern-forum-root .tf-companion-v4 [hidden] { display: none !important; }
+#tavern-forum-root .tf-pet-navigation { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+#tavern-forum-root .tf-pet-navigation button {
+    position: relative; display: flex; align-items: center; justify-content: center; gap: 12px;
+    min-width: 0; min-height: 66px; padding: 10px 12px; border: 1px solid var(--pet-life-line);
+    border-radius: 12px; background: var(--pet-life-paper); color: var(--tf-muted); text-align: left;
+    box-shadow: 0 3px 0 var(--pet-life-line); cursor: pointer; transition: background .15s, transform .15s;
+}
+#tavern-forum-root .tf-pet-navigation button[aria-current="page"] { color: var(--tf-text); background: var(--pet-life-tint); border-color: var(--pet-case-edge); box-shadow: 0 3px 0 var(--pet-case-edge), inset 0 1px 0 #fff6; }
+#tavern-forum-root .tf-pet-navigation button:hover { transform: translateY(-1px); }
+#tavern-forum-root .tf-pet-navigation button:active { transform: translateY(2px); box-shadow: none; }
+#tavern-forum-root .tf-pet-navigation i { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--pet-life-line); border-radius: 8px; font: 24px/1 monospace; background: var(--tf-card); }
+#tavern-forum-root .tf-pet-navigation b { display: block; font-size: 14px; letter-spacing: .08em; }
+#tavern-forum-root .tf-pet-navigation small { display: block; margin-top: 3px; font-size: 10px; }
+#tavern-forum-root .tf-pet-navigation em { width: 7px; height: 7px; border-radius: 50%; background: #b36c4a; position: absolute; top: 9px; right: 11px; }
+#tavern-forum-root .tf-companion-v4 :is(.tf-pet-navigation button, .tf-pet-dashboard button):focus-visible { outline: 2px solid var(--pet-case-edge); outline-offset: 3px; }
+#tavern-forum-root .tf-companion-v4 .tf-companion-home { min-height: 0; grid-template-columns: minmax(340px, 1fr) minmax(300px, .95fr); border: 1px solid var(--pet-life-line); border-radius: 22px; box-shadow: 0 10px 30px #34281a0a; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-console-wrap { min-height: 0; padding: 26px 22px 36px; display: grid; align-content: center; }
+#tavern-forum-root .tf-companion-v4 .tf-pet-dashboard { min-height: 0; padding: 28px; background: var(--pet-life-paper); border-left: 1px dashed var(--pet-life-line); }
+#tavern-forum-root .tf-pet-dashboard .tf-pet-kicker { margin: 0; font: 9px/1.5 ui-monospace, monospace; letter-spacing: .1em; color: var(--tf-muted); }
+#tavern-forum-root .tf-pet-dashboard .tf-companion-title { margin: 14px 0 20px; align-items: center; }
+#tavern-forum-root .tf-pet-dashboard .tf-companion-title h2 { font-size: 32px; line-height: 1.2; overflow-wrap: anywhere; }
+#tavern-forum-root .tf-pet-dashboard .tf-companion-title small { font-size: 11px; margin-top: 6px; }
+#tavern-forum-root .tf-pet-dashboard .tf-companion-title > b { padding: 7px 11px; border: 1px solid var(--pet-life-line); border-radius: 8px; background: var(--tf-card); font: 12px monospace; }
+#tavern-forum-root .tf-pet-need { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px; background: var(--pet-life-soft); border: 1px solid var(--pet-life-line); border-radius: 12px; }
+#tavern-forum-root .tf-pet-need small { display: block; font-size: 10px; color: var(--tf-muted); margin-bottom: 5px; }
+#tavern-forum-root .tf-pet-need b { font-size: 13px; line-height: 1.6; }
+#tavern-forum-root .tf-pet-need button { border: 0; background: none; color: var(--tf-text); font: inherit; font-size: 12px; padding: 8px 0 8px 8px; white-space: nowrap; cursor: pointer; }
+#tavern-forum-root .tf-pet-dashboard .tf-pet-message { padding: 0 3px; min-height: 0; border: 0; border-radius: 0; background: none; }
+#tavern-forum-root .tf-pet-dashboard .tf-pet-message p { font-size: 12px; line-height: 1.9; margin: 12px 0 0; color: var(--tf-muted); font-weight: 400; }
+#tavern-forum-root .tf-pet-dashboard .tf-pet-vitals { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; margin: 20px 0 16px; }
+#tavern-forum-root .tf-pet-dashboard .tf-pet-vitals > div { padding: 0; background: none; border: 0; }
+#tavern-forum-root .tf-pet-dashboard .tf-pet-vitals progress { height: 7px; border-radius: 2px; }
+#tavern-forum-root .tf-pet-dashboard .tf-pet-vitals progress::-webkit-progress-bar { background: var(--pet-life-line); }
+#tavern-forum-root .tf-pet-dashboard .tf-pet-vitals progress::-webkit-progress-value { background: color-mix(in srgb, var(--pet-case-edge) 62%, #68764f); border-radius: 1px; }
+#tavern-forum-root .tf-pet-dashboard .tf-pet-vitals .is-low progress::-webkit-progress-value { background: #b58555; }
+#tavern-forum-root .tf-pet-pocket-meta { display: flex; align-items: center; justify-content: space-between; color: var(--tf-muted); font-size: 11px; }
+#tavern-forum-root .tf-pet-pocket-meta button { padding: 6px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+#tavern-forum-root .tf-pet-home-care { padding: 0; border: 0; border-radius: 0; background: none; }
+#tavern-forum-root .tf-pet-home-care .tf-pet-games { padding: 16px 0; margin: 8px 0 0; border-top: 1px dashed var(--pet-life-line); background: none; }
+#tavern-forum-root .tf-pet-home-care .tf-pet-games h4 { font-size: 12px; }
+#tavern-forum-root .tf-pet-home-care .tf-pet-games p { font-size: 10px; line-height: 1.7; }
+#tavern-forum-root .tf-pet-home-care .tf-pet-games button { font-size: 11px; padding: 8px 10px; border-radius: 7px; box-shadow: 0 2px 0 var(--pet-life-line); }
+#tavern-forum-root .tf-pet-care-settings { padding: 12px 0 0; }
+#tavern-forum-root .tf-pet-care-settings > summary span { float: right; color: var(--tf-muted); font-size: 10px; font-weight: 400; }
+#tavern-forum-root .tf-pet-section { min-width: 0; }
+#tavern-forum-root .tf-pet-section-heading { margin-bottom: 22px; }
+#tavern-forum-root .tf-pet-section-heading small, #tavern-forum-root .tf-pet-memory-book > header small, #tavern-forum-root .tf-pet-decorate > header small { font: 9px/1.5 ui-monospace, monospace; letter-spacing: .16em; color: var(--tf-muted); }
+#tavern-forum-root .tf-pet-section-heading h2 { margin: 9px 0; font-size: 25px; }
+#tavern-forum-root .tf-pet-section-heading p { margin: 0; color: var(--tf-muted); font-size: 12px; line-height: 1.8; }
+#tavern-forum-root .tf-pet-travel-panel { padding: 28px; border: 1px solid var(--pet-life-line); border-radius: 18px; background: var(--pet-life-paper); }
+#tavern-forum-root .tf-pet-travel-panel :is(.tf-packing, .tf-travel-history) { box-shadow: none; border-radius: 10px; background: var(--tf-card); }
+#tavern-forum-root .tf-pet-travel-panel .tf-pet-trip-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 0 22px; }
+#tavern-forum-root .tf-pet-travel-panel .tf-pet-main-action { min-height: 42px; min-width: 180px; }
+#tavern-forum-root .tf-pet-travel-panel .tf-packing-preview { margin: 16px 0; }
+#tavern-forum-root .tf-pet-memory-book { padding: 28px; border-radius: 18px; background: repeating-linear-gradient(0deg, transparent 0 27px, #82715606 27px 28px), var(--pet-life-paper); }
+#tavern-forum-root .tf-pet-memory-book .tf-pet-life-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#tavern-forum-root .tf-pet-memory-book .tf-pet-life-facts > span { border: 1px solid var(--pet-life-line); border-radius: 8px; background: var(--tf-card); }
+#tavern-forum-root .tf-pet-memory-book .tf-growth-photos { max-width: none; gap: 18px; padding: 14px 4px 24px; }
+#tavern-forum-root .tf-pet-memory-book .tf-growth-photos figure { padding: 10px 10px 14px; border: 1px solid var(--pet-life-line); border-radius: 3px; background: var(--tf-card); box-shadow: 0 3px 7px #30261810; transform: rotate(-2deg); }
+#tavern-forum-root .tf-pet-memory-book .tf-growth-photos figure:nth-child(2) { transform: rotate(1.5deg); }
+#tavern-forum-root .tf-pet-memory-book .tf-growth-photos figure:nth-child(3) { transform: rotate(-1deg); }
+#tavern-forum-root .tf-pet-memory-book .tf-growth-photo { height: 145px; border-radius: 2px; background: var(--pet-life-soft); }
+#tavern-forum-root .tf-pet-memory-book .tf-growth-photos figcaption { padding-top: 10px; }
+#tavern-forum-root .tf-companion-v4.is-panel-dress { grid-template-columns: minmax(290px, .8fr) minmax(0, 1.2fr); align-items: start; }
+#tavern-forum-root .is-panel-dress .tf-pet-navigation { grid-column: 1 / -1; }
+#tavern-forum-root .tf-companion-v4.is-panel-dress .tf-companion-home { display: block; position: sticky; top: 0; }
+#tavern-forum-root .is-panel-dress .tf-pet-dashboard { display: none; }
+#tavern-forum-root .tf-companion-v4 .tf-companion-profile-card { background: var(--pet-life-paper); border: 1px solid var(--pet-life-line); border-radius: 18px; box-shadow: none; }
+#tavern-forum-root .tf-companion-v4 .tf-companion-profile-card > summary { padding: 16px; }
+#tavern-forum-root .tf-companion-v4 .tf-companion-profile-content { padding: 16px; }
+#tavern-forum-root .tf-pet-decorate { margin-top: 18px; padding: 20px; }
+@container (max-width: 900px) {
+    #tavern-forum-root .tf-companion-v4 .tf-companion-home { grid-template-columns: 1fr; }
+    #tavern-forum-root .tf-companion-v4 .tf-pet-dashboard { border-left: 0; border-top: 1px dashed var(--pet-life-line); }
+    #tavern-forum-root .tf-companion-v4.is-panel-dress { grid-template-columns: 1fr; }
+    #tavern-forum-root .tf-companion-v4.is-panel-dress .tf-companion-home { position: static; }
+}
+@container (max-width: 640px) {
+    #tavern-forum-root .tf-companion-v4 { gap: 12px; }
+    #tavern-forum-root .tf-pet-navigation { gap: 6px; }
+    #tavern-forum-root .tf-pet-navigation button { min-height: 53px; padding: 8px 5px; gap: 6px; border-radius: 9px; }
+    #tavern-forum-root .tf-pet-navigation i { width: auto; height: auto; font-size: 21px; border: 0; background: none; }
+    #tavern-forum-root .tf-pet-navigation b { font-size: 12px; letter-spacing: 0; }
+    #tavern-forum-root .tf-pet-navigation small { display: none; }
+    #tavern-forum-root .tf-companion-v4 .tf-companion-home { border-radius: 15px; }
+    #tavern-forum-root .tf-companion-v4 .tf-pet-console-wrap { padding: 16px 8px 26px; }
+    #tavern-forum-root .tf-companion-v4 .tf-pet-dashboard { padding: 19px 16px; }
+    #tavern-forum-root .tf-pet-dashboard .tf-pet-kicker { margin: 0; font-size: 8px; }
+    #tavern-forum-root .tf-pet-dashboard .tf-companion-title { margin: 9px 0 15px; }
+    #tavern-forum-root .tf-pet-dashboard .tf-companion-title h2 { font-size: 27px; }
+    #tavern-forum-root .tf-pet-travel-panel, #tavern-forum-root .tf-pet-memory-book { padding: 18px 14px; }
+    #tavern-forum-root .tf-pet-section-heading h2 { font-size: 21px; }
+    #tavern-forum-root .tf-pet-memory-book .tf-growth-photos { gap: 8px; }
+    #tavern-forum-root .tf-pet-memory-book .tf-growth-photos figure { padding: 6px 5px 10px; }
+    #tavern-forum-root .tf-pet-memory-book .tf-growth-photo { height: 82px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #tavern-forum-root .tf-pet-navigation button { transition: none; }
+}
+#tavern-forum-root .tf-companion-v4 .tf-pet-dashboard { gap: 0; justify-content: flex-start; text-align: left; }
+#tavern-forum-root .tf-pet-dashboard .tf-companion-title { flex-direction: row; text-align: left; }
+#tavern-forum-root .tf-pet-dashboard .tf-pet-message::after { display: none; }
+#tavern-forum-root .tf-companion-v4.is-panel-dress .tf-companion-profile-content { grid-template-columns: minmax(0, 1fr); }
+#tavern-forum-root .tf-companion-v4.is-panel-dress .tf-companion-profile-content > * { grid-column: 1; }
+#tavern-forum-root .tf-companion-v4.is-panel-dress .tf-pet-environment-controls { grid-template-columns: minmax(0, 1fr); }
+#tavern-forum-root .tf-companion-v4.is-panel-dress .tf-pet-environment-controls > * { grid-column: 1; }
+#tavern-forum-root .tf-companion-v4.is-panel-dress .tf-environment-title { display: block; }
+#tavern-forum-root .tf-companion-v4.is-panel-dress .tf-environment-title p { margin-top: 7px; }
+#tavern-forum-root .tf-companion-v4.is-panel-dress .tf-environment-group.is-habitat .tf-environment-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#tavern-forum-root .tf-companion-v4.is-panel-dress .tf-environment-group.is-weather .tf-environment-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#tavern-forum-root .tf-companion-v4.is-panel-dress .tf-device-skin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#tavern-forum-root .tf-companion-v4.is-panel-dress .tf-device-skin-section > header { display: block; }
+#tavern-forum-root .tf-companion-v4.is-panel-dress .tf-device-skin-section > header p { text-align: left; }
+@container (max-width: 640px) {
+    #tavern-forum-root .tf-companion-v4.is-panel-home .tf-companion-home { display: flex; flex-direction: column; background: var(--pet-life-paper); }
+    #tavern-forum-root .tf-companion-v4.is-panel-home .tf-pet-dashboard { display: contents; }
+    #tavern-forum-root .is-panel-home .tf-pet-dashboard .tf-pet-kicker { display: none; }
+    #tavern-forum-root .is-panel-home .tf-pet-dashboard .tf-companion-title { order: 1; margin: 16px 16px 12px; }
+    #tavern-forum-root .is-panel-home .tf-pet-dashboard .tf-companion-title h2 { font-size: 23px; }
+    #tavern-forum-root .is-panel-home .tf-pet-dashboard .tf-companion-title small { font-size: 10px; }
+    #tavern-forum-root .is-panel-home .tf-pet-need { order: 2; margin: 0 16px 12px; padding: 9px 11px; }
+    #tavern-forum-root .is-panel-home .tf-pet-need small { display: none; }
+    #tavern-forum-root .tf-companion-v4.is-panel-home .tf-pet-console-wrap { order: 3; padding: 14px 8px 26px; }
+    #tavern-forum-root .tf-companion-v4.is-panel-home .tf-pet-console { width: min(calc(100% - 6px), 310px); }
+    #tavern-forum-root .is-panel-home .tf-pet-dashboard .tf-pet-message { order: 4; margin: 0 16px; }
+    #tavern-forum-root .is-panel-home .tf-pet-dashboard .tf-pet-vitals { order: 5; margin: 16px; }
+    #tavern-forum-root .is-panel-home .tf-pet-pocket-meta { order: 6; margin: 0 16px; }
+    #tavern-forum-root .is-panel-home .tf-pet-home-care { order: 7; margin: 0 16px 16px; }
+}
+#tavern-forum-root .tf-pet-travel-message { margin: 16px 0; padding: 14px 16px; border: 1px solid var(--pet-life-line); border-radius: 10px; background: var(--pet-life-soft); font-size: 12px; }
+#tavern-forum-root .tf-pet-travel-message p { margin: 8px 0 0; line-height: 1.8; color: var(--tf-muted); overflow-wrap: anywhere; }
+@container (max-width: 640px) {
+    #tavern-forum-root .tf-world-app-page:has(> .tf-companion-v4) > .tf-world-app-header { display: flex; min-height: 0; margin-bottom: 10px; padding: 0; }
+    #tavern-forum-root .tf-world-app-page:has(> .tf-companion-v4) > .tf-world-app-header > div { display: none; }
+    #tavern-forum-root .tf-world-app-page:has(> .tf-companion-v4) > .tf-world-app-header .tf-back-button { padding: 4px 0; min-height: 24px; }
+    #tavern-forum-root .tf-companion-v4.is-panel-home .tf-pet-console-wrap { padding-top: 8px; padding-bottom: 18px; }
+    #tavern-forum-root .is-panel-home .tf-pet-dashboard .tf-companion-title { margin-top: 12px; margin-bottom: 8px; }
+    #tavern-forum-root .is-panel-home .tf-pet-need { margin-bottom: 8px; }
+}
+@container (max-width: 640px) {
+    #tavern-forum-root .tf-world-app-page:has(> .tf-companion-v4) { gap: 4px; padding-top: 8px; }
+    #tavern-forum-root .tf-world-app-page:has(> .tf-companion-v4) > .tf-world-app-header { margin-bottom: 0; }
+    #tavern-forum-root .is-panel-home .tf-pet-dashboard .tf-companion-title { margin: 8px 16px 4px; }
+    #tavern-forum-root .is-panel-home .tf-pet-dashboard .tf-companion-title h2 { font-size: 20px; }
+    #tavern-forum-root .is-panel-home .tf-pet-dashboard .tf-companion-title small { font-size: 9px; margin-top: 3px; }
+    #tavern-forum-root .is-panel-home .tf-pet-need { padding: 6px 11px; }
+    #tavern-forum-root .is-panel-home .tf-pet-need button { padding-top: 5px; padding-bottom: 5px; }
+    #tavern-forum-root .tf-companion-v4.is-panel-home .tf-pet-console { margin-top: 0; }
+}
+@container (max-width: 640px) {
+    #tavern-forum-root .is-panel-home .tf-pet-dashboard .tf-companion-title > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 8px; min-width: 0; }
+    #tavern-forum-root .is-panel-home .tf-pet-dashboard .tf-companion-title small { margin-top: 0; }
+}
+/* Soft handheld: a quiet shell and an open, colourful habitat. */
+#tavern-forum-root .tf-companion-v5.is-device-classic {
+    --pet-case: #eee0cb; --pet-case-edge: #b7a58a; --pet-button: #d69783; --pet-button-edge: #aa7464;
+}
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-console-wrap {
+    background: radial-gradient(ellipse at 50% 56%, color-mix(in srgb, var(--pet-case) 30%, transparent), transparent 72%), var(--pet-life-paper);
+}
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-console {
+    width: min(100%, 380px); padding: 20px 18px 18px;
+    border: 1px solid color-mix(in srgb, var(--pet-case-edge) 72%, white);
+    background: linear-gradient(150deg, color-mix(in srgb, var(--pet-case) 50%, white), var(--pet-case));
+    box-shadow: inset 0 2px 0 #fff9, 0 4px 0 color-mix(in srgb, var(--pet-case-edge) 70%, var(--pet-case)), 0 16px 24px #45392d15;
+}
+#tavern-forum-root .tf-companion-v5.is-device-classic .tf-pet-console { border-radius: 66px 66px 82px 82px / 48px 48px 70px 70px; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-console::before,
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-console::after { display: none; }
+#tavern-forum-root .tf-companion-v5 .tf-device-ornaments { opacity: .55; }
+#tavern-forum-root .tf-companion-v5.is-device-classic .tf-device-ornaments { display: none; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-console-brand {
+    min-height: 24px; margin: 0 10px 8px; color: #766d60; font: 600 8px/1.4 ui-monospace, monospace; letter-spacing: .16em;
+}
+#tavern-forum-root .tf-companion-v5 .tf-pet-console-brand b { font-size: 9px; letter-spacing: .02em; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-screen-bezel {
+    padding: 5px; border: 1px solid #b6ab98; border-radius: 28px;
+    background: #d9d1c1; box-shadow: inset 0 1px 3px #726a5922, 0 1px 0 #fff9;
+}
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-screen {
+    border: 1px solid #afa995; border-radius: 22px; background: #f5f2e8; box-shadow: none;
+}
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-screen::after { display: none; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-screen-top,
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-screen-bottom {
+    min-height: 28px; padding-inline: 12px; border: 0; color: #696a58; background: #f5f2e8; font-size: 9px; font-weight: 500;
+}
+#tavern-forum-root .tf-companion-v5 .tf-pet-screen-top > b { font-size: 8px; letter-spacing: .1em; }
+#tavern-forum-root .tf-companion-v5 .tf-pet-signal { opacity: .4; }
+#tavern-forum-root .tf-companion-v5:not(.is-playing-game) .tf-pet-stage { min-height: 245px; }
+#tavern-forum-root .tf-companion-v5 .tf-pet-sprite-control { width: 190px; height: 170px; }
+#tavern-forum-root .tf-companion-v5 .tf-pet-sprite-control .tf-pixel-avatar,
+#tavern-forum-root .tf-companion-v5 .tf-pet-sprite-control .tf-pixel-pet { width: 178px; height: 178px; }
+#tavern-forum-root .tf-companion-v5 .tf-pet-character-shadow { opacity: .16; }
+#tavern-forum-root .tf-companion-v5 .tf-pet-ground { opacity: .25; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-screen-menu {
+    border: 0; background: #f5f2e8; color: #696a58; box-shadow: none;
+}
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-screen-menu.is-primary { min-height: 57px; padding: 5px 7px; gap: 3px; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-screen-menu button {
+    color: #666b58; border: 1px solid transparent; border-radius: 10px; background: transparent; box-shadow: none;
+}
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-screen-menu button.is-selected,
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-screen-menu button:hover { color: #45513c; border-color: #b6bea4; background: #e4e9d8; }
+#tavern-forum-root .tf-companion-v5 .tf-pet-screen-menu.is-primary button { min-height: 44px; }
+#tavern-forum-root .tf-companion-v5 .tf-pet-screen-menu button b { font-weight: 500; font-size: 9px; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-device-controls { width: 70%; gap: 18px; margin: 17px auto 0; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-device-controls button i {
+    width: 36px; height: 28px; border: 1px solid color-mix(in srgb, var(--pet-button-edge) 60%, white); border-radius: 50%;
+    background: linear-gradient(color-mix(in srgb, var(--pet-button) 74%, white), var(--pet-button));
+    box-shadow: inset 0 1px 0 #fff8, 0 3px 0 color-mix(in srgb, var(--pet-button-edge) 70%, var(--pet-button));
+}
+#tavern-forum-root .tf-companion-v5 .tf-pet-device-controls button:nth-child(2) i { width: 42px; height: 31px; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-device-controls button > span { margin-top: 7px; color: #77695e; font: 9px/1.3 sans-serif; }
+#tavern-forum-root .tf-companion-v5 .tf-pet-device-controls small { display: none; }
+#tavern-forum-root .tf-companion-v5 .tf-pet-room-tool {
+    width: 39px; min-height: 40px; padding: 4px 3px; border: 1px solid #fcfbec77; border-radius: 11px;
+    color: #526748; background: #faf6e8b8; box-shadow: 0 2px 3px #334a2720;
+}
+#tavern-forum-root .tf-companion-v5 .tf-pet-room-tool svg { width: 23px; height: 23px; }
+#tavern-forum-root .tf-companion-v5 .tf-pet-room-tool span { font-size: 8px; font-weight: 500; }
+#tavern-forum-root .tf-companion-v5 .tf-pet-room-tool:hover,
+#tavern-forum-root .tf-companion-v5 .tf-pet-room-tool[aria-pressed="true"] { background: #fffbed; border-color: #789064; }
+#tavern-forum-root .tf-companion-v5 .tf-pet-touch-guide { top: 8px; color: #506547; font-size: 9px; font-weight: 400; text-shadow: 0 1px #fff5; }
+#tavern-forum-root .tf-companion-v5 .tf-pet-room-tool.is-ball { top: 31px; }
+#tavern-forum-root .tf-companion-v5 .tf-pet-touch-guide { left: 50%; right: auto; width: max-content; max-width: 90%; padding: 3px 7px; transform: translateX(-50%); border-radius: 8px; background: #faf7e9c7; color: #526248; text-shadow: none; }
+#tavern-forum-root .tf-companion-v5 .tf-pet-touch-guide:empty { display: none; }
+#tavern-forum-root .tf-companion-v5.is-time-night .tf-pet-weather { background: linear-gradient(rgb(45 64 97 / 12%), rgb(30 48 70 / 16%)); }
+#tavern-forum-root .tf-companion-v5.is-habitat-meadow .tf-pet-ground { display: none; }
+/* Clear sky and soft grass separate the silhouette from the ground. */
+#tavern-forum-root .tf-companion-v5.is-habitat-meadow .tf-pet-stage {
+    background: linear-gradient(#e0ebe2 0%, #eaf0d8 61%, #c6d4ab 62%, #bbce9f 100%);
+}
+#tavern-forum-root .tf-companion-v5.is-habitat-meadow .is-backdrop { height: 74px; bottom: 34px; background: #d0deb4; box-shadow: 145px 10px 0 #c9d9ab, 280px -5px 0 #dde5c3; }
+#tavern-forum-root .tf-companion-v5.is-habitat-meadow .is-landmark { height: 44px; bottom: 14px; background: #b5cc93; }
+#tavern-forum-root .tf-companion-v5.is-habitat-meadow .is-detail-one { height: 8px; opacity: .5; }
+#tavern-forum-root .tf-companion-v5.is-habitat-meadow .is-detail-two { width: 4px; height: 4px; bottom: 29px; background: #fff7db; border-radius: 1px; box-shadow: 28px 7px 0 #d6a28f, 200px -1px 0 #fff7db, 218px 8px 0 #d6a28f; }
+#tavern-forum-root .tf-companion-v5.is-habitat-bedroom .tf-pet-stage { background: linear-gradient(#efe4cb 0 72%, #d8b996 73% 77%, #e0c6a5 78%); }
+#tavern-forum-root .tf-companion-v5.is-habitat-bedroom .is-backdrop { border-color: #bca07e; background: linear-gradient(145deg, #b8d5d1, #e6eac6); }
+#tavern-forum-root .tf-companion-v5.is-habitat-bedroom .is-backdrop::before,
+#tavern-forum-root .tf-companion-v5.is-habitat-bedroom .is-backdrop::after { background: #bca07e; }
+#tavern-forum-root .tf-companion-v5.is-habitat-bedroom .is-detail-one { border-color: #b09c80; background: repeating-linear-gradient(90deg, #dfc5ac 0 12px, #d0b499 12px 17px); }
+#tavern-forum-root .tf-companion-v5.is-habitat-pond .tf-pet-stage { background: linear-gradient(#dce7d2 0 48%, #b7d7c9 49% 66%, #94bfb4 67%); }
+#tavern-forum-root .tf-companion-v5.is-habitat-forest .tf-pet-stage { background: linear-gradient(120deg, #8fa482 0 17%, #cbd9ad 18% 76%, #809a78 77%); }
+@container (max-width: 640px) {
+    #tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-console,
+    #tavern-forum-root .tf-companion-v4.tf-companion-v5.is-panel-home .tf-pet-console { width: min(calc(100% - 8px), 310px); padding: 16px 13px 14px; }
+    #tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-console-brand { min-height: 18px; margin: 0 9px 6px; font-size: 7px; }
+    #tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-screen-bezel { border-radius: 23px; padding: 4px; }
+    #tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-screen { border-radius: 18px; }
+    #tavern-forum-root .tf-companion-v5:not(.is-playing-game) .tf-pet-stage { min-height: 201px; }
+    #tavern-forum-root .tf-companion-v5 .tf-pet-sprite-control { width: 160px; height: 145px; }
+    #tavern-forum-root .tf-companion-v5 .tf-pet-sprite-control .tf-pixel-avatar,
+    #tavern-forum-root .tf-companion-v5 .tf-pet-sprite-control .tf-pixel-pet { width: 150px; height: 150px; }
+    #tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-device-controls { margin-top: 13px; }
+    #tavern-forum-root .tf-companion-v4.tf-companion-v5 .tf-pet-device-controls button > span { margin-top: 5px; font-size: 8px; }
+}
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.is-device-lunar .tf-pet-console { padding: 28px 24px 18px; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.is-device-lunar .tf-pet-screen-bezel { border-radius: 42% / 18%; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.is-device-lunar .tf-pet-screen { border-radius: 40% / 17%; }
+#tavern-forum-root .tf-companion-v5 .tf-device-swatch.is-classic { border: 1px solid #b7a58a; background: linear-gradient(150deg, #f8f1e7, #eee0cb); box-shadow: inset 0 1px 0 #fff9, 0 2px 0 #b7a58a; }
+#tavern-forum-root .tf-companion-v5 .tf-device-swatch.is-classic i { border: 1px solid #b6ab98; background: #d5dfc6; }
+#tavern-forum-root .tf-companion-v5 .tf-device-swatch.is-classic b { background: radial-gradient(circle at 15% 50%, #d69783 0 3px, transparent 3.5px), radial-gradient(circle at 50% 50%, #d69783 0 3px, transparent 3.5px), radial-gradient(circle at 85% 50%, #d69783 0 3px, transparent 3.5px); }
+#tavern-forum-root .tf-companion-v5 .tf-device-swatch.is-classic small { display: none; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.is-device-lunar .tf-pet-screen-top { padding-inline: 45px; }
+#tavern-forum-root .tf-companion-v5.is-weather-sunny:not(.is-time-night) .tf-weather-sun { right: auto; left: 24px; top: 28px; opacity: .4; }
+#tavern-forum-root .tf-companion-v5.is-weather-sunny.is-time-night .tf-weather-moon { right: auto; left: 24px; }
+/* Pocket pet: the device is the whole activity, with menus inside its screen. */
+#tavern-forum-root .tf-world-app-page:has(> .tf-companion-device) { gap: 0; }
+#tavern-forum-root .tf-world-app-page:has(> .tf-companion-device) > .tf-world-app-header > div { display: none; }
+#tavern-forum-root .tf-companion-v4.tf-companion-device { display: block; min-width: 0; }
+#tavern-forum-root .tf-companion-v4.tf-companion-device .tf-companion-home { display: block; padding: 0; border: 0; background: transparent; box-shadow: none; }
+#tavern-forum-root .tf-companion-v4.tf-companion-device .tf-pet-console-wrap { display: flex; justify-content: center; padding: 22px 0 32px; background: transparent; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-console {
+    width: min(100%, 360px); min-width: 0; margin: 0; padding: 40px 35px 29px;
+    border-radius: 49% 49% 46% 46% / 37% 37% 55% 55%;
+    box-shadow: inset 0 3px 1px #fff9, inset 0 -5px 0 #0000000b, 0 5px 0 var(--pet-case-edge), 0 20px 28px #493e3820;
+}
+#tavern-forum-root .tf-companion-device.is-device-classic { --pet-case: #eec4c1; --pet-case-edge: #c29190; --pet-button: #f8e3bc; --pet-button-edge: #c9ac84; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-console-brand { justify-content: center; flex-direction: column; gap: 2px; min-height: 28px; margin: 0 20px 12px; font-size: 8px; color: #78635f; }
+#tavern-forum-root .tf-companion-device .tf-pet-console-brand b { font-size: 11px; letter-spacing: .2em; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-screen-bezel { padding: 7px; border-radius: 27px; background: #f8e9d2; border-color: #caa8a0; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-screen { border-radius: 18px; border: 2px solid #8b9580; background: #e6ecd5; overflow: hidden; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-screen-top,
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-screen-bottom { display: flex; align-items: center; min-height: 23px; padding: 3px 10px; gap: 6px; color: #59634c; background: #e6ecd5; font: 10px/1.4 ui-monospace, sans-serif; }
+#tavern-forum-root .tf-companion-device .tf-pet-screen-top > b { max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: inherit; font-weight: 700; letter-spacing: 0; }
+#tavern-forum-root .tf-companion-device .tf-device-attention { margin-left: auto; }
+#tavern-forum-root .tf-companion-v4.tf-companion-device .tf-device-icon-menu { display: grid; grid-template-columns: repeat(8,minmax(0,1fr)); gap: 0; padding: 2px 3px 4px; margin: 0; border: 0; border-radius: 0; background: #e6ecd5; box-shadow: none; }
+#tavern-forum-root .tf-companion-device .tf-device-icon-menu button { position: relative; display: flex; justify-content: center; align-items: center; min-height: 29px; height: 29px; min-width: 0; padding: 0; border: 1px solid transparent; border-radius: 4px; color: #667054; background: transparent; box-shadow: none; }
+#tavern-forum-root .tf-companion-device .tf-device-icon-menu button > span { font: 21px/1 sans-serif; }
+#tavern-forum-root .tf-companion-device .tf-device-icon-menu button[aria-current="page"] { color: #e6ecd5; background: #6a7558; }
+#tavern-forum-root .tf-companion-device .tf-device-icon-menu button > i { position: absolute; right: 2px; top: 2px; width: 4px; height: 4px; border-radius: 50%; background: #bf745d; }
+#tavern-forum-root .tf-companion-device .tf-device-viewport { position: relative; height: 210px; overflow: hidden; border-block: 1px solid #abb598; background: #edf0df; }
+#tavern-forum-root .tf-companion-v4.tf-companion-device .tf-pet-stage { height: 100%; min-height: 0; border-radius: 0; }
+#tavern-forum-root .tf-companion-device [hidden] { display: none !important; }
+#tavern-forum-root .tf-companion-device .tf-pet-sprite-control { width: 132px; height: 122px; }
+#tavern-forum-root .tf-companion-device .tf-pet-sprite-control .tf-pixel-avatar,
+#tavern-forum-root .tf-companion-device .tf-pet-sprite-control .tf-pixel-pet { width: 128px; height: 128px; }
+#tavern-forum-root .tf-companion-device .tf-pet-touch-guide { max-width: 83%; font-size: 9px; }
+#tavern-forum-root .tf-companion-device .tf-pet-room-tool { width: 32px; min-height: 32px; padding: 3px; border-radius: 5px; }
+#tavern-forum-root .tf-companion-device .tf-pet-room-tool svg { width: 21px; height: 21px; }
+#tavern-forum-root .tf-companion-device .tf-pet-room-tool span { display: none; }
+#tavern-forum-root .tf-companion-device .tf-device-selection-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; text-align: center; font-size: 9px; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-device-controls { width: 75%; margin: 23px auto 0; gap: 17px; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-device-controls button i { width: 33px; height: 33px; border-radius: 50%; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-controls button:nth-child(2) { transform: translateY(9px); }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-device-controls button > span { font: 8px/1.3 ui-monospace, sans-serif; margin-top: 6px; color: #795f59; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-controls small { display: inline; margin-left: 3px; font-size: 9px; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-page { position: absolute; inset: 0; display: flex; flex-direction: column; min-width: 0; color: #515d43; background: #edf0df; font: 11px/1.5 sans-serif; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-page > header { display: flex; align-items: center; justify-content: space-between; height: 27px; flex-shrink: 0; padding: 0 8px; border-bottom: 1px dotted #acb79b; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-page > header button { width: 27px; min-height: 24px; padding: 0; color: inherit; background: transparent; border: 0; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-content { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #a6b391 transparent; padding: 8px; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-content > * { margin: 0 0 8px; max-width: 100%; min-width: 0; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-content h2,
+#tavern-forum-root .tf-companion-device .tf-pet-device-content h3 { font-size: 12px; margin: 0 0 5px; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-content p { font-size: 10px; line-height: 1.6; margin: 4px 0; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-content button { min-height: 28px; font-size: 10px; white-space: normal; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-content input,
+#tavern-forum-root .tf-companion-device .tf-pet-device-content select { min-width: 0; width: 100%; font-size: 11px; }
+#tavern-forum-root .tf-companion-device .tf-pet-life-details { background: transparent; color: inherit; border: 1px solid #bdc7ac; border-radius: 5px; box-shadow: none; }
+#tavern-forum-root .tf-companion-device .tf-pet-life-details > summary { padding: 7px; font-size: 11px; }
+#tavern-forum-root .tf-companion-device .tf-pet-life-details > :not(summary) { margin: 6px; }
+#tavern-forum-root .tf-companion-device .tf-pet-vitals { gap: 5px; }
+#tavern-forum-root .tf-companion-device .tf-pet-vitals > div { padding: 5px 7px; border-radius: 4px; background: #e2e8d0; }
+#tavern-forum-root .tf-companion-device .tf-pet-need { padding: 7px; border-radius: 5px; font-size: 10px; }
+#tavern-forum-root .tf-companion-device .tf-pet-pocket-meta { font-size: 10px; flex-wrap: wrap; }
+#tavern-forum-root .tf-companion-device .tf-pet-games { display: grid; grid-template-columns: 1fr; gap: 5px; padding: 0; }
+#tavern-forum-root .tf-companion-device .tf-pet-games button { padding: 7px 9px; min-height: 37px; border-radius: 5px; background: #e2e8d0; }
+#tavern-forum-root .tf-companion-device .tf-device-extra-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-content .tf-pet-section-heading { padding: 0; }
+#tavern-forum-root .tf-companion-device .tf-pet-section-heading small,
+#tavern-forum-root .tf-companion-device .tf-device-setting-group header { display: none; }
+#tavern-forum-root .tf-companion-device .tf-packing { padding: 7px; border-radius: 5px; }
+#tavern-forum-root .tf-companion-device .tf-packing-row { flex-wrap: wrap; }
+#tavern-forum-root .tf-companion-device .tf-pet-trip-actions { display: grid; gap: 5px; }
+#tavern-forum-root .tf-companion-device .tf-companion-profile-grid,
+#tavern-forum-root .tf-companion-device .tf-pet-appearance-controls,
+#tavern-forum-root .tf-companion-device .tf-pet-environment-controls { display: grid; grid-template-columns: 1fr; padding: 0; gap: 7px; }
+#tavern-forum-root .tf-companion-device .tf-companion-profile-grid label.is-wide { display: none; }
+#tavern-forum-root .tf-companion-device .tf-pet-species-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 4px; }
+#tavern-forum-root .tf-companion-device .tf-pet-species-option { padding: 4px 2px; min-width: 0; }
+#tavern-forum-root .tf-companion-device .tf-pet-species-option .tf-pixel-pet { width: 45px; height: 45px; }
+#tavern-forum-root .tf-companion-device .tf-device-skin-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 5px; }
+#tavern-forum-root .tf-companion-device .tf-device-skin-option { padding: 6px; min-width: 0; }
+#tavern-forum-root .tf-companion-device .tf-pet-growth-photos { gap: 3px; }
+#tavern-forum-root .tf-companion-device .tf-pet-growth-photo { padding: 3px; min-width: 0; }
+#tavern-forum-root .tf-companion-device .tf-pet-growth-photo .tf-pixel-pet { width: 54px; height: 54px; }
+#tavern-forum-root .tf-companion-device .tf-pet-decorate { display: block; }
+#tavern-forum-root .tf-companion-device .is-device-selected { outline: 2px solid #66764a; outline-offset: -2px; background-color: #d5dfbf !important; }
+#tavern-forum-root .tf-companion-device .tf-device-icon-menu .is-device-selected { color: #e6ecd5; background: #5e6d49 !important; }
+#tavern-forum-root .tf-companion-device .tf-pet-food-select { position: absolute; inset: auto 0 0; z-index: 25; max-height: 106px; overflow: auto; padding: 3px; }
+#tavern-forum-root .tf-companion-device .tf-pet-food-select > header { padding: 0 5px; min-height: 18px; font-size: 9px; }
+#tavern-forum-root .tf-companion-device .tf-pet-food-select > div { gap: 2px; }
+#tavern-forum-root .tf-companion-device .tf-pet-food-select button { min-height: 32px; padding: 2px; }
+#tavern-forum-root .tf-companion-device .tf-pet-food-select button span { font-size: 14px; }
+#tavern-forum-root .tf-companion-device .tf-pet-food-select button b { font-size: 8px; }
+#tavern-forum-root .tf-companion-device .is-selecting-food .tf-pet-stage { height: 125px; }
+#tavern-forum-root .tf-companion-device .is-selecting-food .tf-pet-sprite-control { transform: scale(.75); transform-origin: center; }
+#tavern-forum-root .tf-companion-device .is-selecting-food .tf-pet-touch-guide,
+#tavern-forum-root .tf-companion-device .is-selecting-food .tf-pet-room-tool { display: none; }
+#tavern-forum-root .tf-companion-device.is-playing-game .tf-device-viewport { height: 252px; }
+#tavern-forum-root .tf-companion-device.is-playing-game .tf-pet-stage { min-height: 0; }
+@container (max-width: 640px) {
+    #tavern-forum-root .tf-companion-v4.tf-companion-device .tf-pet-console-wrap { padding: 10px 0 28px; }
+    #tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-console { width: min(100%, 330px); padding: 35px 24px 27px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #tavern-forum-root .tf-companion-device .tf-pet-device-controls button { transition: none; }
+}
+#tavern-forum-root .tf-companion-device .tf-pet-console-wrap::after { display: none; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-page.tf-pet-life { margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+#tavern-forum-root .tf-companion-device .tf-pet-games > div { display: grid; grid-template-columns: 1fr; gap: 5px; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-content input[type="checkbox"] { width: 15px; height: 15px; flex-shrink: 0; }
+#tavern-forum-root .tf-companion-device .tf-pet-appearance-controls > div:not(.tf-device-appearance-preview) { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+#tavern-forum-root .tf-companion-device .tf-pet-appearance-controls > header { display: block; }
+#tavern-forum-root .tf-companion-device .tf-pet-appearance-controls footer { display: grid; grid-template-columns: 1fr; gap: 5px; }
+#tavern-forum-root .tf-companion-device .tf-device-appearance-preview { display: grid; place-items: center; padding: 3px; background: #dce4c9; border-radius: 4px; }
+#tavern-forum-root .tf-companion-device .tf-device-appearance-preview .tf-pixel-pet { width: 72px; height: 72px; }
+#tavern-forum-root .tf-companion-device .tf-growth-photos { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 3px; }
+#tavern-forum-root .tf-companion-device .tf-growth-photos figure { padding: 3px; min-width: 0; }
+#tavern-forum-root .tf-companion-device .tf-growth-photos .tf-pixel-pet { width: 54px; height: 54px; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-controls button span small { display: block; margin: 3px 0 0; font: 10px/1.2 sans-serif; opacity: 1; color: #795f59; letter-spacing: 0; }
+#tavern-forum-root .tf-companion-v4.tf-companion-device .tf-device-icon-menu button[aria-current="page"],
+#tavern-forum-root .tf-companion-v4.tf-companion-device .tf-device-icon-menu button.is-device-selected { color: #edf0df; background: #647451 !important; box-shadow: none; border-color: #647451; }
+#tavern-forum-root .tf-companion-device .tf-device-icon-menu svg { width: 17px; height: 17px; }
+#tavern-forum-root .tf-companion-device .tf-pet-vitals { grid-template-columns: repeat(2,minmax(0,1fr)); }
+#tavern-forum-root .tf-companion-device .tf-pet-vitals progress { accent-color: #829363; }
+#tavern-forum-root .tf-companion-device .tf-pet-life-details { padding: 0; }
+#tavern-forum-root .tf-companion-device .tf-pet-life-details > summary { min-height: 32px; line-height: 18px; padding: 7px; font-size: 12px; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-page > header { font-size: 12px; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-content button { font-size: 11px; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-content p { font-size: 11px; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-content input.tf-native-environment-select { width: 1px; }
+#tavern-forum-root .tf-companion-device .tf-pet-vitals progress::-webkit-progress-bar { background: #cfd8bb; }
+#tavern-forum-root .tf-companion-device .tf-pet-vitals progress::-webkit-progress-value { background: #829363; }
+#tavern-forum-root .tf-companion-device .tf-pet-vitals progress::-moz-progress-bar { background: #829363; }
+#tavern-forum-root .tf-companion-device .tf-pet-vitals .is-low progress::-webkit-progress-value { background: #b5935e; }
+#tavern-forum-root .tf-companion-device .tf-device-icon-menu button { transition: none; }
+#tavern-forum-root .tf-companion-v4.tf-companion-device .tf-pet-appearance-controls > .tf-device-appearance-preview { display: grid; grid-template-columns: 1fr; place-items: center; }
+/* Entering the companion opens a floating device; exiting restores the forum. */
+#tavern-forum-root:has(.tf-companion-device) > .tf-backdrop { display: block; background: #1c243857; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+#tavern-forum-root .tf-app:has(.tf-companion-device) { inset: 0; width: 100%; height: 100%; max-height: none; margin: 0; border: 0; border-radius: 0; background: transparent !important; box-shadow: none; pointer-events: none; }
+#tavern-forum-root .tf-app:has(.tf-companion-device) > .tf-topbar,
+#tavern-forum-root .tf-app:has(.tf-companion-device) > .tf-mobile-main-nav,
+#tavern-forum-root .tf-app:has(.tf-companion-device) > .tf-wallpaper { display: none; }
+#tavern-forum-root .tf-view:has(.tf-companion-device) { padding: 0; background: none !important; scrollbar-gutter: auto; }
+#tavern-forum-root .tf-world-app-page:has(> .tf-companion-device) { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; max-width: none; min-height: 100%; margin: 0; padding: 18px 12px; gap: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: visible; }
+#tavern-forum-root .tf-world-app-page:has(> .tf-companion-device) > .tf-world-app-header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; width: min(100%, 500px); min-height: 40px; padding: 0 6px; margin: 0 auto 35px; border: 0; border-radius: 0; background: none; }
+#tavern-forum-root .tf-world-app-page:has(> .tf-companion-device) > .tf-world-app-header > div { display: none; }
+#tavern-forum-root .tf-world-app-page:has(> .tf-companion-device) > .tf-world-app-header button { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 5px; width: auto; min-height: 36px; padding: 7px 12px; color: #f7f8fb; background: #18203387; border: 1px solid #ffffff35; border-radius: 20px; box-shadow: none; font: 12px/1.4 sans-serif; white-space: nowrap; cursor: pointer; pointer-events: auto; }
+#tavern-forum-root .tf-world-app-page:has(> .tf-companion-device) > .tf-world-app-header button:hover { background: #182033bd; }
+#tavern-forum-root .tf-world-app-page:has(> .tf-companion-device) > .tf-world-app-header .tf-back-button { min-height: 36px; padding: 7px 12px; color: #f7f8fb !important; }
+#tavern-forum-root .tf-world-app-page:has(> .tf-companion-device) > .tf-world-app-header button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+#tavern-forum-root .tf-world-app-page:has(> .tf-companion-device) > .tf-world-app-header button .tf-icon { width: 16px; height: 16px; }
+#tavern-forum-root .tf-companion-v4.tf-companion-device { display: block; flex: 0 0 auto; width: 100%; }
+#tavern-forum-root .tf-companion-v4.tf-companion-device .tf-companion-home { display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; min-width: 0; padding: 0; gap: 0; background: none; overflow: visible; }
+#tavern-forum-root .tf-companion-v4.tf-companion-device .tf-pet-console-wrap { position: relative; order: 0; width: min(100%, 520px); padding: 0 8px 14px; background: none; overflow: visible; }
+#tavern-forum-root .tf-companion-device .tf-pet-console-wrap::before { display: none; }
+#tavern-forum-root .tf-companion-device .tf-pet-console { pointer-events: auto; }
+#tavern-forum-root .tf-companion-device.is-device-classic { --pet-case: #b8d3df; --pet-case-edge: #88a9b9; --pet-button: #f2ecdb; --pet-button-edge: #b9b39f; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-console {
+    width: 500px; max-width: 100%; margin: 0; padding: 52px 64px 40px;
+    border: 1px solid var(--pet-case-edge); border-radius: 49% 49% 47% 47% / 42% 42% 54% 54%;
+    background:
+        radial-gradient(ellipse at 30% 12%, #ffffff63, #ffffff00 62%),
+        linear-gradient(150deg, var(--pet-case), color-mix(in srgb, var(--pet-case) 92%, var(--pet-case-edge)) 74%, var(--pet-case-edge));
+    box-shadow: inset 0 2px 2px #ffffffb3, inset 6px 1px 10px #ffffff36, inset -6px -8px 12px #37526717, 0 4px 0 color-mix(in srgb, var(--pet-case-edge) 86%, var(--pet-case)), 0 10px 14px #17253c12, 0 24px 36px #17253c24;
+}
+/* A shallow mould line follows the shell without adding another frame. */
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-console::before {
+    display: block; position: absolute; inset: 5px; width: auto; height: auto; border: 1px solid #ffffff30; border-radius: inherit;
+    background: none; box-shadow: inset 0 -1px 1px #3752670d; pointer-events: none; content: '';
+}
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-console-brand { flex-direction: row; justify-content: center; min-height: 18px; height: 18px; gap: 8px; margin: 0 16px 12px; padding: 0; color: color-mix(in srgb, var(--pet-case-edge) 62%, #253646); text-shadow: 0 1px 0 #ffffff73; }
+#tavern-forum-root .tf-companion-device .tf-pet-console-brand > span { display: none; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-console-brand b { max-width: 100%; font: 600 11px/1.4 sans-serif; letter-spacing: .2em; text-indent: .2em; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-screen-bezel {
+    padding: 6px; border: 0; border-radius: 29px;
+    background: linear-gradient(155deg, color-mix(in srgb, var(--pet-case-edge) 90%, #334651), color-mix(in srgb, var(--pet-case-edge) 74%, var(--pet-case)) 56%, color-mix(in srgb, var(--pet-case-edge) 48%, var(--pet-case)));
+    box-shadow: inset 0 2px 3px #2a435329, 0 1px 0 1px #ffffff59, 0 -1px 1px #37526717;
+}
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-screen { min-height: 0; border: 0; border-radius: 23px; background: #e5ead7; box-shadow: 0 0 0 1px #52644838, 0 1px 1px #ffffff4d; }
+/* Static lens shading stays transparent to touch and avoids animated glare. */
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-screen::after {
+    display: block; inset: 0; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(135deg, #ffffff0a, transparent 40%);
+    box-shadow: inset 0 2px 4px #263d3324, inset 0 0 1px 1px #263d3314;
+    transform: none; animation: none;
+}
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-screen-top,
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-screen-bottom { min-height: 27px; padding: 5px 12px; font-size: 11px; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-screen-top { gap: 7px; background: linear-gradient(#eef1e1, #e6ebd6); }
+#tavern-forum-root .tf-companion-device .tf-pet-screen-top > b { font: 600 12px/1.4 sans-serif; letter-spacing: .02em; }
+#tavern-forum-root .tf-companion-device .tf-pet-screen-top > span { color: #6b765c; font: 10px/1.4 sans-serif; }
+#tavern-forum-root .tf-companion-v4.tf-companion-device .tf-device-icon-menu { height: 100%; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); padding: 8px 0; gap: 10px; background: transparent; }
+#tavern-forum-root .tf-companion-device .tf-device-icon-menu button { flex-direction: column; gap: 10px; height: auto; min-height: 62px; border: 1px solid #c4ceb3; border-radius: 12px; background: #e6ebd8; }
+#tavern-forum-root .tf-companion-device .tf-device-icon-menu button > span { font: 12px/1.3 sans-serif; white-space: nowrap; }
+#tavern-forum-root .tf-companion-device .tf-device-icon-menu svg { width: 26px; height: 26px; }
+#tavern-forum-root .tf-companion-device .tf-device-icon-menu button:hover { background: #cfd9bc; }
+#tavern-forum-root .tf-companion-device .tf-device-icon-menu button:focus-visible { outline: 2px solid #526241; outline-offset: -2px; }
+#tavern-forum-root .tf-companion-device .tf-device-viewport { height: auto; min-height: 192px; aspect-ratio: 1.2; border-bottom: 0; container-type: inline-size; }
+#tavern-forum-root .tf-companion-device .tf-pet-room-tools,
+#tavern-forum-root .tf-companion-device:not(.is-washing) .tf-pet-touch-guide { display: none; }
+#tavern-forum-root .tf-companion-device .tf-pet-screen-bottom { position: absolute; width: 1px; height: 1px; min-height: 0 !important; padding: 0 !important; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#tavern-forum-root .tf-companion-device .tf-device-menu-toggle { position: relative; display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 5px 7px; min-height: 28px; border: 0; border-radius: 6px; color: #536448; background: transparent; font: 11px/1.3 sans-serif; cursor: pointer; }
+#tavern-forum-root .tf-companion-device .tf-device-menu-toggle svg { width: 13px; height: 13px; }
+#tavern-forum-root .tf-companion-device .tf-device-menu-toggle:hover,
+#tavern-forum-root .tf-companion-device .tf-device-menu-toggle[aria-expanded="true"] { background: #ced9bc; }
+#tavern-forum-root .tf-companion-device .tf-device-menu-toggle:focus-visible { outline: 2px solid #526241; }
+#tavern-forum-root .tf-companion-device .tf-device-menu-toggle,
+#tavern-forum-root .tf-companion-device .tf-device-icon-menu button,
+#tavern-forum-root .tf-companion-device:not(.is-playing-game) .tf-pet-device-controls button { touch-action: manipulation; }
+#tavern-forum-root .tf-companion-device .tf-device-menu-toggle i { position: absolute; right: 1px; top: 3px; width: 4px; height: 4px; border-radius: 50%; background: #b57955; }
+#tavern-forum-root .tf-companion-device .tf-pet-sprite-control { --pet-sprite-size: clamp(118px, 56cqi, 190px); width: calc(var(--pet-sprite-size) + 32px); height: calc(var(--pet-sprite-size) + 20px); align-self: end; margin-bottom: clamp(6px, 3cqi, 12px); }
+#tavern-forum-root .tf-companion-device .tf-pet-sprite-control .tf-pixel-avatar,
+#tavern-forum-root .tf-companion-device .tf-pet-sprite-control .tf-pixel-pet { width: var(--pet-sprite-size); height: var(--pet-sprite-size); }
+#tavern-forum-root .tf-companion-device .is-selecting-food .tf-pet-sprite-control { --pet-sprite-size: 110px; width: 142px; height: 120px; margin-bottom: 0; transform: none; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-device-controls { --pet-key-size: 42px; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); width: 70%; margin: 24px auto 0; gap: 18px; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-device-controls button { position: relative; display: flex; align-items: center; flex-direction: column; gap: 7px; min-height: 56px; padding: 0; transform: none; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-device-controls button:nth-child(2) { transform: translateY(7px); }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-device-controls button::before {
+    position: absolute; top: -2px; left: 50%; width: calc(var(--pet-key-size) + 6px); height: calc(var(--pet-key-size) + 7px);
+    border-radius: 50%; background: color-mix(in srgb, var(--pet-case-edge) 44%, var(--pet-case));
+    box-shadow: inset 0 1px 2px #3752672b, 0 1px 0 #ffffff70; transform: translateX(-50%); pointer-events: none; content: '';
+}
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-device-controls button i {
+    position: relative; width: var(--pet-key-size); height: var(--pet-key-size); flex-shrink: 0;
+    border: 1px solid color-mix(in srgb, var(--pet-button-edge) 64%, var(--pet-button)); border-radius: 50%;
+    background: radial-gradient(ellipse at 32% 18%, #ffffff5c, #ffffff00 74%), linear-gradient(160deg, var(--pet-button), color-mix(in srgb, var(--pet-button) 90%, var(--pet-button-edge)));
+    box-shadow: inset 0 2px 1px #ffffffa3, inset 0 -1px 2px #9b8a6521, 0 3px 0 var(--pet-button-edge), 0 4px 4px #334b6326;
+    transition: transform 90ms ease, box-shadow 90ms ease;
+}
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-device-controls button:active i { transform: translateY(3px); box-shadow: inset 0 1px 2px #9b8a6526, inset 0 1px 0 #ffffff73, 0 1px 0 var(--pet-button-edge); }
+#tavern-forum-root .tf-companion-device .tf-pet-device-controls button:focus-visible { outline: 2px solid var(--pet-case-edge); outline-offset: 5px; border-radius: 12px; }
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-device-controls button > span { display: flex; align-items: center; justify-content: center; gap: 4px; margin: 1px 0 0; font: 9px/1.3 ui-monospace,monospace; color: color-mix(in srgb, var(--pet-case-edge) 48%, #273e54); text-shadow: 0 1px 0 #ffffff40; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-controls button span small { display: inline; margin: 0; color: inherit; font: 11px/1.3 sans-serif; }
+#tavern-forum-root .tf-companion-device.is-playing-game .tf-device-viewport { height: auto; min-height: 220px; aspect-ratio: 1.22; }
+#tavern-forum-root .tf-companion-device .tf-device-swatch.is-classic { background: #b8d3df; border-color: #88a9b9; box-shadow: inset 0 1px 0 #ffffff99, 0 2px 0 #88a9b9; }
+#tavern-forum-root .tf-companion-device .tf-device-swatch.is-classic b { background: radial-gradient(circle at 15% 50%, #f2ecdb 0 3px, transparent 3.5px), radial-gradient(circle at 50% 50%, #f2ecdb 0 3px, transparent 3.5px), radial-gradient(circle at 85% 50%, #f2ecdb 0 3px, transparent 3.5px); }
+
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-screen-top,
+#tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-screen-bottom { font-size: 11px; }
+#tavern-forum-root .tf-companion-device .tf-device-selection-label { font-size: 10px; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-content p,
+#tavern-forum-root .tf-companion-device .tf-pet-device-content button { font-size: 12px; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-content { scrollbar-width: thin; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-page > header { min-height: 35px; padding: 3px 10px; border-bottom: 1px solid #c3cdaf; background: #e1e7d0; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-page > header button { width: 30px; height: 28px; border: 1px solid #b8c3a5; border-radius: 6px; background: #edf0df; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-page > header button svg { width: 16px; height: 16px; vertical-align: middle; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-content { padding: 10px; }
+#tavern-forum-root .tf-companion-device .tf-pet-games button { min-height: 43px; padding: 9px 10px; border: 1px solid #b8c5a3; border-radius: 8px; color: #435438; background: #e2e8d0; box-shadow: 0 1px 0 #fff8; }
+#tavern-forum-root .tf-companion-device .tf-pet-life-details { border-radius: 8px; background: #e6ebd8; }
+#tavern-forum-root .tf-companion-device .tf-pet-vitals > div { padding: 8px; border: 1px solid #c4ceb3; border-radius: 8px; }
+#tavern-forum-root .tf-companion-device .tf-pet-vitals > div > span { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 11px; }
+#tavern-forum-root .tf-companion-device .tf-pet-vitals progress { display: block; width: 100%; height: 5px; margin-top: 7px; }
+#tavern-forum-root .tf-companion-device .tf-pet-need,
+#tavern-forum-root .tf-companion-device .tf-packing,
+#tavern-forum-root .tf-companion-device .tf-packing-preview { padding: 9px; border: 1px solid #c4ceb3; border-radius: 8px; color: #435438; background: #e6ebd8; box-shadow: none; }
+#tavern-forum-root .tf-companion-device .tf-pet-message { margin: 6px 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+#tavern-forum-root .tf-companion-device .tf-packing > .tf-pet-life-details { margin-top: 7px; border: 0; background: transparent; }
+#tavern-forum-root .tf-companion-device .tf-packing > .tf-pet-life-details > summary { padding: 5px 0; font-size: 11px; }
+@media (max-width: 600px) {
+    #tavern-forum-root .tf-world-app-page:has(> .tf-companion-device) { padding: 12px 8px; }
+    #tavern-forum-root .tf-world-app-page:has(> .tf-companion-device) > .tf-world-app-header { width: calc(100% - 16px); margin-bottom: 30px; }
+    #tavern-forum-root .tf-companion-v4.tf-companion-device .tf-pet-console-wrap { padding-inline: 0; }
+    #tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-console { width: 100%; padding: 36px 44px 30px; }
+    #tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-device-controls { width: 76%; margin-top: 20px; }
+}
+@media (max-height: 720px) {
+    #tavern-forum-root .tf-world-app-page:has(> .tf-companion-device) > .tf-world-app-header { margin-bottom: 30px; }
+    #tavern-forum-root .tf-companion-device .tf-device-viewport { max-height: 260px; }
+    #tavern-forum-root .tf-companion-device.is-playing-game .tf-device-viewport { max-height: 280px; }
+}
+@media (max-width: 350px) {
+    #tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-console { padding: 28px 32px 25px; }
+    #tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-device-controls { --pet-key-size: 38px; width: 82%; margin-top: 16px; gap: 12px; }
+    #tavern-forum-root .tf-companion-v4.tf-companion-device .tf-device-icon-menu { gap: 6px; }
+    #tavern-forum-root .tf-companion-device .tf-device-icon-menu svg { width: 22px; height: 22px; }
+    #tavern-forum-root .tf-companion-device .tf-device-icon-menu button > span { font-size: 11px; }
+}
+@media (max-height: 620px) {
+    #tavern-forum-root .tf-world-app-page:has(> .tf-companion-device) > .tf-world-app-header { margin-bottom: 16px; }
+    #tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-console { padding-block: 28px 24px; }
+    #tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-console-brand { margin-bottom: 11px; }
+    #tavern-forum-root .tf-companion-v4.tf-companion-v5.tf-companion-device .tf-pet-device-controls { margin-top: 14px; }
+    #tavern-forum-root .tf-companion-device .tf-device-viewport { max-height: 220px; }
+    #tavern-forum-root .tf-companion-device.is-playing-game .tf-device-viewport { max-height: 220px; }
+    #tavern-forum-root .tf-companion-device .tf-pet-sprite-control { --pet-sprite-size: clamp(118px, 56cqi, 164px); }
+}
+@media (prefers-reduced-motion: reduce) {
+    #tavern-forum-root .tf-companion-device .tf-pet-device-controls button i { transition: none; }
 }

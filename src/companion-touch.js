@@ -1,6 +1,7 @@
 // Pointer interactions are transient UI state; persistence stays in the care handlers.
 export function bindCompanionTouch(root, { captureScope, allowed, isCleaning, scrub, commit }) {
     let gesture = null, ghost = null, suppressClick = false;
+    const navigationSelector = '.tf-device-menu-toggle, .tf-device-icon-menu button, .tf-pet-device-page > header button';
     const inside = (node, x, y) => {
         if (!node?.isConnected) return false;
         const rect = node.getBoundingClientRect();
@@ -17,15 +18,16 @@ export function bindCompanionTouch(root, { captureScope, allowed, isCleaning, sc
     root.addEventListener('pointerdown', event => {
         suppressClick = false;
         if (event.isPrimary === false || (event.button !== 0 && event.pointerType !== 'touch')) return;
-        const target = event.target.closest('[data-action="companion-feed-food"], .tf-pet-sprite-control, .tf-pet-room-tool');
-        if (!target || !allowed(target)) return;
+        const target = event.target.closest('[data-action="companion-feed-food"], .tf-pet-sprite-control, .tf-pet-room-tool, ' + navigationSelector);
+        const navigation = target?.matches(navigationSelector);
+        if (!target || (!navigation && !allowed(target))) return;
         reset();
         const pet = root.querySelector('.tf-companion-v4 .tf-pet-sprite-control');
-        if (!pet) return;
-        const kind = target.matches('.tf-pet-room-tool') || (target.matches('.tf-pet-sprite-control') && target.dataset.action !== 'companion-care') ? 'tool' : target.dataset.foodId ? 'food' : isCleaning() ? 'clean' : 'pet';
+        if (!pet && !navigation) return;
+        const kind = navigation ? 'navigation' : target.matches('.tf-pet-room-tool') || (target.matches('.tf-pet-sprite-control') && target.dataset.action !== 'companion-care') ? 'tool' : target.dataset.foodId ? 'food' : isCleaning() ? 'clean' : 'pet';
         gesture = { id: event.pointerId, target, pet, kind, foodId: target.dataset.foodId, x: event.clientX, y: event.clientY, distance: 0, current: captureScope() };
         try { target.setPointerCapture?.(event.pointerId); } catch { /* Synthetic or cancelled pointers may not support capture. */ }
-        pet.classList.add('is-touching');
+        if (!navigation) pet.classList.add('is-touching');
     });
     root.addEventListener('pointermove', event => {
         const g = gesture;
@@ -50,12 +52,12 @@ export function bindCompanionTouch(root, { captureScope, allowed, isCleaning, sc
     root.addEventListener('pointerup', event => {
         const g = gesture;
         if (!g || g.id !== event.pointerId) return;
-        const valid = g.current() && g.target.isConnected && allowed(g.target);
+        const valid = g.current() && g.target.isConnected && (g.kind === 'navigation' || allowed(g.target));
         const hit = inside(g.pet, event.clientX, event.clientY);
         const toolHit = inside(g.target, event.clientX, event.clientY);
         reset();
         if (!valid) { suppressClick = true; return; }
-        if (g.kind === 'tool') {
+        if (g.kind === 'tool' || g.kind === 'navigation') {
             if (event.pointerType === 'touch') {
                 suppressClick = true;
                 if (toolHit && g.distance < 8) g.target.click();

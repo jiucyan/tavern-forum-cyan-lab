@@ -57,3 +57,25 @@ test('unknown companion and accessory values fall back safely', () => {
     assert.match(artwork, /tf-pixel-character/);
     assert.doesNotMatch(artwork, /data-accessory=/);
 });
+
+test('every growth stage has distinct anatomy and supports the expression and accessory layers', () => {
+    for (const kind of [...species, 'mystery']) {
+        const silhouettes = new Set();
+        for (const stage of ['baby', 'young', 'adult']) {
+            const art = renderCompanionArtwork(kind, 'none', stage);
+            const body = art.match(/<g class="tf-pixel-body-rig">([\s\S]*?)<g class="tf-pixel-face-rig">/)[1];
+            silhouettes.add(body);
+            assert.match(art, new RegExp(`data-growth-stage="${stage}"`));
+            for (const layer of ['tf-pixel-pupils', 'tf-pixel-eyes-sleep', 'tf-pixel-eyes-happy', 'tf-pixel-mouth-feed']) assert.ok(art.includes(layer), `${kind}/${stage}/${layer}`);
+            if (kind === 'mystery') continue;
+            for (const accessory of accessories) {
+                const dressed = renderCompanionArtwork(kind, accessory, stage);
+                assert.match(dressed, new RegExp(`data-growth-fit="${stage}"`));
+                assert.match(dressed, new RegExp(`data-accessory="${accessory}"`));
+                assert.doesNotMatch(dressed, /undefined|NaN/);
+            }
+        }
+        assert.equal(silhouettes.size, 3, `${kind} only changes scale instead of anatomy`);
+    }
+    assert.equal(renderCompanionArtwork('cat', 'none', 'invalid'), renderCompanionArtwork('cat', 'none', 'adult'));
+});

@@ -3,6 +3,7 @@ import { normalizeCompanionLife, advanceCompanionLife, canCareForCompanion, reco
 import { applyRelationshipTransition, recordRelationshipEvent } from './memory.js';
 import { DEFAULT_BUILTIN_PROMPTS, WORLD_MODULE_DEFINITIONS } from './constants.js';
 import { createId, parseJsonResponse } from './prompt.js';
+import { normalizeCompanionHabitat } from './companion-scenes.js';
 
 function text(value, fallback = '') {
     return typeof value === 'string' && value.trim() ? value.trim() : fallback;
@@ -141,7 +142,7 @@ function normalizeWorldStateValues(value) {
         accessory: ['none', 'scarf', 'satchel', 'flower', 'charm', 'ribbon', 'glasses', 'crown', 'leaf', 'headphones', 'cape', 'bell'].includes(companion.accessory) ? companion.accessory : 'none',
         accessoryColor: color(companion.accessoryColor),
         autoAccessory: Boolean(companion.autoAccessory),
-        habitat: ['meadow', 'pond', 'bedroom', 'forest', 'snowfield', 'city', 'space', 'arcade'].includes(companion.habitat) ? companion.habitat : 'meadow',
+        habitat: normalizeCompanionHabitat(companion.habitat),
         weather: ['auto', 'sunny', 'cloudy', 'rain', 'wind', 'snow'].includes(companion.weather) ? companion.weather : 'auto',
         timeOfDay: ['auto', 'dawn', 'day', 'dusk', 'night'].includes(companion.timeOfDay) ? companion.timeOfDay : 'auto',
         lastInteractionAt: Math.max(0, Number(companion.lastInteractionAt || 0)),

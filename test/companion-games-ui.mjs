@@ -1,3 +1,4 @@
+import { openCompanionMenu } from './companion-navigation.mjs';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
@@ -44,6 +45,7 @@ async function point(page, selector) {
 }
 const game = async page => (await readPet(page)).life.game;
 async function start(page, kind = 'catch') {
+    await openCompanionMenu(page, 'games', 'click');
     await page.locator('[data-action="pet-game-start"][data-game="' + kind + '"]').click();
     await page.locator('.tf-pet-arcade canvas').waitFor();
     await page.waitForTimeout(2200);
@@ -97,6 +99,7 @@ try {
         life.game = JSON.parse(JSON.stringify(life.game)); life.game.lastTickAt -= 5000; petTest.render();
     });
     assert.equal((await game(page)).paused, true);
+    await openCompanionMenu(page, 'games', 'click');
     await page.locator('.tf-pet-games [data-action="pet-game-stop"]').click();
     console.log('PASS Escape and blur pause, result settlement, best score and replay');
 
@@ -114,6 +117,7 @@ try {
     await page.mouse.move(confirm.x+confirm.width/2,confirm.y+confirm.height/2);await page.mouse.down();await page.waitForTimeout(600);await page.mouse.up();
     assert.equal((await game(page)).answer,1,'held memory button must not answer twice');
     await page.keyboard.press('Enter');assert.equal((await game(page)).phase,'between','keyboard activation immediately after pointer release must work');
+    await openCompanionMenu(page, 'games', 'click');
     await page.locator('.tf-pet-games [data-action="pet-game-stop"]').click();
     console.log('PASS memory pads show and accept ordered, growing sequences');
     assert.equal(await page.evaluate(() => petCalls), 0); await page.close();

@@ -1,8 +1,10 @@
 import { createCompanionGamePlayer } from './companion-game-player.js';
 import { buildStoryEventInstruction, applyStoryEventUpdates, trackPostEvent, getEventProtectedPostIds, publicEventProgress, setStoryEventStatus } from './events.js';
 import { advanceCompanionLife, getCompanionLifeView, canCareForCompanion, recordCompanionCare, setCompanionLifeMode, startCompanionGame, advanceCompanionGame, buyCompanionItem, tendCompanion, useCompanionToy, setCompanionDisplay, PET_SHOP } from './companion-life.js';
-import { decorateCompanionLife } from './companion-life-ui.js';
+import { decorateCompanionLife, renderCompanionNavigation, renderCompanionSummary } from './companion-life-ui.js';
+import { DEVICE_PAGES, renderCompanionDevice, getCompanionDeviceChoices, paintCompanionDeviceCursor } from './companion-device-ui.js';
 import { bindCompanionTouch } from './companion-touch.js';
+import { COMPANION_HABITATS, renderCompanionScene } from './companion-scenes.js';
 
 let cancelCompanionTouch = () => {};
 import { buildTaskDeliveryPlan, commitTaskDelivery, grantTaskRewards, getTaskRewards } from './task-delivery.js';
@@ -146,7 +148,7 @@ const COMPANION_PALETTES = Object.freeze({
     mystery: { body: '#74658b', accent: '#d1a7bd' },
 });
 const COMPANION_DEVICE_SKINS = Object.freeze([
-    { id: 'classic', name: '经典蛋机', note: '珠光搪瓷 · 复古绿屏', brand: 'POCKET TRAVELER' },
+    { id: 'classic', name: '经典蛋机', note: '奶油机身 · 珊瑚按键', brand: 'POCKET TRAVELER' },
     { id: 'pocket', name: '口袋掌机', note: '肩角机身 · 雾蓝面板', brand: 'GAMEFIELD JR.' },
     { id: 'crystal', name: '透明糖果机', note: '可见内构 · 冰蓝光屏', brand: 'CLEARLINK 02' },
     { id: 'arcane', name: '魔法通讯器', note: '鎏金符文 · 紫晶视窗', brand: 'FAMILIAR LINK' },
@@ -182,16 +184,6 @@ const COMPANION_ACCESSORIES = Object.freeze([
     { id: 'headphones', name: '小耳机' },
     { id: 'cape', name: '冒险披风' },
     { id: 'bell', name: '铃铛项圈' },
-]);
-const COMPANION_HABITATS = Object.freeze([
-    { id: 'meadow', name: '风吹草地', symbol: '≋', note: '柔软草坡' },
-    { id: 'pond', name: '荷叶池塘', symbol: '≈', note: '水光与荷叶' },
-    { id: 'bedroom', name: '暖灯卧室', symbol: '▤', note: '安静暖光' },
-    { id: 'forest', name: '林间树屋', symbol: '♧', note: '枝叶木屋' },
-    { id: 'snowfield', name: '雪原营地', symbol: '·', note: '雪地帐篷' },
-    { id: 'city', name: '城市天台', symbol: '▥', note: '城市灯火' },
-    { id: 'space', name: '星际舷窗', symbol: '✦', note: '缓慢星轨' },
-    { id: 'arcade', name: '像素街机厅', symbol: '▦', note: '霓虹格栅' },
 ]);
 const COMPANION_WEATHER_OPTIONS = Object.freeze([
     { id: 'auto', name: '自动', symbol: '◌', note: '跟随本地' },
@@ -571,6 +563,8 @@ const viewState = {
     profileEditing: false,
     profileTab: 'posts',
     companionMenuIndex: 0,
+    companionPanel: 'home',
+    companionDeviceCursor: -1,
     companionProfileOpen: false,
     companionGameResultOpen: false,
     companionFoodMenuOpen: false,
@@ -1888,9 +1882,10 @@ function renderPixelCompanion(species, status = 'home', mini = false, appearance
         accentColor ? `--pet-accent-user:${accentColor}` : '',
         accessoryColor ? `--pet-accessory-user:${accessoryColor}` : '',
     ].filter(Boolean).join(';');
-    const artwork = renderCompanionArtwork(kind, accessory);
+    const stage = ['baby', 'young', 'adult'].includes(liveAppearance?.life?.stage) ? liveAppearance.life.stage : 'adult';
+    const artwork = renderCompanionArtwork(kind, accessory, stage);
     const artViewBox = kind === 'cat' ? '0 0 72 64' : '0 0 64 64';
-    return `<svg class="tf-pixel-pet is-kind-${kind} is-${safeStatus} is-accessory-${accessory}${mini ? ' is-mini' : ''}" ${customStyle ? `style="${customStyle}"` : ''} viewBox="${artViewBox}" aria-hidden="true" shape-rendering="crispEdges">${artwork}</svg>`;
+    return `<svg class="tf-pixel-pet is-kind-${kind} is-growth-${stage} is-${safeStatus} is-accessory-${accessory}${mini ? ' is-mini' : ''}" ${customStyle ? `style="${customStyle}"` : ''} viewBox="${artViewBox}" aria-hidden="true" shape-rendering="crispEdges">${artwork}</svg>`;
 }
 
 function renderCompanionAvatar(data, large = false) {
@@ -1955,6 +1950,7 @@ function renderCompanionAppV2(data) {
 
 function renderCompanionAppV3(data) {
     const companion = data.world.companion;
+    const panel = ['home', 'album', 'travel', 'dress'].includes(viewState.companionPanel) ? viewState.companionPanel : 'home';
     const visualAction = getCompanionVisualAction(companion);
     const speciesId = getCompanionSpecies(companion.species)?.id || 'mystery';
     const activeTrip = [...data.world.trips].reverse().find(item => item.status === 'away') || null;
@@ -1973,7 +1969,6 @@ function renderCompanionAppV3(data) {
     const skin = COMPANION_DEVICE_SKINS.find(item => item.id === companion.deviceSkin) || COMPANION_DEVICE_SKINS[0];
     const menuItems = COMPANION_CARE_ACTIONS;
     const menuIndex = Math.max(0, Math.min(menuItems.length - 1, Number(viewState.companionMenuIndex || 0)));
-    const actionCopy = { feed: companion.message || '吃得很香，满足地晃了晃。', pet: companion.message, play: companion.message, rest: companion.message, brush: companion.message, dance: companion.message, train: companion.message, hide: companion.message, talk: companion.message, dress: companion.message, depart: '带好行囊，朝新的方向出发了。', signal: '收到了一枚来自旅途的像素讯号。' };
     const portrait = `<button class="tf-pet-sprite-control" data-action="companion-care" data-care="pet" title="摸摸${escapeHtml(companion.name)}"><span class="tf-pet-character-shadow" aria-hidden="true"></span><span class="tf-pixel-avatar" role="img" aria-label="${escapeHtml(companion.species)}像素宠物">${renderPixelCompanion(companion.species, companion.status)}</span></button>`;
     const speciesOptions = COMPANION_SPECIES.map(species => {
         const selected = getCompanionSpecies(companion.species)?.id === species.id;
@@ -1986,19 +1981,17 @@ function renderCompanionAppV3(data) {
     const deviceOptions = COMPANION_DEVICE_SKINS.map(item => `<button type="button" class="tf-device-skin-option ${skin.id === item.id ? 'is-selected' : ''}" data-action="choose-companion-device" data-device-skin="${item.id}" aria-pressed="${skin.id === item.id}" title="${escapeHtml(item.name)} · ${escapeHtml(item.note)}"><span class="tf-device-swatch is-${item.id}" aria-hidden="true"><i></i><b></b><em></em><small></small></span><div><b>${item.name}</b><small>${item.note}</small></div></button>`).join('');
     const renderEnvironmentGroup = (field, label, kicker, options, current) => {
         const selected = options.find(item => item.id === current) || options[0];
-        const cards = options.map(item => `<button type="button" class="tf-environment-option is-${field}-${item.id} ${selected.id === item.id ? 'is-selected' : ''}" data-action="choose-companion-environment" data-environment-field="${field}" data-environment-value="${item.id}" role="option" aria-selected="${selected.id === item.id}"><i class="tf-environment-preview" aria-hidden="true"><span>${item.symbol}</span></i><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.note)}</small></span><em aria-hidden="true">✓</em></button>`).join('');
+        const cards = options.map(item => `<button type="button" class="tf-environment-option is-${field}-${item.id} ${selected.id === item.id ? 'is-selected' : ''}" data-action="choose-companion-environment" data-environment-field="${field}" data-environment-value="${item.id}" role="option" aria-selected="${selected.id === item.id}"><i class="tf-environment-preview" aria-hidden="true">${field === 'habitat' && renderCompanionScene(item.id) || `<span>${item.symbol}</span>`}</i><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.note)}</small></span><em aria-hidden="true">✓</em></button>`).join('');
         const nativeOptions = options.map(item => `<option value="${item.id}" ${selected.id === item.id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('');
         return `<section class="tf-environment-group is-${field}"><header><div><small>${kicker}</small><b>${label}</b></div><span>${selected.symbol} ${escapeHtml(selected.name)}</span></header><div class="tf-environment-options" role="listbox" aria-label="${label}">${cards}</div><select class="tf-environment-native" data-companion-environment="${field}" aria-label="${label}" tabindex="-1">${nativeOptions}</select></section>`;
     };
     const environmentControls = `<div class="tf-pet-environment-controls"><header class="tf-environment-title"><div><small>ROOM & WEATHER</small><b>小窝环境</b></div><p>背景、天气和时间都会立即反映在掌机屏幕中。</p></header>${renderEnvironmentGroup('habitat', '小窝背景', 'SCENE', COMPANION_HABITATS, companion.habitat || 'meadow')}${renderEnvironmentGroup('weather', '小窝天气', 'WEATHER', COMPANION_WEATHER_OPTIONS, companion.weather || 'auto')}${renderEnvironmentGroup('timeOfDay', '小窝时间', 'TIME', COMPANION_TIME_OPTIONS, companion.timeOfDay || 'auto')}</div>`;
-    const stat = (label, value) => `<div><span>${label}<b>${Number(value)}</b></span><progress max="100" value="${Number(value)}"></progress></div>`;
     const lastFood = COMPANION_FOODS.find(item => item.id === companion.lastFood) || COMPANION_FOODS[0];
     const animationLayer = `<span class="tf-pet-animation-layer" aria-hidden="true"><span class="tf-feed-drop" data-food-animation="${escapeHtml(lastFood.id)}"><i class="tf-food-tray"><b></b><em></em></i><i class="tf-food-offering"><b>${escapeHtml(lastFood.symbol)}</b><em></em></i><i class="tf-food-crumb is-one"></i><i class="tf-food-crumb is-two"></i><i class="tf-food-crumb is-three"></i><i class="tf-food-species-fx"></i></span><span class="tf-pet-hearts"><i>♥</i><i>♥</i><i>♥</i><i>♥</i></span><span class="tf-play-ball">◆</span><span class="tf-play-trail"><i></i><i></i><i></i></span><span class="tf-sleep-cloud"><i>Z</i><i>z</i><i>z</i></span><span class="tf-touch-rings"><i></i><i></i><i></i></span><span class="tf-pet-stars"><i>✦</i><i>·</i><i>✦</i><i>·</i></span><span class="tf-care-action-fx"><i></i><i></i><i></i></span><span class="tf-betta-bubbles"><i></i><i></i><i></i><i></i><i></i><i></i></span></span>`;
     const weatherLayer = `<span class="tf-pet-weather" aria-hidden="true"><span class="tf-weather-sun"><i></i></span><span class="tf-weather-moon">☾<i>·</i><i>·</i><i>·</i></span><span class="tf-weather-cloud"><i></i><i></i></span><span class="tf-weather-rain">${'<i></i>'.repeat(8)}</span><span class="tf-weather-snow"><i>✣</i><i>·</i><i>✣</i><i>·</i><i>✣</i><i>·</i></span><span class="tf-weather-wind"><i></i><i></i><i></i><b>◆</b></span></span>`;
-    const habitatLayer = `<span class="tf-pet-habitat-layer" aria-hidden="true"><i class="is-backdrop"></i><i class="is-landmark"></i><i class="is-detail-one"></i><i class="is-detail-two"></i><i class="is-foreground"></i></span>`;
+    const habitatLayer = `<span class="tf-pet-habitat-layer" aria-hidden="true">${renderCompanionScene(companion.habitat) || '<i class="is-backdrop"></i><i class="is-landmark"></i><i class="is-detail-one"></i><i class="is-detail-two"></i><i class="is-foreground"></i>'}</span>`;
     const tripSchedule = activeTrip ? `<section class="tf-companion-trip-schedule"><header><span>${icon('message')}预生成行程</span><b>${deliveredSignals}/${tripSignals.length} 则来信</b></header><progress max="100" value="${tripProgress}"></progress><footer><span>预计 ${formatTimeUntil(activeTrip.returnAt)} 后返家</span><small>消息按时间在本地释放，不再调用 API</small></footer></section>` : '';
-    const packShortcut = `<button type="button" class="tf-pet-pack-shortcut ${companion.carrying ? 'is-ready' : 'is-empty'}" data-action="focus-companion-field" data-field="carrying" aria-label="${companion.carrying ? '编辑旅伴行囊' : '准备旅伴行囊'}"><small>行囊</small><b>${escapeHtml(companion.carrying || '点击准备')}</b><i aria-hidden="true">›</i></button>`;
-    return `<div class="tf-companion-page tf-companion-v3 is-species-${speciesId} is-device-${skin.id} is-action-${escapeHtml(visualAction)} is-weather-${weather.id}"><section class="tf-card tf-companion-home"><div class="tf-pet-console-wrap"><div class="tf-pet-console"><span class="tf-device-ornaments" aria-hidden="true"><i></i><i></i><b></b><em></em></span><div class="tf-pet-console-brand"><span>${escapeHtml(skin.brand)}</span><b>${escapeHtml(skin.name)}</b></div><div class="tf-pet-screen-bezel"><div class="tf-pet-screen"><div class="tf-pet-screen-top"><b>${statusCode}</b><span>${escapeHtml(companion.mood || '好奇')}</span><span class="tf-pet-signal"><i></i><i></i><i></i></span></div><div class="tf-pet-stage">${habitatLayer}${portrait}${animationLayer}${weatherLayer}<span class="tf-pet-cloud is-one"></span><span class="tf-pet-cloud is-two"></span><span class="tf-pet-ground"></span></div><div class="tf-pet-screen-menu">${menuItems.map((item, index) => `<button class="${index === menuIndex ? 'is-selected' : ''}" data-action="companion-care" data-care="${item.id}" title="${item.label}"><span>${item.symbol}</span><b>${item.label}</b></button>`).join('')}</div><div class="tf-pet-screen-bottom"><span>${escapeHtml(companion.species)}</span><span title="${escapeHtml(weather.note)}">${weather.icon} ${escapeHtml(weather.label)}</span><span>♥ ${String(bond).padStart(3, '0')}</span></div></div></div><div class="tf-pet-device-controls"><button type="button" data-action="companion-menu-nav" data-direction="-1" aria-label="上一个功能"><i></i><span>PREV</span></button><button type="button" data-action="companion-menu-confirm" aria-label="确认当前功能"><i></i><span>OK</span></button><button type="button" data-action="companion-menu-nav" data-direction="1" aria-label="下一个功能"><i></i><span>NEXT</span></button></div></div></div><div class="tf-companion-status"><span class="tf-pet-kicker">MY LITTLE TRAVELER · ${statusCode}</span><div class="tf-companion-title"><div><h2>${escapeHtml(companion.name)}</h2><small>${escapeHtml(companion.species)}</small></div><b>${escapeHtml(statusLabel)}</b></div><div class="tf-pet-message"><span>${companion.lastAction ? 'REACTION LOG' : 'MESSAGE'}</span><p>${escapeHtml(companion.lastAction ? actionCopy[companion.lastAction] || companion.message : companion.message || '它正安静地看着你。')}</p><small>直接在左侧宠物机内操作 · 本地运行</small></div><div class="tf-pet-vitals">${stat('饱腹', companion.satiety ?? 75)}${stat('体力', companion.energy ?? 80)}${stat('快乐', companion.happiness ?? 70)}</div><div class="tf-pet-info-strip"><span><small>亲密</small><b>${bond}</b></span>${packShortcut}<span class="tf-weather-summary" title="${escapeHtml(weather.note)}"><small>天气</small><b>${weather.icon} ${escapeHtml(weather.label)}</b></span>${luckyDirection ? `<span><small>幸运方向</small><b>${escapeHtml(luckyDirection)}</b></span>` : ''}</div>${luckyDirection ? `<div class="tf-pet-luck-note">${icon('sparkles')}<span>运势会影响旅途见闻、绕路与纪念品概率。</span></div>` : ''}${tripSchedule}${companion.status !== 'away' ? renderCompanionPackingPreview(data) : ''}<footer class="tf-pet-trip-actions"><button class="tf-primary-button tf-pet-main-action" data-action="${companion.status === 'away' ? 'companion-signal-local' : 'companion-depart-ai'}" ${viewState.moduleBusy.has('travel') ? 'disabled' : ''}>${viewState.moduleBusy.has('travel') ? '<span class="tf-spinner"></span>正在规划整趟旅行' : `${icon(companion.status === 'away' ? 'message' : 'repost')}${companion.status === 'away' ? '查看行程进度' : '出发 · 仅调用一次 API'}`}</button>${companion.status === 'away' ? '<button class="tf-secondary-button" data-action="companion-return">立即召回</button>' : ''}</footer></div></section>${renderCompanionPacking(data)}${renderCompanionTravelHistory(data)}<details class="tf-card tf-companion-profile-card" ${viewState.companionProfileOpen ? 'open' : ''}><summary data-action="toggle-companion-profile"><span class="tf-companion-profile-avatar">${renderPixelCompanion(companion.species, 'home', true)}</span><div><small>TRAVELER PROFILE</small><h3>${escapeHtml(companion.name)} · ${escapeHtml(companion.species)}</h3><p>${escapeHtml(skin.name)} · 点击展开更换旅伴或设备</p></div><span class="tf-profile-expand">编辑档案⌄</span></summary><div class="tf-companion-profile-content"><section class="tf-companion-identity-section"><header><div><small>COMPANION</small><h3>旅伴与资料</h3><p>更换形象不会清除亲密度、行囊和旅行记录。</p></div></header><div class="tf-pet-species-grid tf-pet-species-compact">${speciesOptions}<button type="button" class="tf-pet-species-option is-custom ${customSelected ? 'is-selected' : ''}" data-action="choose-companion-custom"><span>＋</span><b>自定义</b></button></div><div class="tf-companion-profile-grid"><label><span>名字</span><input data-companion-field="name" value="${escapeHtml(companion.name)}" maxlength="32"></label>${customSelected ? `<label><span>自定义种类</span><input data-companion-field="species" value="${escapeHtml(companion.species === '自定义旅伴' ? '' : companion.species)}" placeholder="例如：史莱姆、龙、机械犬"></label>` : ''}<label class="is-wide"><span>准备的行囊</span><input data-companion-field="carrying" value="${escapeHtml(companion.carrying)}" placeholder="食物、护符、地图……"></label></div></section>${appearanceControls}${environmentControls}<section class="tf-device-skin-section"><header><div><small>DEVICE COLLECTION</small><h3>设备外观</h3><p>10 款机身均有独立轮廓、材质、屏幕与控制细节，不改变宠物数据。</p></div></header><div class="tf-device-skin-grid">${deviceOptions}</div></section></div></details></div>`;
+    return `<div class="tf-companion-page tf-companion-v3 is-panel-${panel} is-species-${speciesId} is-device-${skin.id} is-action-${escapeHtml(visualAction)} is-weather-${weather.id}">${renderCompanionNavigation(data, panel)}<section class="tf-card tf-companion-home" ${['home', 'dress'].includes(panel) ? '' : 'hidden'}><div class="tf-pet-console-wrap"><div class="tf-pet-console"><span class="tf-device-ornaments" aria-hidden="true"><i></i><i></i><b></b><em></em></span><div class="tf-pet-console-brand"><span>${escapeHtml(skin.brand)}</span><b>${escapeHtml(skin.name)}</b></div><div class="tf-pet-screen-bezel"><div class="tf-pet-screen"><div class="tf-pet-screen-top"><b>${statusCode}</b><span>${escapeHtml(companion.mood || '好奇')}</span><span class="tf-pet-signal"><i></i><i></i><i></i></span></div><div class="tf-pet-stage">${habitatLayer}${portrait}${animationLayer}${weatherLayer}<span class="tf-pet-cloud is-one"></span><span class="tf-pet-cloud is-two"></span><span class="tf-pet-ground"></span></div><div class="tf-pet-screen-menu">${menuItems.map((item, index) => `<button class="${index === menuIndex ? 'is-selected' : ''}" data-action="companion-care" data-care="${item.id}" title="${item.label}"><span>${item.symbol}</span><b>${item.label}</b></button>`).join('')}</div><div class="tf-pet-screen-bottom"><span>${escapeHtml(companion.species)}</span><span title="${escapeHtml(weather.note)}">${weather.icon} ${escapeHtml(weather.label)}</span><span>♥ ${String(bond).padStart(3, '0')}</span></div></div></div><div class="tf-pet-device-controls"><button type="button" data-action="companion-menu-nav" data-direction="-1" aria-label="上一个功能"><i></i><span>PREV</span></button><button type="button" data-action="companion-menu-confirm" aria-label="确认当前功能"><i></i><span>OK</span></button><button type="button" data-action="companion-menu-nav" data-direction="1" aria-label="下一个功能"><i></i><span>NEXT</span></button></div></div></div>${renderCompanionSummary(data)}</section><section class="tf-pet-section" data-companion-panel="album" ${panel === 'album' ? '' : 'hidden'}><!-- companion-album --></section><section class="tf-pet-section tf-pet-travel-panel" data-companion-panel="travel" ${panel === 'travel' ? '' : 'hidden'}><header class="tf-pet-section-heading"><small>LET'S GO SOMEWHERE</small><h2>${companion.status === 'away' ? escapeHtml(companion.name) + '的旅途' : '准备一次小小的远行'}</h2><p>${companion.status === 'away' ? escapeHtml(statusLabel) : '带上背包里的食物和小物件，等它把沿途的故事带回来。'}</p></header>${companion.message && (companion.status === 'away' || companion.lastAction === 'return') ? `<div class="tf-pet-travel-message" role="status"><b>${companion.status === 'away' ? '旅途来信' : '平安回家啦'}</b><p>${escapeHtml(companion.message)}</p></div>` : ''}${luckyDirection ? `<p class="tf-pet-luck-note">${icon('sparkles')}幸运方向：${escapeHtml(luckyDirection)}</p>` : ''}${tripSchedule}${renderCompanionPacking(data)}${companion.status !== 'away' ? renderCompanionPackingPreview(data) : ''}<footer class="tf-pet-trip-actions"><button class="tf-primary-button tf-pet-main-action" data-action="${companion.status === 'away' ? 'companion-signal-local' : 'companion-depart-ai'}" ${viewState.moduleBusy.has('travel') ? 'disabled' : ''}>${viewState.moduleBusy.has('travel') ? '<span class="tf-spinner"></span>正在整理行囊' : companion.status === 'away' ? '查看行程进度' : '准备这次远行'}</button>${companion.status === 'away' ? '<button class="tf-secondary-button" data-action="companion-return">立即召回</button>' : ''}</footer>${renderCompanionTravelHistory(data)}</section><section class="tf-pet-section tf-pet-dress-panel" data-companion-panel="dress" ${panel === 'dress' ? '' : 'hidden'}><details class="tf-card tf-companion-profile-card" ${viewState.companionProfileOpen ? 'open' : ''}><summary data-action="toggle-companion-profile"><span class="tf-companion-profile-avatar">${renderPixelCompanion(companion.species, 'home', true)}</span><div><small>TRAVELER PROFILE</small><h3>${escapeHtml(companion.name)} · ${escapeHtml(companion.species)}</h3><p>${escapeHtml(skin.name)} · 点击展开更换旅伴或设备</p></div><span class="tf-profile-expand">编辑档案⌄</span></summary><div class="tf-companion-profile-content"><section class="tf-companion-identity-section"><header><div><small>COMPANION</small><h3>旅伴与资料</h3><p>更换形象不会清除亲密度、行囊和旅行记录。</p></div></header><div class="tf-pet-species-grid tf-pet-species-compact">${speciesOptions}<button type="button" class="tf-pet-species-option is-custom ${customSelected ? 'is-selected' : ''}" data-action="choose-companion-custom"><span>＋</span><b>自定义</b></button></div><div class="tf-companion-profile-grid"><label><span>名字</span><input data-companion-field="name" value="${escapeHtml(companion.name)}" maxlength="32"></label>${customSelected ? `<label><span>自定义种类</span><input data-companion-field="species" value="${escapeHtml(companion.species === '自定义旅伴' ? '' : companion.species)}" placeholder="例如：史莱姆、龙、机械犬"></label>` : ''}<label class="is-wide"><span>准备的行囊</span><input data-companion-field="carrying" value="${escapeHtml(companion.carrying)}" placeholder="食物、护符、地图……"></label></div></section>${appearanceControls}${environmentControls}<section class="tf-device-skin-section"><header><div><small>DEVICE COLLECTION</small><h3>设备外观</h3><p>10 款机身均有独立轮廓、材质、屏幕与控制细节，不改变宠物数据。</p></div></header><div class="tf-device-skin-grid">${deviceOptions}</div></section></div></details><!-- companion-decorate --></section></div>`;
 }
 
 function renderCompanionPackingPreview(data) {
@@ -2083,6 +2076,36 @@ function maybeCompanionSelfChangeAccessory(companion, { force = false } = {}) {
     return true;
 }
 
+function showCompanionPanel(panel, { focus = true } = {}) {
+    if (!DEVICE_PAGES.includes(panel)) return;
+    const root = getRoot(), page = root?.querySelector('.tf-companion-device');
+    if (!page) return;
+    if (panel !== 'home') companionGamePlayer?.stop();
+    cancelCompanionTouch();
+    const closeTransient = viewState.companionCleaning || viewState.companionFoodMenuOpen;
+    viewState.companionPanel = panel;
+    viewState.companionDeviceCursor = -1;
+    viewState.companionCleaning = false;
+    viewState.companionCleanProgress = 0;
+    page.classList.remove(...DEVICE_PAGES.map(id => 'is-panel-' + id), 'is-washing');
+    page.classList.add('is-panel-' + panel);
+    page.dataset.devicePage = panel;
+    page.querySelector('.tf-pet-stage').hidden = panel !== 'home';
+    page.querySelectorAll('[data-companion-panel]').forEach(node => { node.hidden = node.dataset.companionPanel !== panel; });
+    page.querySelectorAll('.tf-device-icon-menu [data-panel]').forEach(node => node.setAttribute('aria-current', node.dataset.panel === panel ? 'page' : 'false'));
+    page.querySelector('.tf-device-menu-toggle')?.setAttribute('aria-expanded', String(panel === 'menu'));
+    if (viewState.companionFoodMenuOpen) {
+        viewState.companionFoodMenuOpen = false;
+        page.querySelector('.tf-pet-food-select')?.remove();
+        page.querySelector('.tf-device-viewport').classList.remove('is-selecting-food');
+    }
+    if (panel === 'dress') viewState.companionProfileOpen = true;
+    if (closeTransient) { render({ preserveScroll: true }); return; }
+    if (panel === 'home') syncCompanionGamePlayer(root);
+    paintCompanionDeviceCursor(root, viewState);
+    if (focus) page.querySelector('[data-action="companion-menu-confirm"]')?.focus({ preventScroll: true });
+}
+
 function renderCompanionAppV4(data) {
     const companion = data.world.companion;
     const moodClass = Number(companion.energy || 0) < 22 ? 'sleepy' : Number(companion.satiety || 0) < 22 ? 'hungry' : Number(companion.happiness || 0) >= 82 ? 'joyful' : Number(companion.happiness || 0) < 35 ? 'lonely' : 'calm';
@@ -2097,13 +2120,11 @@ function renderCompanionAppV4(data) {
         ? `<div class="tf-pet-screen-menu is-extra"><header><b>更多互动</b><button data-action="companion-menu-more" aria-label="返回常用互动">返回</button></header><div>${extraActions.map(renderMenuButton).join('')}</div></div>`
         : `<div class="tf-pet-screen-menu is-primary">${primaryActions.map(renderMenuButton).join('')}<button class="${menuIndex === primaryActions.length ? 'is-selected' : ''}" data-action="companion-menu-more" title="更多互动"><span>＋</span><b>更多</b></button></div>`;
     let html = renderCompanionAppV3(data)
-        .replace('tf-companion-v3 ', `tf-companion-v3 tf-companion-v4 is-mood-${moodClass} is-habitat-${companion.habitat || 'meadow'} is-food-${companion.lastFood || 'bug-cookie'} `)
+        .replace('tf-companion-v3 ', `tf-companion-v3 tf-companion-v4 tf-companion-v5 is-mood-${moodClass} is-habitat-${companion.habitat || 'meadow'} is-food-${companion.lastFood || 'bug-cookie'} `)
         .replace(/<div class="tf-pet-screen-menu">[\s\S]*?<div class="tf-pet-screen-bottom">/, `${screenMenu}<div class="tf-pet-screen-bottom">`)
         .replace('<span>PREV</span>', '<span>上一项<small>PREV</small></span>')
         .replace('<span>OK</span>', '<span>确认<small>OK</small></span>')
         .replace('<span>NEXT</span>', '<span>下一项<small>NEXT</small></span>')
-        .replace('<div class="tf-companion-status">', '<div class="tf-companion-status tf-companion-journal"><span class="tf-pet-journal-label"><i></i>TRAVEL NOTE · 01</span>')
-        .replace(/<div class="tf-pet-message">[\s\S]*?<\/div><div class="tf-pet-vitals">/, `<div class="tf-pet-message"><span>旅伴悄悄话 · ${escapeHtml(companion.mood || '平静')}</span><p>${escapeHtml(getCompanionAmbientReaction(data))}</p><small>它会随着天气、时间与心情做出不同回应</small></div><div class="tf-pet-vitals">`)
         .replace('预生成行程', '本次旅程')
         .replace('消息按时间在本地释放，不再调用 API', '旅途来信会按计划陆续抵达')
         .replace('正在规划整趟旅行', '正在整理行囊')
@@ -2113,7 +2134,8 @@ function renderCompanionAppV4(data) {
         const menu = `<div class="tf-pet-screen-menu tf-pet-food-select"><header><b>CHOOSE FOOD</b><button data-action="companion-food-back">×</button></header><div>${COMPANION_FOODS.map((food, index) => `<button class="${index === selected ? 'is-selected' : ''}" data-action="companion-feed-food" data-food-id="${food.id}" title="${food.name}"><span>${food.symbol}</span><b>${food.name}</b></button>`).join('')}</div></div>`;
         html = html.replace(/<div class="tf-pet-screen-menu[^\"]*">[\s\S]*?<div class="tf-pet-screen-bottom">/, `${menu}<div class="tf-pet-screen-bottom">`);
     }
-    return decorateCompanionLife(html, data, { cleaning: viewState.companionCleaning, progress: viewState.companionCleanProgress, foodMenu: viewState.companionFoodMenuOpen, feedback: viewState.companionFeedback, gameResultOpen: viewState.companionGameResultOpen });
+    html = decorateCompanionLife(html, data, { cleaning: viewState.companionCleaning, progress: viewState.companionCleanProgress, foodMenu: viewState.companionFoodMenuOpen, feedback: viewState.companionFeedback, gameResultOpen: viewState.companionGameResultOpen, renderPortrait: (photo, stage) => renderPixelCompanion(photo.species, 'home', true, { ...photo, life: { stage } }) });
+    return renderCompanionDevice(html, data, viewState, [COMPANION_CARE_ACTIONS[2], ...extraActions]);
 }
 
 function renderInventoryApp(data) {
@@ -2234,7 +2256,7 @@ function renderWorldFeaturePage(data, moduleId) {
                         : renderModeration(data, true);
     const apiButton = ['tasks', 'inventory'].includes(moduleId)
             ? `<button class="tf-secondary-button" data-action="refresh-world-module" data-module-id="${escapeHtml(moduleId)}" ${viewState.moduleBusy.has(moduleId) ? 'disabled' : ''}>${viewState.moduleBusy.has(moduleId) ? '<span class="tf-spinner"></span>' : icon('sparkles')}明确生成</button>` : '';
-    return `<section class="tf-world-app-page"><header class="tf-world-app-header"><button class="tf-back-button" data-action="back-world-home">${icon('chevron')}世界</button><div><h1>${escapeHtml(definition.name)}</h1>${moduleId === 'inventory' ? '' : `<p>${escapeHtml(definition.description)}</p>`}</div>${apiButton}</header>${content}</section>`;
+    return `<section class="tf-world-app-page"><header class="tf-world-app-header"><button class="tf-back-button" data-action="back-world-home">${icon('chevron')}${moduleId === 'travel' ? '返回世界' : '世界'}</button><div><h1>${escapeHtml(definition.name)}</h1>${moduleId === 'inventory' ? '' : `<p>${escapeHtml(definition.description)}</p>`}</div>${apiButton}${moduleId === 'travel' ? `<button class="tf-pet-focus-close" type="button" data-action="close" aria-label="关闭旅伴">${icon('close')}关闭</button>` : ''}</header>${content}</section>`;
 }
 
 function renderWorldLayoutSettings(settings = getSettings()) {
@@ -2863,6 +2885,7 @@ function updateStableShell(root, markup) {
 function render({ preserveScroll = false } = {}) {
     const root = getRoot();
     if (!root) return;
+    const petScroll = new Map([...root.querySelectorAll('.tf-pet-device-page')].map(node => [node.dataset.companionPanel, node.querySelector('.tf-pet-device-content').scrollTop]));
     const petPanels = [...root.querySelectorAll('.tf-pet-life-details')].map(node => node.open);
     const previousView = root.querySelector('.tf-view');
     const previousScrollTop = Number(previousView?.scrollTop || 0);
@@ -2878,7 +2901,8 @@ function render({ preserveScroll = false } = {}) {
     const shouldPreserveScroll = preserveScroll || (Boolean(viewState.renderedScrollKey) && viewState.renderedScrollKey === nextScrollKey);
     const savedPosition = viewState.scrollPositions.get(nextScrollKey);
     updateStableShell(root, renderShell());
-    root.querySelectorAll('.tf-pet-life-details').forEach((node, index) => { node.open = Boolean(petPanels[index]); });
+    root.querySelectorAll('.tf-pet-life-details').forEach((node, index) => { if (index < petPanels.length) node.open = petPanels[index]; });
+    root.querySelectorAll('.tf-pet-device-page').forEach(node => { node.querySelector('.tf-pet-device-content').scrollTop = petScroll.get(node.dataset.companionPanel) || 0; });
     viewState.renderedScrollKey = nextScrollKey;
     if (!getSettings().moderation.systemAdminEnabled) root.querySelectorAll('[data-action="ai-review-report"]').forEach(button => { button.disabled = true; button.title = '请先开启系统 AI 管理员'; });
     if (!root.querySelector('#tf-import-npc-background-file')) root.insertAdjacentHTML('beforeend', '<input id="tf-import-npc-background-file" type="file" accept="image/*" hidden>');
@@ -2891,6 +2915,7 @@ function render({ preserveScroll = false } = {}) {
     document.body.classList.toggle('tf-modal-open', viewState.open);
     applyAppearance();
     syncCompanionGamePlayer(root);
+    paintCompanionDeviceCursor(root, viewState);
     paintInAppToasts();
     applySearchFilter();
     updateLaunchers();
@@ -3687,6 +3712,7 @@ function wakeCompanionJourneyClock() {
 
 let companionGamePlayer = null;
 function syncCompanionGamePlayer(root) {
+    if (viewState.companionPanel !== 'home') { companionGamePlayer?.stop(); return; }
     companionGamePlayer ||= createCompanionGamePlayer(root, {
         checkpoint: async data => {
             try { await saveForumData(data); } catch (error) { if (error.name !== 'AbortError') console.error('[微坛] 保存游戏进度失败', error); }
@@ -3711,7 +3737,14 @@ function syncCompanionGamePlayer(root) {
 function handleCompanionGameInput(direction, event) { companionGamePlayer?.press(direction, event); }
 
 async function handlePetLifeAction(action, target) {
-    if (action === 'pet-game-pause') return companionGamePlayer?.togglePause();
+    if (action === 'pet-game-pause') { if (viewState.companionPanel !== 'home') showCompanionPanel('home'); return companionGamePlayer?.togglePause(); }
+    if (action === 'pet-growth-show') {
+        showCompanionPanel('album');
+        const news = getRoot()?.querySelector('.tf-pet-growth-news');
+        if (news) { news.scrollIntoView({ block: 'center' }); news.classList.remove('is-replaying'); void news.offsetWidth; news.classList.add('is-replaying'); }
+        return;
+    }
+    if (action === 'pet-growth-ack') { const data = getForumData(); data.world.companion.life.growthNotice = null; await saveForumData(data, true); return render({ preserveScroll: true }); }
     if (action === 'pet-game-dismiss') { viewState.companionGameResultOpen = false; return render({ preserveScroll: true }); }
     if (viewState.moduleBusy.has('travel')) return notify('info', '旅行准备完成后再照顾旅伴');
     const data = getForumData(), companion = data.world.companion;
@@ -3719,6 +3752,8 @@ async function handlePetLifeAction(action, target) {
     const before = { ...companion, cleanliness: companion.life.cleanliness };
     try {
         if (action === 'pet-soap') {
+            if (viewState.companionPanel !== 'home') showCompanionPanel('home', { focus: false });
+            viewState.companionDeviceCursor = -1;
             const blocked = canCareForCompanion(companion, 'clean');
             if (blocked) return notify('info', blocked);
             cancelCompanionTouch();
@@ -3736,6 +3771,7 @@ async function handlePetLifeAction(action, target) {
         }
         else if (action === 'pet-game-start' || action === 'pet-room-play' || action === 'pet-game-retry') {
             startCompanionGame(companion, action === 'pet-room-play' ? 'catch' : action === 'pet-game-retry' ? companion.life.lastGameResult?.kind : target.dataset.game);
+            viewState.companionPanel = 'home';
             viewState.companionGameResultOpen = false;
             viewState.companionFoodMenuOpen = false;
         } else if (action === 'pet-game-stop') { companionGamePlayer?.stop(false); companion.life.game = null; viewState.companionGameResultOpen = false; companion.message = '这一局先休息，下次再一起玩。'; companion.lastInteractionAt = Date.now(); }
@@ -4424,6 +4460,20 @@ async function handleRootClick(event) {
         return render();
     }
     if (action === 'back-world-home') { viewState.worldPage = ''; return render(); }
+    if (action === 'companion-device-open') {
+        const panel = target.dataset.panel;
+        if (DEVICE_PAGES.includes(panel)) return showCompanionPanel(panel);
+        showCompanionPanel('home', { focus: false });
+        if (panel === 'feed') {
+            const blocked = canCareForCompanion(getForumData().world.companion, 'feed');
+            if (blocked) return notify('info', blocked);
+            return getRoot()?.querySelector('.tf-pet-room-tool.is-bowl')?.click();
+        }
+        if (panel === 'clean') return handlePetLifeAction('pet-soap', target);
+        if (panel === 'rest') return handlePetLifeAction('pet-tend', { dataset: { tend: getCompanionLifeView(getForumData().world.companion).sleeping ? 'wake' : 'rest' } });
+        return;
+    }
+    if (action === 'companion-panel') return showCompanionPanel(target.dataset.panel);
     if (action === 'choose-companion-species') {
         const species = COMPANION_SPECIES.find(item => item.id === target.dataset.speciesId);
         if (!species) return;
@@ -4443,17 +4493,20 @@ async function handleRootClick(event) {
         const field = target.dataset.field;
         if (!field) return;
         if (field === 'carrying') {
+            showCompanionPanel('travel', { focus: false });
             const packing = getRoot()?.querySelector('.tf-packing');
             packing?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             packing?.querySelector('input')?.focus({ preventScroll: true });
             return;
         }
+        showCompanionPanel('dress', { focus: false });
         if (!viewState.companionProfileOpen) {
             viewState.companionProfileOpen = true;
             render({ preserveScroll: true });
         }
         requestAnimationFrame(() => requestAnimationFrame(() => {
             const input = getRoot()?.querySelector(`[data-companion-field="${field}"]`);
+            const group = input?.closest('.tf-device-setting-group'); if (group) group.open = true;
             input?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             input?.focus({ preventScroll: true });
         }));
@@ -4465,15 +4518,21 @@ async function handleRootClick(event) {
         return render({ preserveScroll: true });
     }
     if (action === 'companion-menu-nav') {
-        if (getForumData().world.companion.life.game) return handleCompanionGameInput(Number(target.dataset.direction || 1), event);
-        if (viewState.companionGameResultOpen) return handlePetLifeAction('pet-game-dismiss', target);
-        const total = viewState.companionFoodMenuOpen
-            ? COMPANION_FOODS.length
-            : viewState.companionMoreMenuOpen ? COMPANION_CARE_ACTIONS.length - 4 : 5;
-        const direction = Number(target.dataset.direction || 1);
-        if (viewState.companionFoodMenuOpen) viewState.companionFoodIndex = (Number(viewState.companionFoodIndex || 0) + direction + total) % total;
-        else viewState.companionMenuIndex = (Number(viewState.companionMenuIndex || 0) + direction + total) % total;
-        return render({ preserveScroll: true });
+        if (viewState.companionPanel === 'home' && getForumData().world.companion.life.game) return handleCompanionGameInput(Number(target.dataset.direction || 1), event);
+        if (viewState.companionPanel === 'home' && viewState.companionGameResultOpen) return handlePetLifeAction('pet-game-dismiss', target);
+        if (Number(target.dataset.direction) > 0) {
+            if (viewState.companionFoodMenuOpen || viewState.companionCleaning) {
+                viewState.companionFoodMenuOpen = false; viewState.companionCleaning = false; viewState.companionCleanProgress = 0;
+                viewState.companionDeviceCursor = -1;
+                return render({ preserveScroll: true });
+            }
+            return showCompanionPanel(viewState.companionPanel === 'home' ? 'status' : 'home', { focus: false });
+        }
+        if (viewState.companionPanel === 'home' && !viewState.companionFoodMenuOpen) showCompanionPanel('menu', { focus: false });
+        const choices = getCompanionDeviceChoices(getRoot());
+        viewState.companionDeviceCursor = choices.length ? (viewState.companionDeviceCursor + 1) % choices.length : -1;
+        if (viewState.companionFoodMenuOpen) viewState.companionFoodIndex = viewState.companionDeviceCursor;
+        return paintCompanionDeviceCursor(getRoot(), viewState, { scroll: true });
     }
     if (action === 'companion-menu-more') {
         viewState.companionMoreMenuOpen = !viewState.companionMoreMenuOpen;
@@ -4481,28 +4540,22 @@ async function handleRootClick(event) {
         return render({ preserveScroll: true });
     }
     if (action === 'companion-menu-confirm') {
-        if (getForumData().world.companion.life.game) return handleCompanionGameInput(0, event);
-        if (viewState.companionGameResultOpen) return handlePetLifeAction('pet-game-retry', target);
-        if (viewState.companionFoodMenuOpen) {
-            const food = COMPANION_FOODS[Math.max(0, Math.min(COMPANION_FOODS.length - 1, Number(viewState.companionFoodIndex || 0)))];
-            getRoot().querySelector(`[data-action="companion-feed-food"][data-food-id="${food.id}"]`)?.click();
-            return;
-        }
-        const selectedIndex = Number(viewState.companionMenuIndex || 0);
-        if (!viewState.companionMoreMenuOpen && selectedIndex === 4) {
-            getRoot().querySelector('[data-action="companion-menu-more"]')?.click();
-            return;
-        }
-        const careIndex = viewState.companionMoreMenuOpen ? selectedIndex + 4 : selectedIndex;
-        const care = COMPANION_CARE_ACTIONS[Math.max(0, Math.min(COMPANION_CARE_ACTIONS.length - 1, careIndex))]?.id;
-        getRoot().querySelector(`[data-action="companion-care"][data-care="${care}"]`)?.click();
+        if (viewState.companionPanel === 'home' && getForumData().world.companion.life.game) return handleCompanionGameInput(0, event);
+        if (viewState.companionPanel === 'home' && viewState.companionGameResultOpen) return handlePetLifeAction('pet-game-retry', target);
+        const choices = getCompanionDeviceChoices(getRoot());
+        const selected = choices[viewState.companionDeviceCursor];
+        if (selected) { selected.focus({ preventScroll: true }); selected.click(); }
+        else if (viewState.companionPanel === 'home' && !viewState.companionFoodMenuOpen) getRoot()?.querySelector('.tf-pet-sprite-control')?.click();
+        else if (choices.length) { viewState.companionDeviceCursor = 0; paintCompanionDeviceCursor(getRoot(), viewState, { scroll: true }); }
         return;
     }
     if (action === 'companion-food-back') {
+        viewState.companionDeviceCursor = -1;
         viewState.companionFoodMenuOpen = false;
         return render({ preserveScroll: true });
     }
     if (action === 'companion-feed-food') {
+        viewState.companionDeviceCursor = -1;
         const food = COMPANION_FOODS.find(item => item.id === target.dataset.foodId);
         if (!food) return;
         const data = getForumData();
@@ -4572,6 +4625,8 @@ async function handleRootClick(event) {
         const data = getForumData();
         const companion = data.world.companion;
         const care = target.dataset.care;
+        if (viewState.companionPanel !== 'home') showCompanionPanel('home', { focus: false });
+        viewState.companionDeviceCursor = -1;
         advanceCompanionLife(companion);
         const before = { ...companion, cleanliness: companion.life.cleanliness };
         const blocked = canCareForCompanion(companion, care);
@@ -4585,6 +4640,7 @@ async function handleRootClick(event) {
             viewState.companionMoreMenuOpen = false;
             viewState.companionMenuIndex = 0;
             viewState.companionFoodIndex = 0;
+            viewState.companionDeviceCursor = 0;
             viewState.companionFoodMenuOpen = true;
             return render({ preserveScroll: true });
         }
@@ -6036,7 +6092,7 @@ function handleRootChange(event) {
         if (field === 'habitat') {
             const habitat = COMPANION_HABITATS.find(item => item.id === target.value);
             companion.lastAction = 'hide';
-            companion.message = `${companion.name}在${habitat?.name || '新小窝'}里四处看了看，挑中了最喜欢的位置。`;
+            companion.message = habitat?.arrival ? `${companion.name}${habitat.arrival}` : `${companion.name}在${habitat?.name || '新小窝'}里四处看了看，挑中了最喜欢的位置。`;
             companion.mood = '好奇';
         } else {
             const [reaction, mood] = getCompanionWeatherReaction(getForumData());
@@ -6540,7 +6596,7 @@ function bindSillyTavernEvents() {
         if (viewState.autoRefreshTimer) window.clearTimeout(viewState.autoRefreshTimer);
         viewState.autoRefreshTimer = 0;
     };
-    if (context.eventTypes?.CHAT_CHANGED) context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => { companionGamePlayer?.stop(false); viewState.companionGameResultOpen = false; cancelCompanionTouch(); viewState.companionCleaning = false; viewState.companionCleanProgress = 0; viewState.companionFeedback = null; viewState.companionFoodMenuOpen = false; viewState.companionVisualAction = ""; viewState.companionActionToken += 1; clearTimeout(viewState.companionActionTimer); clearTimeout(viewState.companionFeedbackTimer); cancelAutoRefresh(); viewState.generationController?.abort(); viewState.generationStage = ''; viewState.pendingImport = null; viewState.worldCatalog = []; viewState.promptSourceContext = null; viewState.selectedNpcId = ''; viewState.publicNpcId = ''; viewState.selectedPostId = ''; viewState.selectedConversationId = ''; viewState.selectedEventId = ''; viewState.eventHubOpen = false; viewState.deliverySelections.clear(); viewState.deliveryReviews.clear(); viewState.replyTarget = null; viewState.expandedComments.clear(); refresh(); });
+    if (context.eventTypes?.CHAT_CHANGED) context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => { viewState.companionDeviceCursor = -1; viewState.companionPanel = 'home'; viewState.companionProfileOpen = false; viewState.companionAppearanceDraft = null; companionGamePlayer?.stop(false); viewState.companionGameResultOpen = false; cancelCompanionTouch(); viewState.companionCleaning = false; viewState.companionCleanProgress = 0; viewState.companionFeedback = null; viewState.companionFoodMenuOpen = false; viewState.companionVisualAction = ""; viewState.companionActionToken += 1; clearTimeout(viewState.companionActionTimer); clearTimeout(viewState.companionFeedbackTimer); cancelAutoRefresh(); viewState.generationController?.abort(); viewState.generationStage = ''; viewState.pendingImport = null; viewState.worldCatalog = []; viewState.promptSourceContext = null; viewState.selectedNpcId = ''; viewState.publicNpcId = ''; viewState.selectedPostId = ''; viewState.selectedConversationId = ''; viewState.selectedEventId = ''; viewState.eventHubOpen = false; viewState.deliverySelections.clear(); viewState.deliveryReviews.clear(); viewState.replyTarget = null; viewState.expandedComments.clear(); refresh(); });
     if (context.eventTypes?.MESSAGE_RECEIVED) context.eventSource.on(context.eventTypes.MESSAGE_RECEIVED, (_messageId, type) => {
         if (type === 'first_message' || !getSettings().generation.autoRefreshOnMessage || !getSettings().modules.forum.enabled || !hasActiveChat()) return;
         cancelAutoRefresh();

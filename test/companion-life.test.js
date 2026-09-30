@@ -151,3 +151,30 @@ test('learned personality changes spontaneous behavior without model output', ()
     companion.life.traits.curious = 5;
     assert.equal(getCompanionLifeView(companion, at).activity, 'look');
 });
+
+test('growth saves both appearances once, preserves identity and persists an acknowledged celebration', () => {
+    const companion = pet(); companion.species = '黑猫'; companion.bodyColor = '#334455'; companion.accessory = 'crown';
+    companion.life.growthMinutes = 719; companion.life.careDays = ['2026-9-25', '2026-9-26'];
+    advanceCompanionLife(companion, T + M);
+    assert.equal(companion.life.stage, 'young');
+    assert.deepEqual(companion.life.growthAlbum.map(photo => photo.stage), ['baby', 'young']);
+    assert.equal(companion.life.growthNotice.from, 'baby'); assert.equal(companion.life.growthNotice.to, 'young');
+    const photos = structuredClone(companion.life.growthAlbum);
+    companion.species = '狐狸'; companion.bodyColor = '#dd8844'; companion.life.growthNotice = null;
+    normalizeWorldState({ companion }); advanceCompanionLife(companion, T + 2 * M);
+    assert.deepEqual(companion.life.growthAlbum, photos); assert.equal(companion.life.growthNotice, null);
+    companion.life.growthMinutes = 2880; companion.life.careDays = ['1', '2', '3', '4'];
+    advanceCompanionLife(companion, T + 3 * M);
+    assert.equal(companion.life.growthAlbum.length, 3); assert.equal(companion.life.growthAlbum[2].species, '狐狸');
+    assert.equal(companion.life.growthAlbum[0].bodyColor, '#334455');
+    assert.equal(companion.life.growthNotice.from, 'young'); assert.equal(companion.life.growthNotice.to, 'adult');
+    assert.equal(companion.life.milestones.filter(key => key.startsWith('stage-')).length, 2);
+});
+
+test('legacy adults gain no fabricated childhood photos or surprise growth; malformed albums are bounded', () => {
+    const companion = pet(); companion.life.stage = 'adult';
+    normalizeWorldState({ companion }); assert.deepEqual(companion.life.growthAlbum, []); assert.equal(companion.life.growthNotice, null);
+    advanceCompanionLife(companion, T + M); assert.deepEqual(companion.life.growthAlbum.map(photo => photo.stage), ['adult']);
+    const normalized = normalizeCompanionLife({ stage: 'baby', growthAlbum: [null, { stage: 'fake', species: '猫' }, ...Array(20).fill({ stage: 'baby', species: '<script>', bodyColor: 'red;position:fixed' })], growthNotice: { id: 'bad', from: 'baby', to: 'adult' } }, T);
+    assert.equal(normalized.growthAlbum.length, 1); assert.equal(normalized.growthAlbum[0].bodyColor, ''); assert.equal(normalized.growthNotice, null);
+});
