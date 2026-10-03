@@ -182,13 +182,23 @@ try {
     const beforeMeal = await readPet(page);
     await page.locator('[data-action="companion-feed-food"][data-food-id="berry"]').evaluate(node => { node.click(); node.click(); });
     await ritual(page, 'meal', 'prepare').waitFor();
-    const feedingClock = await page.evaluate(() => {
+    const initialFeedingClock = await page.evaluate(() => {
         globalThis.ritualSprite = document.querySelector('.tf-pet-sprite-control');
         globalThis.ritualOffering = document.querySelector('.tf-food-offering');
-        const animation = ritualOffering.getAnimations()[0];
-        return { duration: getComputedStyle(ritualOffering).animationDuration, startTime: animation?.startTime };
+        const animation = globalThis.ritualFeedingAnimation = ritualOffering.getAnimations()[0];
+        return { duration: getComputedStyle(ritualOffering).animationDuration, startTime: animation?.startTime, pending: animation?.pending };
     });
-    assert.equal(feedingClock.duration, '3.6s', 'existing feeding animation keeps its 3.6-second duration');
+    assert.equal(initialFeedingClock.duration, '3.6s', 'existing feeding animation keeps its 3.6-second duration');
+    // Finding the newly inserted CSS animation flushes style before Chromium has
+    // assigned its document-timeline start on the next frame. Keep the original
+    // nodes, then wait for that same animation to actually begin; a missing or
+    // replaced scene still fails within one second.
+    if (initialFeedingClock.startTime === null) assert.equal(initialFeedingClock.pending, true, 'an unset startTime must belong to a pending animation');
+    await page.waitForFunction(() => {
+        return ritualOffering.isConnected && ritualOffering.getAnimations().includes(ritualFeedingAnimation)
+            && typeof ritualFeedingAnimation?.startTime === 'number';
+    }, null, { timeout: 1000 });
+    const feedingClock = await page.evaluate(() => ({ startTime: ritualOffering.getAnimations()[0]?.startTime }));
     assert.ok(feedingClock.startTime !== undefined && feedingClock.startTime !== null);
     await ritual(page, 'meal', 'eat').waitFor();
     for (const phase of ['eat', 'thanks']) {
