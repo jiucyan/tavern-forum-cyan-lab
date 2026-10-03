@@ -40,6 +40,7 @@ async function open(mobile = false) {
 }
 const readPet = page => page.evaluate(async () => { const { getForumData } = await import('/src/store.js'); return structuredClone(getForumData().world.companion); });
 async function point(page, selector) {
+    await page.locator(selector).scrollIntoViewIfNeeded();
     const box = await page.locator(selector).boundingBox(); assert.ok(box);
     return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }

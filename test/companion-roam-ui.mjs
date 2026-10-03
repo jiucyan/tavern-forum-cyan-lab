@@ -274,6 +274,7 @@ try {
     await fixture(mobile); await walk(mobile);
     await openCompanionMenu(mobile, 'feed', 'tap');
     await assertStopped(mobile, 'real food picker');
+    await mobile.locator('[data-food-id="berry"]').scrollIntoViewIfNeeded();
     const foodBox = await mobile.locator('[data-food-id="berry"]').boundingBox(), petBox = await mobile.locator(selector).boundingBox();
     const foodPoint = { x: foodBox.x + foodBox.width / 2, y: foodBox.y + foodBox.height / 2 };
     const petPoint = { x: petBox.x + petBox.width / 2, y: petBox.y + petBox.height / 2 };

@@ -1,3 +1,5 @@
+import { renderCompanionFoodArt } from './companion-food-art.js';
+
 // Pointer interactions are transient UI state; persistence stays in the care handlers.
 export function bindCompanionTouch(root, { captureScope, allowed, isCleaning, scrub, commit }) {
     let gesture = null, ghost = null, suppressClick = false;
@@ -40,7 +42,7 @@ export function bindCompanionTouch(root, { captureScope, allowed, isCleaning, sc
         if (g.kind === 'food') {
             if (!ghost) {
                 ghost = document.createElement('span'); ghost.className = 'tf-pet-drag-snack';
-                ghost.textContent = g.target.querySelector('span')?.textContent || '●';
+                ghost.innerHTML = renderCompanionFoodArt(g.foodId);
                 ghost.setAttribute('aria-hidden', 'true'); root.append(ghost);
             }
             ghost.style.left = `${event.clientX}px`; ghost.style.top = `${event.clientY}px`;
