@@ -57,11 +57,32 @@ test('scene resolution handles an already-selected interaction room and invalid 
     assert.deepEqual(resolveCompanionScene(null), { habitat: 'meadow', temporary: false, reason: '' });
 });
 
-test('every automatic destination is a supported scene; newer rooms have their own artwork', () => {
+test('every automatic destination is a supported scene', () => {
     for (const id of ['kitchen', 'bathroom', 'bedroom', 'garden']) {
         assert.ok(COMPANION_HABITATS.some(scene => scene.id === id), `${id} must be a selectable habitat`);
     }
-    for (const id of ['kitchen', 'bathroom', 'garden']) {
-        assert.match(renderCompanionScene(id), new RegExp(`data-scene="${id}"`));
+});
+
+test('every selectable habitat renders a distinct complete scalable scene', () => {
+    const markup = COMPANION_HABITATS.map(({ id }) => renderCompanionScene(id));
+    assert.equal(new Set(markup).size, COMPANION_HABITATS.length, 'selectable habitats must not share a generic fallback');
+    for (const [index, scene] of COMPANION_HABITATS.entries()) {
+        const art = markup[index];
+        assert.match(art, /^<svg\b/, `${scene.id}: scalable scene root`);
+        assert.match(art, /<\/svg>$/, `${scene.id}: complete scene`);
+        assert.match(art, /viewBox="0 0 320 240"/, `${scene.id}: same room coordinate system`);
+        assert.match(art, new RegExp(`data-scene="${scene.id}"`), `${scene.id}: scene identity`);
+        assert.match(art, /aria-hidden="true"/, `${scene.id}: decorative artwork does not duplicate accessibility controls`);
+        assert.doesNotMatch(art, /<(?:image|foreignObject|script)\b|\son\w+=/, `${scene.id}: scene works offline as native, non-interactive art`);
+    }
+    assert.equal(renderCompanionScene('not-a-scene'), '', 'unsupported scene has no mislabeled artwork');
+});
+
+test('indoor scene metadata protects rooms from outdoor weather', () => {
+    for (const id of ['bedroom', 'space', 'arcade', 'kitchen', 'bathroom', 'library']) {
+        assert.match(renderCompanionScene(id), /data-indoor="true"/, `${id}: enclosed scene`);
+    }
+    for (const id of ['meadow', 'pond', 'forest', 'snowfield', 'city', 'garden', 'beach', 'fairground']) {
+        assert.match(renderCompanionScene(id), /data-indoor="false"/, `${id}: outdoor scene`);
     }
 });

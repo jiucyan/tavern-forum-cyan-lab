@@ -15601,6 +15601,39 @@ button.tf-avatar {
     #tavern-forum-root .tf-companion-device .tf-pet-sprite-control[data-roam-active] > .tf-pixel-avatar { animation: none !important; translate: 0 0; scale: 1 1 !important; }
 }
 
+/* Illustrated habitats keep weather and light in the scenery, with quiet local motion. */
+#tavern-forum-root .tf-companion-device .tf-pet-stage:has(.tf-scene-art) > .tf-pet-weather { background: none; }
+#tavern-forum-root .tf-companion-device.is-time-dawn .tf-pet-habitat-layer > .tf-scene-art[data-indoor="false"] { filter: sepia(.1) saturate(.9); }
+#tavern-forum-root .tf-companion-device.is-time-dusk .tf-pet-habitat-layer > .tf-scene-art[data-indoor="false"] { filter: brightness(.94) sepia(.12); }
+#tavern-forum-root .tf-companion-device.is-time-night .tf-pet-habitat-layer > .tf-scene-art[data-indoor="false"] { filter: brightness(.78) saturate(.82); }
+#tavern-forum-root .tf-companion-device.is-time-night .tf-pet-habitat-layer > .tf-scene-art[data-indoor="true"] { filter: brightness(.91) saturate(.92); }
+#tavern-forum-root .tf-companion-device.is-time-night .tf-pet-habitat-layer .tf-scene-sky { fill: #667d8b; }
+#tavern-forum-root .tf-companion-device:is(.is-time-dusk,.is-time-night) .tf-pet-habitat-layer .tf-scene-window-light:not(.tf-scene-sky) { fill: #f4dfac; }
+#tavern-forum-root .tf-companion-device .tf-pet-habitat-layer .tf-scene-windmill { transform-box: fill-box; transform-origin: center; animation: tf-scene-wheel 28s linear infinite; }
+#tavern-forum-root .tf-companion-device .tf-pet-habitat-layer .tf-scene-wind { transform-box: fill-box; transform-origin: 50% 100%; animation: tf-scene-gentle-wind 6s ease-in-out infinite; }
+#tavern-forum-root .tf-companion-device .tf-pet-habitat-layer .tf-scene-floating-leaves { animation: tf-scene-leaf-drift 9s ease-in-out infinite; }
+#tavern-forum-root .tf-companion-device .tf-pet-habitat-layer .tf-scene-pond-ripple { transform-box: fill-box; transform-origin: center; animation: tf-scene-pond-ripple 5.5s ease-in-out infinite; }
+#tavern-forum-root .tf-companion-device .tf-pet-habitat-layer .tf-scene-campfire { transform-box: fill-box; transform-origin: 50% 100%; animation: tf-scene-campfire 2.6s ease-in-out infinite; }
+#tavern-forum-root .tf-companion-device .tf-pet-habitat-layer .tf-scene-star-orbit { animation: tf-scene-star-drift 18s ease-in-out infinite; }
+#tavern-forum-root .tf-companion-device .tf-pet-habitat-layer .tf-scene-arcade-screen { animation: tf-scene-screen-glow 7s ease-in-out infinite; }
+#tavern-forum-root .tf-companion-device .tf-pet-habitat-layer .tf-scene-fireflies { visibility: hidden; opacity: 0; }
+#tavern-forum-root .tf-companion-device:is(.is-time-dusk,.is-time-night) .tf-pet-habitat-layer .tf-scene-fireflies { visibility: visible; opacity: .8; animation: tf-scene-fireflies 6s ease-in-out infinite; }
+#tavern-forum-root .tf-companion-device:is(.is-time-dusk,.is-time-night) .tf-pet-habitat-layer .tf-scene-city-window { animation: tf-scene-window-glow 9s ease-in-out infinite; }
+#tavern-forum-root .tf-companion-device.is-scene-sleep .tf-pet-habitat-layer > .tf-scene-art { filter: none; }
+#tavern-forum-root .tf-companion-device.is-scene-sleep .tf-pet-habitat-layer .tf-scene-daylight { opacity: 0; }
+#tavern-forum-root .tf-companion-device.is-scene-sleep .tf-pet-habitat-layer .tf-scene-lamplight { opacity: 1; }
+@keyframes tf-scene-gentle-wind { 0%,100% { transform: rotate(-.7deg); } 50% { transform: rotate(1.2deg); } }
+@keyframes tf-scene-leaf-drift { 0%,100% { opacity: .35; transform: translate(0,0); } 50% { opacity: .8; transform: translate(5px,6px); } }
+@keyframes tf-scene-pond-ripple { 0%,100% { opacity: .4; transform: scaleX(.96); } 50% { opacity: .8; transform: scaleX(1.06); } }
+@keyframes tf-scene-campfire { 0%,100% { opacity: .9; transform: scaleY(.98); } 50% { opacity: 1; transform: scaleY(1.04); } }
+@keyframes tf-scene-star-drift { 0%,100% { transform: translate(0,0); } 50% { transform: translate(3px,-2px); } }
+@keyframes tf-scene-screen-glow { 0%,100% { opacity: .78; } 50% { opacity: 1; } }
+@keyframes tf-scene-fireflies { 0%,100% { opacity: .45; transform: translate(0,0); } 50% { opacity: .9; transform: translate(2px,-4px); } }
+@keyframes tf-scene-window-glow { 0%,100% { opacity: .8; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+    #tavern-forum-root .tf-companion-device .tf-pet-habitat-layer .tf-scene-art * { animation: none !important; }
+}
+
 /* Activity rooms are temporary; only the background fades, keeping the pet steady. */
 #tavern-forum-root .tf-companion-device .tf-pet-habitat-layer.is-scene-entering { animation: tf-companion-room-enter .24s ease-out both; }
 #tavern-forum-root .tf-companion-device.is-scene-sleep .tf-pet-stage { background: linear-gradient(#555c68 0 72%, #645c63 73% 77%, #75665f 78%); }
