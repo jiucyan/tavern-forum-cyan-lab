@@ -15525,3 +15525,100 @@ button.tf-avatar {
 @media (prefers-reduced-motion: reduce) {
     #tavern-forum-root .tf-companion-device .tf-pet-habitat-layer.is-scene-entering { animation: none; }
 }
+
+/* Small daily rituals occupy the room's edges and leave the pet touchable. */
+#tavern-forum-root .tf-pet-ritual {
+    position: absolute; inset: 0; pointer-events: none;
+    --tf-ritual-ink: var(--pet-ink, #435438);
+    --tf-ritual-paper: color-mix(in srgb, var(--pet-screen, #e5ecd6) 90%, white);
+    color: var(--tf-ritual-ink);
+}
+#tavern-forum-root .tf-pet-ritual-caption {
+    position: absolute; z-index: 2; top: 6px; left: 50%;
+    display: grid; gap: 2px; width: max-content; max-width: calc(100% - 16px);
+    padding: 5px 9px; border: 1px solid color-mix(in srgb, var(--tf-ritual-ink) 20%, transparent);
+    border-radius: 9px; background: var(--tf-ritual-paper); box-shadow: 0 2px 3px #202c2012;
+    text-align: center; transform: translateX(-50%); font: 500 10px/1.4 system-ui, sans-serif;
+}
+#tavern-forum-root .tf-pet-ritual-caption b {
+    display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    font: 600 10px/1.4 system-ui, sans-serif; overflow-wrap: anywhere;
+}
+#tavern-forum-root .tf-pet-ritual-caption small {
+    display: block; overflow: hidden; max-width: 100%; white-space: nowrap; text-overflow: ellipsis;
+    font: 500 9px/1.3 system-ui, sans-serif; opacity: .8;
+}
+#tavern-forum-root .tf-pet-life-scene:has(.tf-pet-ritual) :is(.tf-pet-touch-guide,.tf-pet-growth-invitation,.tf-pet-thought),
+#tavern-forum-root .tf-pet-stage:has(.tf-pet-ritual:not([data-ritual-kind="greet"])) > .tf-device-need { display: none; }
+#tavern-forum-root .tf-pet-stage:has(> .tf-device-need) .tf-pet-ritual[data-ritual-kind="greet"] .tf-pet-ritual-caption {
+    top: auto; bottom: 4px; gap: 1px; max-height: 30px; padding: 3px 6px; box-sizing: border-box;
+}
+#tavern-forum-root .tf-pet-stage:has(> .tf-device-need) .tf-pet-ritual[data-ritual-kind="greet"] .tf-pet-ritual-caption b {
+    display: block; white-space: nowrap; text-overflow: ellipsis; font-size: 9px; line-height: 1.2;
+}
+#tavern-forum-root .tf-pet-stage:has(> .tf-device-need) .tf-pet-ritual[data-ritual-kind="greet"] .tf-pet-ritual-caption small {
+    font-size: 8px; line-height: 1.2;
+}
+#tavern-forum-root .tf-pet-life-scene:has(.tf-pet-ritual) .tf-pet-touch-feedback {
+    top: auto; bottom: 3px; left: 5px; right: 5px; padding: 2px 4px;
+    border-color: color-mix(in srgb, var(--pet-ink) 15%, transparent);
+    background: color-mix(in srgb, var(--pet-screen) 92%, transparent); box-shadow: none; font-size: 9px;
+}
+#tavern-forum-root .tf-pet-ritual-welcome i {
+    position: absolute; left: 12%; top: 36%; font: 22px/1 serif; font-style: normal;
+    color: color-mix(in srgb, var(--tf-ritual-ink) 55%, #d7959f);
+    animation: tf-ritual-welcome 2.8s ease-in-out both;
+}
+#tavern-forum-root .tf-pet-ritual-welcome i:nth-child(2) { left: auto; right: 12%; top: 45%; font-size: 16px; animation-delay: .16s; }
+#tavern-forum-root .tf-pet-ritual-welcome i:nth-child(3) { left: 18%; top: 57%; font-size: 20px; animation-delay: .35s; }
+#tavern-forum-root .tf-pet-ritual-bowl { position: absolute; left: 10px; bottom: 24px; width: 44px; height: 32px; }
+#tavern-forum-root .tf-pet-ritual-bowl svg { display: block; width: 100%; height: 100%; overflow: visible; }
+#tavern-forum-root .tf-ritual-bowl-shadow { fill: #303923; opacity: .17; }
+#tavern-forum-root .tf-ritual-bowl-body { fill: color-mix(in srgb, var(--pet-button, #eedbb5) 76%, #fff); stroke: color-mix(in srgb, var(--tf-ritual-ink) 65%, #ad997f); stroke-width: 1.4; }
+#tavern-forum-root .tf-ritual-bowl-rim { fill: color-mix(in srgb, var(--pet-screen, #e5ecd6) 72%, #5c573f); stroke: color-mix(in srgb, var(--tf-ritual-ink) 65%, #ad997f); stroke-width: 1.4; }
+#tavern-forum-root .tf-ritual-bowl-shine { stroke: #fff; stroke-width: 2; stroke-linecap: round; opacity: .5; }
+#tavern-forum-root .tf-ritual-bowl-food { fill: color-mix(in srgb, var(--pet-button, #c6a269) 45%, #a78047); transform-origin: 24px 13px; }
+#tavern-forum-root .tf-pet-ritual[data-ritual-phase="prepare"] .tf-pet-ritual-bowl { animation: tf-ritual-bowl-set .35s ease-out both; }
+#tavern-forum-root .tf-pet-ritual[data-ritual-phase="eat"] .tf-ritual-bowl-food { animation: tf-ritual-bowl-empty 2.05s steps(3, end) both; }
+#tavern-forum-root .tf-pet-ritual[data-ritual-phase="thanks"] .tf-ritual-bowl-food { opacity: 0; }
+#tavern-forum-root .tf-pet-ritual-bowl > i { position: absolute; top: -16px; right: -5px; opacity: 0; font: 18px/1 serif; font-style: normal; color: #c38a96; }
+#tavern-forum-root .tf-pet-ritual[data-ritual-phase="thanks"] .tf-pet-ritual-bowl > i { opacity: 1; animation: tf-ritual-welcome 2s ease-out both; }
+#tavern-forum-root .tf-pet-ritual[data-ritual-kind="bedtime"] { --tf-ritual-paper: #383d4beb; --tf-ritual-ink: #f4eed9; }
+#tavern-forum-root .tf-ritual-night-lamp { position: absolute; right: 8px; bottom: 28px; width: 32px; height: 40px; }
+#tavern-forum-root .tf-ritual-night-lamp::before { content: ''; position: absolute; inset: -20px; border-radius: 50%; background: radial-gradient(circle, #ffdf8d4a, #f7d59400 68%); opacity: .25; }
+#tavern-forum-root .tf-ritual-night-lamp svg { position: relative; display: block; width: 100%; height: 100%; }
+#tavern-forum-root .tf-ritual-lamp-star { fill: #f4d484; stroke: #8c7951; stroke-width: 1.2; }
+#tavern-forum-root .tf-ritual-lamp-stand { fill: #98836a; }
+#tavern-forum-root .tf-pet-ritual[data-ritual-phase="sleep"] .tf-ritual-night-lamp::before { opacity: 1; animation: tf-ritual-night-light 4.8s ease-in-out infinite; }
+#tavern-forum-root .tf-ritual-night-stars i { position: absolute; left: 13%; top: 37%; color: #f4deb1; font: 12px/1 serif; font-style: normal; opacity: .55; }
+#tavern-forum-root .tf-ritual-night-stars i:nth-child(2) { left: 21%; top: 50%; }
+#tavern-forum-root .tf-ritual-night-stars i:nth-child(3) { left: auto; right: 16%; top: 34%; font-size: 10px; }
+#tavern-forum-root .tf-ritual-blanket {
+    position: absolute; bottom: 22px; left: 50%; display: flex; justify-content: space-around; align-items: center;
+    width: 44%; max-width: 112px; height: 24px; border: 1px solid #817e94; border-radius: 10px 10px 7px 7px;
+    transform: translateX(-50%) rotate(-2deg); color: #eee1c2; background: linear-gradient(#bab0c6 0 6px, #9b90b0 7px);
+    box-shadow: inset 0 -3px 0 #786b9133, 0 2px 2px #252c3a20;
+}
+#tavern-forum-root .tf-ritual-blanket i { font: 11px/1 serif; font-style: normal; opacity: .75; }
+#tavern-forum-root .tf-pet-ritual[data-ritual-phase="settle"] .tf-ritual-blanket { animation: tf-ritual-blanket-settle .7s ease-out both; }
+#tavern-forum-root .tf-companion-page.is-ritual-bedtime .tf-pet-habitat-layer { transition: filter 1.2s ease; }
+#tavern-forum-root .tf-companion-page.is-ritual-bedtime.is-ritual-phase-settle .tf-pet-habitat-layer { filter: brightness(.88) saturate(.86); }
+#tavern-forum-root .tf-companion-page.is-ritual-bedtime.is-ritual-phase-sleep .tf-pet-habitat-layer { filter: brightness(.62) saturate(.78); }
+@keyframes tf-ritual-welcome { 0% { opacity: 0; transform: translateY(5px) scale(.75); } 22%,75% { opacity: .9; } 100% { opacity: .35; transform: translateY(-5px) scale(1); } }
+@keyframes tf-ritual-bowl-set { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes tf-ritual-bowl-empty { 0% { opacity: 1; transform: scale(1); } 35% { opacity: .85; transform: scale(.85,.75); } 67% { opacity: .5; transform: scale(.7,.5); } 90%,100% { opacity: 0; transform: scale(.4,.2); } }
+@keyframes tf-ritual-blanket-settle { from { opacity: .2; transform: translate(-50%,-9px) rotate(3deg); } to { opacity: 1; transform: translate(-50%,0) rotate(-2deg); } }
+@keyframes tf-ritual-night-light { 0%,100% { opacity: .85; } 50% { opacity: 1; } }
+@container (max-width: 240px) {
+    #tavern-forum-root .tf-pet-ritual-caption { top: 3px; padding: 4px 6px; max-width: calc(100% - 10px); }
+    #tavern-forum-root .tf-pet-ritual-caption b { font-size: 9px; }
+    #tavern-forum-root .tf-pet-ritual-caption small { font-size: 8px; }
+    #tavern-forum-root .tf-pet-ritual-bowl { left: 5px; width: 35px; height: 26px; }
+    #tavern-forum-root .tf-ritual-night-lamp { right: 5px; width: 25px; height: 33px; }
+    #tavern-forum-root .tf-ritual-blanket { height: 21px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #tavern-forum-root .tf-pet-ritual *, #tavern-forum-root .tf-pet-ritual *::before { animation: none !important; }
+    #tavern-forum-root .tf-companion-page.is-ritual-bedtime .tf-pet-habitat-layer { transition: none; }
+    #tavern-forum-root .tf-pet-ritual[data-ritual-phase="eat"] .tf-ritual-bowl-food { opacity: .5; transform: scale(.7,.5); }
+}

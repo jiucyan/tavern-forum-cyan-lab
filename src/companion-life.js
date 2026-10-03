@@ -6,6 +6,20 @@ const list = value => Array.isArray(value) ? value : [];
 const text = value => typeof value === 'string' ? value.trim().slice(0, 240) : '';
 const number = (value, fallback, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isFinite(Number(value)) ? Math.min(max, Math.max(min, Number(value))) : fallback;
 const keyOfDay = now => { const date = new Date(now); return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`; };
+const calendarDay = now => { const date = new Date(now), utc = new Date(0); utc.setUTCFullYear(date.getFullYear(), date.getMonth(), date.getDate()); return utc.getTime() / (24 * HOUR); };
+function normalizeDay(value) {
+    const match = typeof value === 'string' && /^(\d{4,6})-(\d{1,2})-(\d{1,2})$/.exec(value);
+    if (!match) return '';
+    const [, year, month, day] = match.map(Number), date = new Date(0);
+    date.setUTCFullYear(year, month - 1, day);
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? `${year}-${month}-${day}` : '';
+}
+function dayHasPassed(previousDay, now) {
+    if (!previousDay) return true;
+    const [year, month, day] = previousDay.split('-').map(Number), date = new Date(0);
+    date.setUTCFullYear(year, month - 1, day);
+    return calendarDay(now) > date.getTime() / (24 * HOUR);
+}
 const id = prefix => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 const STAGES = ['baby', 'young', 'adult'];
 export const PET_STAGES = { baby: '幼年', young: '少年', adult: '成年' };
@@ -42,6 +56,7 @@ export function normalizeCompanionLife(value, now = Date.now()) {
     const counts = values => Object.fromEntries(Object.entries(values || {}).slice(-30).map(([key, value]) => [key, number(value, 0, 0, 10000)]));
     return {
         startedAt: number(life.startedAt, now), lastTickAt: number(life.lastTickAt, now),
+        greetingDay: normalizeDay(life.greetingDay), bedtimeDay: normalizeDay(life.bedtimeDay),
         mode: ['active', 'paused', 'daycare'].includes(life.mode) ? life.mode : 'active',
         cleanliness: number(life.cleanliness, 85, 0, 100), sleepStart: Math.floor(number(life.sleepStart, 22, 0, 23)), sleepEnd: Math.floor(number(life.sleepEnd, 8, 0, 23)),
         autoSleep: life.autoSleep !== false, awakeUntil: number(life.awakeUntil, 0), sleepUntil: number(life.sleepUntil, 0),
@@ -82,6 +97,21 @@ export function addCompanionMilestone(companion, key, message, now = Date.now())
     if (life.milestones.includes(key)) return false;
     life.milestones.push(key); life.diary.push({ id: id('pet-note'), text: message, at: now }); life.diary = life.diary.slice(-60);
     return true;
+}
+
+export function getCompanionTogetherDays(companion, now = Date.now()) {
+    const startedAt = number(companion.life?.startedAt, now);
+    return Math.max(1, calendarDay(now) - calendarDay(startedAt) + 1);
+}
+
+export function claimCompanionGreeting(companion, now = Date.now()) {
+    const life = ensure(companion, now), view = getCompanionLifeView(companion, now);
+    if (life.mode !== 'active' || companion.status === 'away' || view.sleeping || life.game || !dayHasPassed(life.greetingDay, now)) return null;
+    const days = getCompanionTogetherDays(companion, now);
+    life.greetingDay = keyOfDay(now);
+    addCompanionMilestone(companion, 'first-greeting', `第一次重逢时，${companion.name}开心地回应了你，把一起生活的这一天记在了心里。`, now);
+    companion.updatedAt = now;
+    return { kind: 'greet', message: `${companion.name}看见你，开心地凑近了一点。`, days };
 }
 
 export function getCompanionLifeView(companion, now = Date.now()) {
@@ -262,6 +292,8 @@ export function tendCompanion(companion, action, now = Date.now()) {
     } else if (action === 'rest') {
         life.sleepUntil = now + HOUR; companion.status = 'resting';
         recordCompanionCare(companion, 'rest', { now });
+        if (dayHasPassed(life.bedtimeDay, now)) life.bedtimeDay = keyOfDay(now);
+        addCompanionMilestone(companion, 'first-bedtime', `第一次道过晚安后，你替${companion.name}盖好小被子，一起把安稳的梦留在小窝里。`, now);
         companion.message = `${companion.name}钻进小窝，准备睡一小时，体力会慢慢恢复。`;
     } else if (action === 'clean') {
         if (recordCompanionCare(companion, 'clean', { now })) {

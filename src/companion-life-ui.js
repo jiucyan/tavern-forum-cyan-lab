@@ -1,4 +1,5 @@
 import { getCompanionLifeView, PET_GAMES, PET_SHOP, PET_STAGES, canCareForCompanion } from './companion-life.js';
+import { renderCompanionRitual } from './companion-ritual-ui.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const stages = Object.keys(PET_STAGES);
@@ -74,6 +75,7 @@ export function renderCompanionLife(data, { renderPortrait, area = 'album' } = {
 
 export function decorateCompanionLife(html, data, touch = {}) {
     const companion = data.world.companion, view = getCompanionLifeView(companion), life = view.life;
+    const ritual = touch.ritual?.until > Date.now() ? touch.ritual : null;
     const display = data.world.inventory.find(item => item.id === life.displayItemId && !item.consumed && item.quantity > 0 && /返程/.test(item.source));
     const prop = { hungry: '◡', dirty: '✧', sleep: 'z Z', tired: 'z', lonely: '♡', cuddle: '♡', toy: '◉', paused: 'Ⅱ', daycare: '⌂' }[view.activity] || '';
     const interactive = !canCareForCompanion(companion, 'pet') && !life.game;
@@ -85,10 +87,10 @@ export function decorateCompanionLife(html, data, touch = {}) {
         ball: '<path fill="currentColor" d="M7 2h10v3h4v14h-4v3H7v-3H3V5h4z"/><path fill="var(--pet-screen)" d="M7 5h4v5h8v3h-8v6H8v-6H5v-3h3z"/>',
     }[type]}</svg>`;
     const tools = interactive && !touch.gameResultOpen ? `<div class="tf-pet-room-tools">${button('companion-care', `${glyph('bowl')}<span>喂食</span>`, 'class="tf-pet-room-tool is-bowl" data-care="feed" aria-label="食盆：选择食物，可以拖给旅伴"')}${button('pet-soap', `${glyph('soap')}<span>${cleaning ? '收起' : '洗澡'}</span>`, `class="tf-pet-room-tool is-soap" aria-pressed="${Boolean(cleaning)}" aria-label="${cleaning ? '收起肥皂' : '拿起肥皂，擦洗旅伴'}"`)}${button('pet-room-play', `${glyph('ball')}<span>玩耍</span>`, 'class="tf-pet-room-tool is-ball" aria-label="玩具：一起玩接星星"')}</div>` : '';
-    const growthInvitation = life.growthNotice && !life.game && !cleaning && !touch.foodMenu && !feedback ? button('pet-growth-show', '长大啦 · 看看变化 ✧', 'class="tf-pet-growth-invitation"') : '';
+    const growthInvitation = life.growthNotice && !life.game && !cleaning && !touch.foodMenu && !feedback && !ritual ? button('pet-growth-show', '长大啦 · 看看变化 ✧', 'class="tf-pet-growth-invitation"') : '';
     const guide = growthInvitation ? '' : cleaning ? `擦洗 ${Math.round((touch.progress || 0) * 100)}% · 划动或轻点旅伴` : touch.foodMenu ? '把食物拖给旅伴，也可轻点喂食' : view.sleeping ? '点旅伴轻轻叫醒' : life.mode !== 'active' ? '点旅伴继续照顾' : interactive ? '摸摸我，陪我待一会儿' : '';
-    const props = `<div class="tf-pet-life-scene"><span class="tf-pet-thought" aria-hidden="true">${prop}</span>${life.furniture ? `<span class="tf-pet-room-furniture" aria-hidden="true">${life.furniture === 'lamp' ? '✦' : '▰'}</span>` : ''}${display ? `<span class="tf-pet-keepsake" title="${esc(display.name)}">◇<small>${esc(display.name)}</small></span>` : ''}${tools}${growthInvitation}<span class="tf-pet-touch-guide">${guide}</span>${feedback ? `<span class="tf-pet-touch-feedback" role="status">${esc(feedback.message)}</span>` : ''}<span class="tf-pet-bath-bubbles" aria-hidden="true"><i>○</i><i>○</i><i>○</i><i>✧</i></span><span class="tf-pet-touch-heart" aria-hidden="true">♥</span></div>`;
-    html = html.replace('tf-companion-page ', `tf-companion-page ${life.game ? 'is-playing-game ' : ''}${cleaning ? 'is-washing ' : ''}${feedback?.kind === 'clean' ? 'is-bath-done ' : ''}is-growing-${view.stage} is-living-${view.activity} `)
+    const props = `<div class="tf-pet-life-scene">${ritual ? renderCompanionRitual(companion, ritual) : ''}<span class="tf-pet-thought" aria-hidden="true">${prop}</span>${life.furniture ? `<span class="tf-pet-room-furniture" aria-hidden="true">${life.furniture === 'lamp' ? '✦' : '▰'}</span>` : ''}${display ? `<span class="tf-pet-keepsake" title="${esc(display.name)}">◇<small>${esc(display.name)}</small></span>` : ''}${tools}${growthInvitation}<span class="tf-pet-touch-guide">${guide}</span>${feedback ? `<span class="tf-pet-touch-feedback" ${ritual ? '' : 'role="status"'}>${esc(feedback.message)}</span>` : ''}<span class="tf-pet-bath-bubbles" aria-hidden="true"><i>○</i><i>○</i><i>○</i><i>✧</i></span><span class="tf-pet-touch-heart" aria-hidden="true">♥</span></div>`;
+    html = html.replace('tf-companion-page ', `tf-companion-page ${ritual ? 'is-ritual-' + ritual.kind + ' is-ritual-phase-' + ritual.phase + ' ' : ''}${life.game ? 'is-playing-game ' : ''}${cleaning ? 'is-washing ' : ''}${feedback?.kind === 'clean' ? 'is-bath-done ' : ''}is-growing-${view.stage} is-living-${view.activity} `)
         .replace(`<small>${esc(companion.species)}</small>`, `<small>${esc(companion.species)} · ${view.stageLabel} · ${view.personality}</small>`)
         .replace('<div class="tf-pet-stage">', `<div class="tf-pet-stage">${props}`)
         .replace('<!-- companion-album -->', renderCompanionLife(data, { ...touch, area: 'album' }))

@@ -1,14 +1,108 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { normalizeWorldState, applyInventoryItemUse, applyWorldUpdates } from '../src/world.js';
 import { DEFAULT_SETTINGS } from '../src/constants.js';
-import { normalizeCompanionLife, advanceCompanionLife, getCompanionLifeView, recordCompanionCare, setCompanionLifeMode, tendCompanion, startCompanionGame, advanceCompanionGame, getCompanionGameFrame, buyCompanionItem, useCompanionToy, setCompanionDisplay } from '../src/companion-life.js';
+import { normalizeCompanionLife, advanceCompanionLife, getCompanionLifeView, getCompanionTogetherDays, claimCompanionGreeting, recordCompanionCare, setCompanionLifeMode, tendCompanion, startCompanionGame, advanceCompanionGame, getCompanionGameFrame, buyCompanionItem, useCompanionToy, setCompanionDisplay } from '../src/companion-life.js';
 import { arcadeInput } from '../src/companion-games.js';
 import { decorateCompanionLife } from '../src/companion-life-ui.js';
 
 const T = new Date(2026, 8, 26, 12).getTime(), M = 60000, H = 60 * M;
 const pet = () => ({ name: '团子', species: '青蛙', status: 'home', satiety: 75, energy: 80, happiness: 70, bond: 8, life: normalizeCompanionLife({ autoSleep: false }, T) });
 const data = () => ({ world: normalizeWorldState({ companion: pet(), inventory: [] }) });
+
+test('together days count local calendar boundaries, including a short first day and clock rollback', () => {
+    const companion = pet(), beforeMidnight = new Date(2026, 8, 26, 23, 59, 59).getTime();
+    companion.life.startedAt = beforeMidnight;
+    assert.equal(getCompanionTogetherDays(companion, beforeMidnight), 1);
+    assert.equal(getCompanionTogetherDays(companion, beforeMidnight + 1000), 2);
+    assert.equal(getCompanionTogetherDays(companion, T), 1);
+    assert.equal(getCompanionTogetherDays({ name: '旧伙伴' }, T), 1);
+});
+
+test('together days remain calendar-based across both daylight-saving transitions', () => {
+    const moduleUrl = new URL('../src/companion-life.js', import.meta.url).href;
+    const result = spawnSync(process.execPath, ['--input-type=module', '--eval', `
+        import { getCompanionTogetherDays } from ${JSON.stringify(moduleUrl)};
+        const spring = { life: { startedAt: new Date(2026, 2, 7, 12).getTime() } };
+        const autumn = { life: { startedAt: new Date(2026, 10, 1, 0, 30).getTime() } };
+        console.log(JSON.stringify([
+            getCompanionTogetherDays(spring, new Date(2026, 2, 9, 12).getTime()),
+            getCompanionTogetherDays(autumn, new Date(2026, 10, 1, 23, 30).getTime())
+        ]));
+    `], { env: { ...process.env, TZ: 'America/New_York' }, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), [3, 1]);
+});
+
+test('daily reunion persists across saves and rollback, without adding rewards or daily diary noise', () => {
+    const companion = pet(), before = [companion.bond, companion.energy, companion.satiety, companion.life.coins, structuredClone(companion.life.traits)];
+    const greeting = claimCompanionGreeting(companion, T);
+    assert.equal(greeting.kind, 'greet'); assert.equal(greeting.days, 1);
+    assert.ok(greeting.message.includes(companion.name)); assert.match(greeting.message, /开心/);
+    assert.doesNotMatch(greeting.message, /第\s*\d+\s*天/);
+    assert.equal(companion.life.greetingDay, '2026-9-26');
+    assert.equal(claimCompanionGreeting(companion, T + M), null);
+    normalizeWorldState({ companion });
+    assert.equal(claimCompanionGreeting(companion, T + H), null);
+    assert.equal(claimCompanionGreeting(companion, T + 2 * 24 * H).days, 3);
+    assert.equal(claimCompanionGreeting(companion, T + 24 * H), null);
+    normalizeWorldState({ companion });
+    assert.equal(claimCompanionGreeting(companion, T + 2 * 24 * H), null);
+    assert.equal(claimCompanionGreeting(companion, T + 3 * 24 * H).days, 4);
+    assert.deepEqual([companion.bond, companion.energy, companion.satiety, companion.life.coins, companion.life.traits], before);
+    assert.deepEqual(companion.life.milestones, ['first-greeting']);
+    assert.equal(companion.life.diary.length, 1);
+});
+
+test('unavailable companions do not consume the greeting; waking or returning still permits it that day', () => {
+    for (const reason of ['paused', 'daycare', 'away', 'sleep', 'game']) {
+        const companion = pet();
+        if (['paused', 'daycare'].includes(reason)) companion.life.mode = reason;
+        else if (reason === 'away') companion.status = 'away';
+        else if (reason === 'sleep') companion.life.sleepUntil = T + H;
+        else startCompanionGame(companion, 'catch', T, () => .2);
+        const before = structuredClone(companion);
+        assert.equal(claimCompanionGreeting(companion, T), null, reason);
+        assert.deepEqual(companion, before, reason);
+        companion.life.mode = 'active'; companion.status = 'home'; companion.life.sleepUntil = 0; companion.life.game = null;
+        assert.equal(claimCompanionGreeting(companion, T + M).kind, 'greet', reason);
+    }
+    const night = pet(), at = new Date(2026, 8, 26, 23).getTime(); night.life.autoSleep = true;
+    assert.equal(claimCompanionGreeting(night, at), null);
+    assert.equal(night.life.greetingDay, '');
+    tendCompanion(night, 'wake', at);
+    assert.equal(claimCompanionGreeting(night, at).kind, 'greet');
+});
+
+test('ritual migration accepts valid stored dates and rejects malformed calendar dates', () => {
+    const legacy = normalizeCompanionLife({}, T);
+    assert.equal(legacy.greetingDay, ''); assert.equal(legacy.bedtimeDay, '');
+    const persisted = normalizeCompanionLife({ greetingDay: '2026-09-26', bedtimeDay: '2026-9-27' }, T);
+    assert.equal(persisted.greetingDay, '2026-9-26'); assert.equal(persisted.bedtimeDay, '2026-9-27');
+    for (const invalid of ['2026-2-30', '2026-13-1', '2026-0-2', '2026-9-0', 'not-a-day', null, {}, '']) {
+        const life = normalizeCompanionLife({ greetingDay: invalid, bedtimeDay: invalid }, T);
+        assert.equal(life.greetingDay, ''); assert.equal(life.bedtimeDay, '');
+    }
+});
+
+test('bedtime records one keepsake, keeps care cooldowns and one-hour sleep, and preserves its date after rollback', () => {
+    const companion = pet();
+    assert.equal(tendCompanion(companion, 'rest', T), undefined);
+    assert.equal(companion.life.bedtimeDay, '2026-9-26'); assert.equal(companion.life.sleepUntil, T + H);
+    assert.equal(companion.energy, 80); assert.equal(companion.life.traits.calm, 1);
+    tendCompanion(companion, 'rest', T + 1);
+    assert.equal(companion.life.traits.calm, 1); assert.equal(companion.life.coins, 0); assert.equal(companion.bond, 8);
+    normalizeWorldState({ companion }); assert.equal(companion.life.bedtimeDay, '2026-9-26');
+    advanceCompanionLife(companion, T + H + 1);
+    assert.equal(companion.energy, 92); assert.equal(companion.status, 'home');
+    tendCompanion(companion, 'rest', T + 2 * 24 * H);
+    assert.equal(companion.life.bedtimeDay, '2026-9-28');
+    tendCompanion(companion, 'rest', T + 24 * H);
+    assert.equal(companion.life.bedtimeDay, '2026-9-28');
+    assert.equal(companion.life.milestones.filter(key => key === 'first-bedtime').length, 1);
+    assert.equal(companion.life.diary.filter(note => /第一次道过晚安/.test(note.text)).length, 1);
+});
 
 test('migration preserves identity, achievements and care cooldown timestamps', () => {
     const companion = pet(); recordCompanionCare(companion, 'feed', { now: T, food: { id: 'berry', name: '莓果' } });

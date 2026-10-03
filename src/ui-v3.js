@@ -1,6 +1,7 @@
 import { createCompanionGamePlayer } from './companion-game-player.js';
 import { buildStoryEventInstruction, applyStoryEventUpdates, trackPostEvent, getEventProtectedPostIds, publicEventProgress, setStoryEventStatus } from './events.js';
-import { advanceCompanionLife, getCompanionLifeView, canCareForCompanion, recordCompanionCare, setCompanionLifeMode, startCompanionGame, advanceCompanionGame, buyCompanionItem, tendCompanion, useCompanionToy, setCompanionDisplay, PET_SHOP } from './companion-life.js';
+import { advanceCompanionLife, getCompanionLifeView, canCareForCompanion, recordCompanionCare, claimCompanionGreeting, setCompanionLifeMode, startCompanionGame, advanceCompanionGame, buyCompanionItem, tendCompanion, useCompanionToy, setCompanionDisplay, PET_SHOP } from './companion-life.js';
+import { renderCompanionRitual } from './companion-ritual-ui.js';
 import { decorateCompanionLife, renderCompanionNavigation, renderCompanionSummary } from './companion-life-ui.js';
 import { DEVICE_PAGES, renderCompanionDevice, getCompanionDeviceChoices, paintCompanionDeviceCursor } from './companion-device-ui.js';
 import { bindCompanionTouch } from './companion-touch.js';
@@ -549,6 +550,8 @@ const viewState = {
     companionCleanProgress: 0,
     companionFeedback: null,
     companionFeedbackTimer: 0,
+    companionRitual: null,
+    companionRitualTimer: 0,
     pendingNpcAvatarId: '',
     pendingNpcBackgroundId: '',
     pendingViewWallpaperId: '',
@@ -1899,7 +1902,73 @@ function renderCompanionAvatar(data, large = false) {
 }
 
 function getCompanionVisualAction(companion) {
+    if (viewState.companionRitual?.kind === 'greet') return 'pet';
     return viewState.companionVisualAction || (companion?.status === 'resting' ? 'rest' : 'idle');
+}
+
+function clearCompanionRitual() {
+    const greeting = viewState.companionRitual?.kind === 'greet';
+    clearTimeout(viewState.companionRitualTimer);
+    viewState.companionRitualTimer = 0;
+    viewState.companionRitual = null;
+    const page = getRoot()?.querySelector('.tf-companion-page');
+    page?.querySelector('.tf-pet-ritual')?.remove();
+    if (page) page.classList.remove(...[...page.classList].filter(name => name.startsWith('is-ritual-')));
+    if (page && greeting) {
+        page.classList.remove(...[...page.classList].filter(name => name.startsWith('is-action-')));
+        page.classList.add('is-action-' + getCompanionVisualAction(getForumData().world.companion));
+    }
+}
+
+function paintCompanionRitual(companion) {
+    const page = getRoot()?.querySelector('.tf-companion-page');
+    const scene = page?.querySelector('.tf-pet-life-scene');
+    if (!scene) return;
+    scene.querySelector('.tf-pet-ritual')?.remove();
+    page.classList.remove(...[...page.classList].filter(name => name.startsWith('is-ritual-')));
+    const ritual = viewState.companionRitual;
+    if (!ritual) return;
+    page.classList.add('is-ritual-' + ritual.kind, 'is-ritual-phase-' + ritual.phase);
+    scene.insertAdjacentHTML('beforeend', renderCompanionRitual(companion, ritual));
+}
+
+function startCompanionRitual(data, description) {
+    clearCompanionRitual();
+    companionIdleController?.cancel();
+    const startedAt = Date.now(), clockStartedAt = performance.now(), current = captureChatScope();
+    const kind = description.kind;
+    const duration = { greet: 2600, meal: 3600, bedtime: 3000 }[kind];
+    const ritual = { ...description, phase: { greet: 'hello', meal: 'prepare', bedtime: 'settle' }[kind], startedAt, until: startedAt + duration };
+    viewState.companionRitual = ritual;
+    const tick = () => {
+        if (viewState.companionRitual !== ritual) return;
+        if (!current() || getForumData() !== data || !viewState.open || viewState.worldPage !== 'travel' || viewState.companionPanel !== 'home') return clearCompanionRitual();
+        const elapsed = performance.now() - clockStartedAt;
+        if (elapsed >= duration) {
+            clearCompanionRitual();
+            if (getRoot()?.querySelector('.tf-companion-page')) render({ preserveScroll: true });
+            return;
+        }
+        const boundary = kind === 'meal' ? (elapsed < 650 ? 650 : elapsed < 2700 ? 2700 : duration) : kind === 'bedtime' && elapsed < 1100 ? 1100 : duration;
+        ritual.phase = kind === 'meal' ? (elapsed < 650 ? 'prepare' : elapsed < 2700 ? 'eat' : 'thanks') : kind === 'bedtime' ? (elapsed < 1100 ? 'settle' : 'sleep') : 'hello';
+        // Updating only the decoration preserves the species' ongoing feeding animation.
+        paintCompanionRitual(data.world.companion);
+        viewState.companionRitualTimer = setTimeout(tick, Math.max(1, boundary - elapsed));
+    };
+    viewState.companionRitualTimer = setTimeout(tick, kind === 'meal' ? 650 : kind === 'bedtime' ? 1100 : duration);
+}
+
+function prepareCompanionGreeting(data) {
+    if (!viewState.open || getSettings().ui.activeTab !== 'services' || viewState.worldPage !== 'travel'
+        || viewState.companionPanel !== 'home' || document.visibilityState === 'hidden'
+        || viewState.companionRitual || viewState.companionCleaning || viewState.companionFoodMenuOpen
+        || viewState.companionGameResultOpen || viewState.moduleBusy.has('travel')
+        || viewState.companionVisualAction || viewState.companionFeedback?.until > Date.now()) return false;
+    const greeting = claimCompanionGreeting(data.world.companion);
+    if (!greeting) return false;
+    startCompanionRitual(data, greeting);
+    void saveForumData(data, true).catch(error => { if (error.name !== 'AbortError') console.error('[微坛] 保存旅伴重逢失败', error); });
+    return true;
 }
 
 function getCompanionDisplayedScene(companion) {
@@ -1928,6 +1997,7 @@ function syncCompanionIdle() {
                     && !life.life.game && !viewState.companionGameResultOpen
                     && !viewState.companionCleaning && !viewState.companionFoodMenuOpen
                     && !(viewState.companionFeedback?.until > Date.now())
+                    && !viewState.companionRitual
                     && !viewState.moduleBusy.has('travel') && getCompanionVisualAction(companion) === 'idle'
                     && !getRoot()?.querySelector('.tf-pet-sprite-control.is-touching')),
             };
@@ -1937,6 +2007,7 @@ function syncCompanionIdle() {
 }
 
 function activateCompanionVisualAction(action) {
+    clearCompanionRitual();
     companionIdleController?.cancel();
     if (viewState.companionActionTimer) globalThis.clearTimeout(viewState.companionActionTimer);
     viewState.companionActionTimer = 0;
@@ -2121,6 +2192,7 @@ function showCompanionPanel(panel, { focus = true, preserveCareSource = false } 
     if (!DEVICE_PAGES.includes(panel)) return;
     const root = getRoot(), page = root?.querySelector('.tf-companion-device');
     if (!page) return;
+    if (panel !== 'home') clearCompanionRitual();
     const closeTransient = viewState.companionCleaning || viewState.companionFoodMenuOpen;
     if (!preserveCareSource) viewState.companionCareReturnPanel = '';
     if (panel !== 'home') companionGamePlayer?.stop();
@@ -2147,6 +2219,11 @@ function showCompanionPanel(panel, { focus = true, preserveCareSource = false } 
         if (focus) getRoot()?.querySelector('[data-action="companion-menu-confirm"]')?.focus({ preventScroll: true });
         return;
     }
+    if (panel === 'home' && !preserveCareSource && prepareCompanionGreeting(getForumData())) {
+        render({ preserveScroll: true });
+        if (focus) getRoot()?.querySelector('[data-action="companion-menu-confirm"]')?.focus({ preventScroll: true });
+        return;
+    }
     if (panel === 'home') syncCompanionGamePlayer(root);
     paintCompanionDeviceCursor(root, viewState);
     syncCompanionIdle();
@@ -2163,6 +2240,7 @@ function returnCompanionPanel({ focus = false } = {}) {
 }
 
 function beginCompanionCare() {
+    clearCompanionRitual();
     if (!(viewState.companionCleaning || viewState.companionFoodMenuOpen) || !viewState.companionCareReturnPanel) viewState.companionCareReturnPanel = viewState.companionPanel;
     if (viewState.companionPanel !== 'home') showCompanionPanel('home', { focus: false, preserveCareSource: true });
     viewState.companionDeviceCursor = -1;
@@ -2220,7 +2298,7 @@ function renderCompanionAppV4(data) {
         const menu = `<div class="tf-pet-screen-menu tf-pet-food-select"><header><b>CHOOSE FOOD</b><button data-action="companion-device-back" aria-label="取消喂食并返回">×</button></header><div>${COMPANION_FOODS.map((food, index) => `<button class="${index === selected ? 'is-selected' : ''}" data-action="companion-feed-food" data-food-id="${food.id}" title="${food.name}"><span>${food.symbol}</span><b>${food.name}</b></button>`).join('')}</div></div>`;
         html = html.replace(/<div class="tf-pet-screen-menu[^\"]*">[\s\S]*?<div class="tf-pet-screen-bottom">/, `${menu}<div class="tf-pet-screen-bottom">`);
     }
-    html = decorateCompanionLife(html, data, { cleaning: viewState.companionCleaning, progress: viewState.companionCleanProgress, foodMenu: viewState.companionFoodMenuOpen, feedback: viewState.companionFeedback, gameResultOpen: viewState.companionGameResultOpen, renderPortrait: (photo, stage) => renderPixelCompanion(photo.species, 'home', true, { ...photo, life: { stage } }) });
+    html = decorateCompanionLife(html, data, { ritual: viewState.companionRitual, cleaning: viewState.companionCleaning, progress: viewState.companionCleanProgress, foodMenu: viewState.companionFoodMenuOpen, feedback: viewState.companionFeedback, gameResultOpen: viewState.companionGameResultOpen, renderPortrait: (photo, stage) => renderPixelCompanion(photo.species, 'home', true, { ...photo, life: { stage } }) });
     return renderCompanionDevice(html, data, viewState, [COMPANION_CARE_ACTIONS[2], ...extraActions]);
 }
 
@@ -2971,6 +3049,13 @@ function updateStableShell(root, markup) {
 function render({ preserveScroll = false } = {}) {
     const root = getRoot();
     if (!root) return;
+    if (viewState.companionRitual) {
+        const companion = getForumData().world.companion, life = getCompanionLifeView(companion);
+        const bedtime = viewState.companionRitual.kind === 'bedtime';
+        if (companion.status === 'away' || life.life.mode !== 'active' || life.life.game || (bedtime ? !life.sleeping : life.sleeping)) clearCompanionRitual();
+    }
+    if (!viewState.open || getSettings().ui.activeTab !== 'services' || viewState.worldPage !== 'travel' || viewState.companionPanel !== 'home') clearCompanionRitual();
+    else prepareCompanionGreeting(getForumData());
     const previousHabitat = root.querySelector('.tf-pet-habitat-layer')?.dataset.habitat;
     const petScroll = new Map([...root.querySelectorAll('.tf-pet-device-page')].map(node => [node.dataset.companionPanel, node.querySelector('.tf-pet-device-content').scrollTop]));
     const petPanels = [...root.querySelectorAll('.tf-pet-life-details')].map(node => node.open);
@@ -3853,14 +3938,16 @@ async function handlePetLifeAction(action, target) {
             return render({ preserveScroll: true });
         }
         viewState.companionCleaning = false; viewState.companionCleanProgress = 0;
-        if (action === 'pet-mode') setCompanionLifeMode(companion, target.dataset.mode);
+        if (action === 'pet-mode') { clearCompanionRitual(); setCompanionLifeMode(companion, target.dataset.mode); }
         else if (action === 'pet-tend' || action === 'pet-clean-complete') {
             const care = action === 'pet-clean-complete' ? 'clean' : target.dataset.tend;
             tendCompanion(companion, care); activateCompanionVisualAction(care === 'clean' ? 'brush' : care === 'wake' ? 'pet' : 'rest');
             showCompanionFeedback(companion, before, { clean: '洗干净啦', wake: '醒来陪你啦', rest: '晚安，慢慢恢复体力' }[care], care);
             finishCompanionCare();
+            if (care === 'rest') startCompanionRitual(data, { kind: 'bedtime', message: `晚安，${companion.name}。今天也被好好照顾了。` });
         }
         else if (action === 'pet-game-start' || action === 'pet-room-play' || action === 'pet-game-retry') {
+            clearCompanionRitual();
             startCompanionGame(companion, action === 'pet-room-play' ? 'catch' : action === 'pet-game-retry' ? companion.life.lastGameResult?.kind : target.dataset.game);
             viewState.companionPanel = 'home';
             viewState.companionCareReturnPanel = '';
@@ -4640,6 +4727,7 @@ async function handleRootClick(event) {
     if (action === 'companion-food-back') return returnCompanionPanel();
     if (action === 'companion-feed-food') {
         if (viewState.moduleBusy.has('travel')) return notify('info', '旅行准备完成后再照顾旅伴');
+        if (viewState.companionRitual?.kind === 'meal' && viewState.companionRitual.until > Date.now()) return;
         viewState.companionDeviceCursor = -1;
         const food = COMPANION_FOODS.find(item => item.id === target.dataset.foodId);
         if (!food) return;
@@ -4672,6 +4760,7 @@ async function handleRootClick(event) {
         activateCompanionVisualAction('feed');
         viewState.companionFoodMenuOpen = false;
         finishCompanionCare();
+        if (rewarded) startCompanionRitual(data, { kind: 'meal', foodName: food.name, favorite, message: favorite ? `${companion.name}吃到了心爱的${food.name}，开心地回应你。` : `${companion.name}吃完${food.name}，满足地看向你。` });
         await saveForumData(data, true);
         syncInjection();
         return render({ preserveScroll: true });
@@ -4755,6 +4844,7 @@ async function handleRootClick(event) {
         else if (companion.status === 'resting') companion.status = 'home';
         activateCompanionVisualAction(care);
         showCompanionFeedback(companion, before, { pet: '蹭蹭你的手', play: '一起玩真开心', rest: '晚安，慢慢恢复体力', brush: '毛毛整理好啦' }[care] || '收到你的陪伴啦');
+        if (care === 'rest') startCompanionRitual(data, { kind: 'bedtime', message: `晚安，${companion.name}。今天也被好好照顾了。` });
         await saveForumData(data, true);
         syncInjection();
         return render({ preserveScroll: true });
@@ -6663,6 +6753,7 @@ function openForum(tab = '') {
 }
 
 function closeForum() {
+    clearCompanionRitual();
     cancelCompanionTouch();
     viewState.open = false;
     render();
@@ -6675,7 +6766,7 @@ function bindSillyTavernEvents() {
         if (viewState.autoRefreshTimer) window.clearTimeout(viewState.autoRefreshTimer);
         viewState.autoRefreshTimer = 0;
     };
-    if (context.eventTypes?.CHAT_CHANGED) context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => { viewState.companionDeviceCursor = -1; viewState.companionMenuSelection = 'status'; viewState.companionCareReturnPanel = ''; viewState.companionPanel = 'home'; viewState.companionProfileOpen = false; viewState.companionAppearanceDraft = null; companionGamePlayer?.stop(false); viewState.companionGameResultOpen = false; cancelCompanionTouch(); viewState.companionCleaning = false; viewState.companionCleanProgress = 0; viewState.companionFeedback = null; viewState.companionFoodMenuOpen = false; viewState.companionVisualAction = ""; viewState.companionActionToken += 1; clearTimeout(viewState.companionActionTimer); clearTimeout(viewState.companionFeedbackTimer); cancelAutoRefresh(); viewState.generationController?.abort(); viewState.generationStage = ''; viewState.pendingImport = null; viewState.worldCatalog = []; viewState.promptSourceContext = null; viewState.selectedNpcId = ''; viewState.publicNpcId = ''; viewState.selectedPostId = ''; viewState.selectedConversationId = ''; viewState.selectedEventId = ''; viewState.eventHubOpen = false; viewState.deliverySelections.clear(); viewState.deliveryReviews.clear(); viewState.replyTarget = null; viewState.expandedComments.clear(); refresh(); });
+    if (context.eventTypes?.CHAT_CHANGED) context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => { clearCompanionRitual(); viewState.companionDeviceCursor = -1; viewState.companionMenuSelection = 'status'; viewState.companionCareReturnPanel = ''; viewState.companionPanel = 'home'; viewState.companionProfileOpen = false; viewState.companionAppearanceDraft = null; companionGamePlayer?.stop(false); viewState.companionGameResultOpen = false; cancelCompanionTouch(); viewState.companionCleaning = false; viewState.companionCleanProgress = 0; viewState.companionFeedback = null; viewState.companionFoodMenuOpen = false; viewState.companionVisualAction = ""; viewState.companionActionToken += 1; clearTimeout(viewState.companionActionTimer); clearTimeout(viewState.companionFeedbackTimer); cancelAutoRefresh(); viewState.generationController?.abort(); viewState.generationStage = ''; viewState.pendingImport = null; viewState.worldCatalog = []; viewState.promptSourceContext = null; viewState.selectedNpcId = ''; viewState.publicNpcId = ''; viewState.selectedPostId = ''; viewState.selectedConversationId = ''; viewState.selectedEventId = ''; viewState.eventHubOpen = false; viewState.deliverySelections.clear(); viewState.deliveryReviews.clear(); viewState.replyTarget = null; viewState.expandedComments.clear(); refresh(); });
     if (context.eventTypes?.MESSAGE_RECEIVED) context.eventSource.on(context.eventTypes.MESSAGE_RECEIVED, (_messageId, type) => {
         if (type === 'first_message' || !getSettings().generation.autoRefreshOnMessage || !getSettings().modules.forum.enabled || !hasActiveChat()) return;
         cancelAutoRefresh();
