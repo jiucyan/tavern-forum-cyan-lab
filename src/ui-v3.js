@@ -7,9 +7,12 @@ import { DEVICE_PAGES, renderCompanionDevice, getCompanionDeviceChoices, paintCo
 import { bindCompanionTouch } from './companion-touch.js';
 import { COMPANION_HABITATS, renderCompanionScene, resolveCompanionScene } from './companion-scenes.js';
 import { createCompanionIdleController } from './companion-idle.js';
+import { createCompanionRoamController } from './companion-roam.js';
 
 let cancelCompanionTouch = () => {};
 let companionIdleController = null;
+let companionRoamController = null;
+let companionAmbientSession = null;
 import { buildTaskDeliveryPlan, commitTaskDelivery, grantTaskRewards, getTaskRewards } from './task-delivery.js';
 import { normalizeMemoryContinuity, refreshMemorySummary, applyRelationshipTransition } from './memory.js';
 import { fetchAvailableModels, generateForumImage, generateForumText, generateForumTextResult } from './api.js';
@@ -1934,6 +1937,7 @@ function paintCompanionRitual(companion) {
 
 function startCompanionRitual(data, description) {
     clearCompanionRitual();
+    companionRoamController?.cancel({ reset: true });
     companionIdleController?.cancel();
     const startedAt = Date.now(), clockStartedAt = performance.now(), current = captureChatScope();
     const kind = description.kind;
@@ -1982,32 +1986,55 @@ function getCompanionDisplayedScene(companion) {
     });
 }
 
+function getCompanionAmbientSnapshot() {
+    const session = companionAmbientSession;
+    if (!session?.current()) return { enabled: false };
+    try { assertForumDataCurrent(session.data); } catch { return { enabled: false }; }
+    const data = session.data, companion = data.world.companion;
+    const life = getCompanionLifeView(companion);
+    return {
+        identity: data,
+        species: getCompanionSpecies(companion.species)?.id || 'mystery',
+        habitat: getCompanionDisplayedScene(companion).habitat,
+        activity: life.activity,
+        enabled: Boolean(viewState.open && session.settings.ui.activeTab === 'services'
+            && viewState.worldPage === 'travel' && viewState.companionPanel === 'home'
+            && companion.status !== 'away' && !life.sleeping && life.life.mode === 'active'
+            && !life.life.game && !viewState.companionGameResultOpen
+            && !viewState.companionCleaning && !viewState.companionFoodMenuOpen
+            && !(viewState.companionFeedback?.until > Date.now())
+            && !viewState.companionRitual
+            && !viewState.moduleBusy.has('travel') && getCompanionVisualAction(companion) === 'idle'
+            && !getRoot()?.querySelector('.tf-pet-sprite-control.is-touching')),
+    };
+}
+
 function syncCompanionIdle() {
+    // Animation frames read the current session without renormalizing the forum's saved data.
+    companionAmbientSession = { data: getForumData(), settings: getSettings(), current: captureChatScope() };
     companionIdleController ||= createCompanionIdleController({
         getRoot,
         getSnapshot: () => {
-            const data = getForumData(), companion = data.world.companion;
-            const life = getCompanionLifeView(companion);
-            return {
-                identity: data,
-                species: getCompanionSpecies(companion.species)?.id || 'mystery',
-                activity: life.activity,
-                enabled: Boolean(viewState.open && viewState.companionPanel === 'home'
-                    && companion.status !== 'away' && !life.sleeping && life.life.mode === 'active'
-                    && !life.life.game && !viewState.companionGameResultOpen
-                    && !viewState.companionCleaning && !viewState.companionFoodMenuOpen
-                    && !(viewState.companionFeedback?.until > Date.now())
-                    && !viewState.companionRitual
-                    && !viewState.moduleBusy.has('travel') && getCompanionVisualAction(companion) === 'idle'
-                    && !getRoot()?.querySelector('.tf-pet-sprite-control.is-touching')),
-            };
+            const snapshot = getCompanionAmbientSnapshot();
+            snapshot.enabled &&= getRoot()?.querySelector('.tf-pet-sprite-control')?.dataset.roamState !== 'walking';
+            return snapshot;
         },
     });
+    companionRoamController ||= createCompanionRoamController({
+        getRoot,
+        getSnapshot: getCompanionAmbientSnapshot,
+        onMotionChange: walking => {
+            if (walking) companionIdleController?.cancel();
+            else companionIdleController?.sync();
+        },
+    });
+    companionRoamController.sync();
     companionIdleController.sync();
 }
 
 function activateCompanionVisualAction(action) {
     clearCompanionRitual();
+    companionRoamController?.cancel({ reset: true });
     companionIdleController?.cancel();
     if (viewState.companionActionTimer) globalThis.clearTimeout(viewState.companionActionTimer);
     viewState.companionActionTimer = 0;
@@ -2251,6 +2278,7 @@ function returnCompanionPanel({ focus = false } = {}) {
 
 function beginCompanionCare() {
     clearCompanionRitual();
+    companionRoamController?.cancel({ reset: true });
     if (!(viewState.companionCleaning || viewState.companionFoodMenuOpen) || !viewState.companionCareReturnPanel) viewState.companionCareReturnPanel = viewState.companionPanel;
     if (viewState.companionPanel !== 'home') showCompanionPanel('home', { focus: false, preserveCareSource: true });
     viewState.companionDeviceCursor = -1;
@@ -6781,7 +6809,7 @@ function bindSillyTavernEvents() {
         if (viewState.autoRefreshTimer) window.clearTimeout(viewState.autoRefreshTimer);
         viewState.autoRefreshTimer = 0;
     };
-    if (context.eventTypes?.CHAT_CHANGED) context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => { clearCompanionRitual(); viewState.companionDeviceCursor = -1; viewState.companionMenuSelection = 'status'; viewState.companionCareReturnPanel = ''; viewState.companionPanel = 'home'; viewState.companionProfileOpen = false; viewState.companionAppearanceDraft = null; companionGamePlayer?.stop(false); viewState.companionGameResultOpen = false; cancelCompanionTouch(); viewState.companionCleaning = false; viewState.companionCleanProgress = 0; viewState.companionFeedback = null; viewState.companionFoodMenuOpen = false; viewState.companionVisualAction = ""; viewState.companionActionToken += 1; clearTimeout(viewState.companionActionTimer); clearTimeout(viewState.companionFeedbackTimer); cancelAutoRefresh(); viewState.generationController?.abort(); viewState.generationStage = ''; viewState.pendingImport = null; viewState.worldCatalog = []; viewState.promptSourceContext = null; viewState.selectedNpcId = ''; viewState.publicNpcId = ''; viewState.selectedPostId = ''; viewState.selectedConversationId = ''; viewState.selectedEventId = ''; viewState.eventHubOpen = false; viewState.deliverySelections.clear(); viewState.deliveryReviews.clear(); viewState.replyTarget = null; viewState.expandedComments.clear(); refresh(); });
+    if (context.eventTypes?.CHAT_CHANGED) context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => { companionRoamController?.cancel({ reset: true }); clearCompanionRitual(); viewState.companionDeviceCursor = -1; viewState.companionMenuSelection = 'status'; viewState.companionCareReturnPanel = ''; viewState.companionPanel = 'home'; viewState.companionProfileOpen = false; viewState.companionAppearanceDraft = null; companionGamePlayer?.stop(false); viewState.companionGameResultOpen = false; cancelCompanionTouch(); viewState.companionCleaning = false; viewState.companionCleanProgress = 0; viewState.companionFeedback = null; viewState.companionFoodMenuOpen = false; viewState.companionVisualAction = ""; viewState.companionActionToken += 1; clearTimeout(viewState.companionActionTimer); clearTimeout(viewState.companionFeedbackTimer); cancelAutoRefresh(); viewState.generationController?.abort(); viewState.generationStage = ''; viewState.pendingImport = null; viewState.worldCatalog = []; viewState.promptSourceContext = null; viewState.selectedNpcId = ''; viewState.publicNpcId = ''; viewState.selectedPostId = ''; viewState.selectedConversationId = ''; viewState.selectedEventId = ''; viewState.eventHubOpen = false; viewState.deliverySelections.clear(); viewState.deliveryReviews.clear(); viewState.replyTarget = null; viewState.expandedComments.clear(); refresh(); });
     if (context.eventTypes?.MESSAGE_RECEIVED) context.eventSource.on(context.eventTypes.MESSAGE_RECEIVED, (_messageId, type) => {
         if (type === 'first_message' || !getSettings().generation.autoRefreshOnMessage || !getSettings().modules.forum.enabled || !hasActiveChat()) return;
         cancelAutoRefresh();

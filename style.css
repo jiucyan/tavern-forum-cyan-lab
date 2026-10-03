@@ -15524,6 +15524,36 @@ button.tf-avatar {
     #tavern-forum-root .tf-companion-device .tf-pet-device-controls button i { transition: none; }
 }
 
+/* Free roaming moves the complete touch target; care poses keep their own transforms. */
+#tavern-forum-root .tf-companion-device .tf-pet-sprite-control[data-roam-active] {
+    translate: var(--tf-roam-x, 0px) var(--tf-roam-y, 0px);
+    --tf-roam-gait: tf-roam-step;
+    --tf-roam-cadence: .8s;
+}
+#tavern-forum-root .tf-companion-device.is-action-idle .tf-pet-sprite-control[data-roam-active][data-roam-direction="left"] > .tf-pixel-avatar { scale: -1 1; }
+#tavern-forum-root .tf-companion-device.is-action-idle .tf-pet-sprite-control[data-roam-active][data-roam-direction="right"] > .tf-pixel-avatar { scale: 1 1; }
+/* Fish artwork faces left at every age, so its turn uses the opposite mapping. */
+#tavern-forum-root .tf-companion-device.is-action-idle.is-species-goldfish .tf-pet-sprite-control[data-roam-active][data-roam-direction="left"] > .tf-pixel-avatar { scale: 1 1; }
+#tavern-forum-root .tf-companion-device.is-action-idle.is-species-goldfish .tf-pet-sprite-control[data-roam-active][data-roam-direction="right"] > .tf-pixel-avatar { scale: -1 1; }
+#tavern-forum-root .tf-companion-device:is(.is-species-frog,.is-species-rabbit) .tf-pet-sprite-control[data-roam-active] { --tf-roam-gait: tf-roam-hop; --tf-roam-cadence: .95s; }
+#tavern-forum-root .tf-companion-device:is(.is-species-cat,.is-species-fox,.is-species-penguin) .tf-pet-sprite-control[data-roam-active] { --tf-roam-cadence: .72s; }
+#tavern-forum-root .tf-companion-device:is(.is-species-goldfish,.is-species-octopus) .tf-pet-sprite-control[data-roam-active] { --tf-roam-gait: tf-roam-swim; --tf-roam-cadence: 1.6s; }
+#tavern-forum-root .tf-companion-device.is-species-robo-bird .tf-pet-sprite-control[data-roam-active] { --tf-roam-cadence: .64s; }
+#tavern-forum-root .tf-companion-device.is-action-idle:not(.is-living-sleep,.is-playing-game,.is-washing,.is-living-paused,.is-living-daycare) .tf-pet-sprite-control[data-roam-state="walking"]:not([data-idle-pose],.is-touching,.is-snack-target) > .tf-pixel-avatar {
+    animation: var(--tf-roam-gait) var(--tf-roam-cadence) ease-in-out infinite;
+}
+#tavern-forum-root .tf-companion-device.is-action-idle:not(.is-living-sleep,.is-playing-game,.is-washing,.is-living-paused,.is-living-daycare) .tf-pet-sprite-control[data-roam-state="walking"]:not([data-idle-pose],.is-touching,.is-snack-target) .tf-raster-part {
+    --tf-rig-duration: var(--tf-roam-cadence);
+    --tf-rig-angle: var(--tf-rig-active-angle, 7deg);
+}
+@keyframes tf-roam-step { 0%,50%,100% { translate: 0 0; } 25%,75% { translate: 0 -1.5px; } }
+@keyframes tf-roam-hop { 0%,62%,100% { translate: 0 0; } 30% { translate: 0 -4px; } }
+@keyframes tf-roam-swim { 0%,100% { translate: 0 0; } 50% { translate: 0 -2px; } }
+@media (prefers-reduced-motion: reduce) {
+    #tavern-forum-root .tf-companion-device .tf-pet-sprite-control[data-roam-active] { translate: 0 0; }
+    #tavern-forum-root .tf-companion-device .tf-pet-sprite-control[data-roam-active] > .tf-pixel-avatar { animation: none !important; translate: 0 0; scale: 1 1 !important; }
+}
+
 /* Activity rooms are temporary; only the background fades, keeping the pet steady. */
 #tavern-forum-root .tf-companion-device .tf-pet-habitat-layer.is-scene-entering { animation: tf-companion-room-enter .24s ease-out both; }
 #tavern-forum-root .tf-companion-device.is-scene-sleep .tf-pet-stage { background: linear-gradient(#555c68 0 72%, #645c63 73% 77%, #75665f 78%); }
