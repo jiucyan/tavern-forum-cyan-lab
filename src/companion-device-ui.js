@@ -28,6 +28,7 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     const current = DEVICE_PAGES.includes(state.companionPanel) ? state.companionPanel : 'home';
     const take = selector => page.querySelector(selector);
     const device = take('.tf-pet-console'), screen = take('.tf-pet-screen'), room = take('.tf-pet-stage');
+    room.insertAdjacentHTML('beforeend', '<span class="tf-pet-move-target" aria-hidden="true"></span>');
     const dashboard = take('.tf-pet-dashboard'), album = take('.tf-pet-memory-book');
     page.classList.add('tf-companion-device');
     page.dataset.devicePage = current;
@@ -124,6 +125,7 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     const wrap = document.createElement('div'); wrap.className = 'tf-pet-console-wrap'; wrap.append(device);
     const home = document.createElement('section'); home.className = 'tf-companion-home';
     home.append(wrap);
+    home.insertAdjacentHTML('beforeend', '<p class="tf-pet-move-guide">点小窝空地，让它走过去 · 点宠物摸摸它</p>');
     page.replaceChildren(home);
     return page.outerHTML;
 }

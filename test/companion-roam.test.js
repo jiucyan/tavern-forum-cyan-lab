@@ -21,26 +21,33 @@ function pet() {
         setAttribute: (key, value) => attributes.set(key, value), removeAttribute: key => attributes.delete(key),
         hasAttribute: key => attributes.has(key), getAttribute: key => attributes.get(key) ?? null,
         contains(node) { return node === this; },
+        closest() { return this; },
+        querySelector(selector) { return selector === '.tf-pet-character-shadow' ? { offsetLeft: 35, offsetTop: 132, offsetWidth: 90, offsetHeight: 8 } : null; },
     };
 }
-function setup(t, random = () => .75, { onMotionChange } = {}) {
+function setup(t, random = () => .75, { onMotionChange, withoutFrames = false } = {}) {
     t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 100000 });
     const motion = Object.assign(new Events(), { matches: false }), window = new Events();
     window.matchMedia = () => motion;
     const document = Object.assign(new Events(), { visibilityState: 'visible', defaultView: window, activeElement: null });
-    const stage = { isConnected: true, clientWidth: 420, clientHeight: 230 };
+    const stage = Object.assign(pet(), { clientWidth: 420, clientHeight: 230,
+        closest() { return null; },
+        contains(node) { return node === this || node === root.pet || node?.stage === this; },
+        getBoundingClientRect() { return { left: 0, top: 0, right: this.clientWidth, bottom: this.clientHeight, width: this.clientWidth, height: this.clientHeight }; },
+    });
     const state = { enabled: true, identity: { untouched: 'saved' }, species: 'cat', habitat: 'meadow', activity: 'idle' };
     const root = Object.assign(new Events(), {
         isConnected: true, ownerDocument: document, pet: pet(), stage,
         querySelector(selector) { return selector === '.tf-pet-stage' ? this.stage : selector === '.tf-pet-sprite-control' ? this.pet : null; },
     });
+    root.pet.blur = () => { document.activeElement = null; root.emit('focusout', { target: root.pet, relatedTarget: null }); };
     const frames = new Map(), motions = [];
     let nextFrame = 1;
     const controller = createCompanionRoamController({
         getRoot: () => root, getSnapshot: () => state, random, now: Date.now,
         onMotionChange: moving => { motions.push(moving); onMotionChange?.(moving); },
-        requestFrame: callback => { const id = nextFrame++; frames.set(id, callback); return id; },
-        cancelFrame: id => frames.delete(id),
+        requestFrame: withoutFrames ? undefined : callback => { const id = nextFrame++; frames.set(id, callback); return id; },
+        cancelFrame: withoutFrames ? undefined : id => frames.delete(id),
     });
     const tick = ms => t.mock.timers.tick(ms);
     const advance = ms => {
@@ -246,4 +253,123 @@ test('cancel preserves position by default, reset returns to center, and destroy
     assert.equal(root.count(), 0); assert.equal(document.count(), 0); assert.equal(window.count(), 0); assert.equal(motion.count(), 0);
     assert.equal(root.pet.hasAttribute('data-roam-active'), false);
     assert.equal(root.pet.style.getPropertyValue('--tf-roam-x'), '');
+});
+function roomGesture(f, point, options = {}) {
+    const event = { target: f.stage, pointerId: 1, isPrimary: true, button: 0, clientX: point[0], clientY: point[1], ...options };
+    f.document.emit('pointerdown', event); f.root.emit('pointerdown', event);
+    return {
+        up(overrides = {}) { const release = { ...event, ...overrides }; f.document.emit('pointerup', release); f.root.emit('pointerup', release); },
+        cancel() { f.document.emit('pointercancel', event); f.root.emit('pointercancel', event); },
+        move(x, y) { f.document.emit('pointermove', { ...event, clientX: x, clientY: y }); },
+    };
+}
+
+function finishMove(f) {
+    for (let i = 0; i < 100 && f.root.pet.getAttribute('data-roam-state') === 'walking'; i++) f.advance(100);
+    assert.equal(f.root.pet.getAttribute('data-roam-state'), 'resting');
+}
+
+test('a floor tap immediately walks to the shadow anchor and arrival permits shallow roaming there', t => {
+    const f = setup(t, () => 0), saved = structuredClone(f.state);
+    f.controller.sync();
+    assert.equal(f.stage.getAttribute('data-roam-interactive'), 'true');
+    const gesture = roomGesture(f, [310, 155]);
+    f.document.emit('pointerup', { target: f.stage, pointerId: 1, clientX: 310, clientY: 155 });
+    assert.deepEqual(f.position(), [0, 0], 'capture release leaves all touch hit tests frozen');
+    gesture.up();
+    assert.equal(f.root.pet.getAttribute('data-roam-mode'), 'manual');
+    assert.equal(f.root.pet.getAttribute('data-roam-state'), 'walking');
+    assert.equal(f.stage.getAttribute('data-roam-target'), 'true');
+    assert.equal(f.stage.style.getPropertyValue('--tf-roam-target-x'), '310.000px');
+    assert.equal(f.stage.style.getPropertyValue('--tf-roam-target-y'), '155.000px');
+    f.advance(100); assert.ok(f.position()[0] > 0 && f.position()[0] < 5, 'manual movement advances at 44 px/s');
+    finishMove(f);
+    assert.deepEqual(f.position(), [100, -26], 'foot position reaches the command beyond the old 13px limit');
+    assert.equal(f.stage.hasAttribute('data-roam-target'), false);
+    f.tick(5499); assert.deepEqual(f.position(), [100, -26], 'arrival leaves a full quiet interval');
+    f.tick(1); finishMove(f);
+    assert.ok(f.position()[1] >= -37 && f.position()[1] <= -13, 'autonomous motion stays near the chosen vertical level');
+    assert.deepEqual(f.state, saved, 'commands and autonomous movement do not mutate saved state');
+});
+
+test('consecutive taps retarget immediately and use the complete safe button footprint', t => {
+    const f = setup(t, () => 0); f.controller.sync();
+    roomGesture(f, [400, 5]).up(); f.advance(100);
+    assert.equal(f.root.pet.getAttribute('data-roam-direction'), 'right');
+    assert.equal(f.stage.style.getPropertyValue('--tf-roam-target-x'), '332.000px');
+    assert.equal(f.stage.style.getPropertyValue('--tf-roam-target-y'), '144.000px');
+    const before = f.position();
+    roomGesture(f, [5, 225]).up();
+    assert.deepEqual(f.position(), before, 'retargeting does not teleport');
+    assert.equal(f.root.pet.getAttribute('data-roam-direction'), 'left');
+    assert.equal(f.stage.style.getPropertyValue('--tf-roam-target-x'), '88.000px');
+    assert.equal(f.stage.style.getPropertyValue('--tf-roam-target-y'), '198.000px');
+    finishMove(f); assert.deepEqual(f.position(), [-122, 17]);
+    assert.equal(f.root.pet.offsetLeft + f.position()[0], 8);
+    assert.equal(f.root.pet.offsetTop + f.position()[1] + f.root.pet.offsetHeight, f.stage.clientHeight - 8);
+});
+
+test('scaled stage coordinates and focused-pet blur produce a real floor destination', t => {
+    const f = setup(t); f.controller.sync();
+    f.stage.getBoundingClientRect = () => ({ left: 40, top: 30, right: 880, bottom: 490, width: 840, height: 460 });
+    f.document.activeElement = f.root.pet; f.root.emit('focusin', { target: f.root.pet });
+    roomGesture(f, [660, 340]).up();
+    assert.equal(f.document.activeElement, null, 'floor instructions naturally release pet keyboard focus');
+    finishMove(f); assert.deepEqual(f.position(), [100, -26]);
+});
+
+test('scrolling, cancellation, long holds, multi-pointer and interactive targets never command movement', t => {
+    const f = setup(t); f.controller.sync();
+    const rejected = [
+        () => { const g = roomGesture(f, [310, 155]); g.move(316, 155); g.move(310, 155); g.up(); },
+        () => { const g = roomGesture(f, [310, 155]); g.move(318, 155); g.up(); },
+        () => roomGesture(f, [310, 155]).cancel(),
+        () => { const g = roomGesture(f, [310, 155]); f.tick(651); g.up(); },
+        () => { const g = roomGesture(f, [310, 155]); f.document.emit('pointerdown', { pointerId: 2, target: {} }); g.up(); },
+        () => { const g = roomGesture(f, [310, 155]); f.root.emit('pointerdown', { pointerId: 2 }); g.up(); f.document.emit('pointercancel', { pointerId: 2 }); },
+        () => roomGesture(f, [310, 155], { button: 2 }).up(),
+        () => roomGesture(f, [310, 155], { isPrimary: false }).up(),
+        () => roomGesture(f, [210, 155], { target: f.root.pet }).up(),
+        () => roomGesture(f, [310, 155], { target: { stage: f.stage, closest: () => ({}) } }).up(),
+        () => roomGesture(f, [310, 155]).up({ clientX: 500 }),
+    ];
+    for (const reject of rejected) {
+        reject();
+        assert.notEqual(f.root.pet.getAttribute('data-roam-state'), 'walking');
+        assert.equal(f.stage.hasAttribute('data-roam-target'), false);
+        assert.deepEqual(f.position(), [0, 0]);
+    }
+    roomGesture(f, [310, 155]).up(); assert.equal(f.root.pet.getAttribute('data-roam-state'), 'walking', 'a valid tap still works after rejected gestures');
+});
+
+test('manual destinations follow rerenders and resize but are discarded when room or activity changes', t => {
+    const f = setup(t); f.controller.sync(); roomGesture(f, [400, 5]).up(); f.advance(100);
+    const previous = f.root.pet, before = f.position(); previous.isConnected = false; f.root.pet = pet(); f.controller.sync();
+    assert.deepEqual(f.position(), before); assert.equal(f.root.pet.getAttribute('data-roam-mode'), 'manual');
+    f.stage.clientWidth = 300; f.root.pet.offsetLeft = 70; f.window.emit('resize'); finishMove(f);
+    assert.deepEqual(f.position(), [62, -37]);
+    for (const activity of ['away', 'sleep', 'tired', 'paused', 'daycare']) {
+        f.state.activity = 'idle'; f.controller.sync(); roomGesture(f, [5, 225]).up();
+        f.state.activity = activity; f.controller.sync();
+        assert.equal(f.stage.hasAttribute('data-roam-target'), false); assert.equal(f.stage.hasAttribute('data-roam-interactive'), false);
+        assert.equal(f.controller.moveTo({ clientX: 310, clientY: 155 }), false); assert.deepEqual(f.position(), [0, 0]);
+    }
+    f.state.activity = 'idle'; f.controller.sync(); const g = roomGesture(f, [5, 225]);
+    f.state.identity = {}; f.controller.sync(); g.up();
+    assert.notEqual(f.root.pet.getAttribute('data-roam-state'), 'walking', 'a gesture from another chat is discarded');
+    roomGesture(f, [5, 225]).up(); f.document.visibilityState = 'hidden'; f.document.emit('visibilitychange');
+    assert.equal(f.stage.hasAttribute('data-roam-target'), false); assert.deepEqual(f.position(), [0, 0]);
+    f.controller.destroy(); assert.equal(f.stage.hasAttribute('data-roam-interactive'), false);
+});
+
+test('reduced motion and missing animation frames allow explicit static placement without autonomous work', async t => {
+    for (const withoutFrames of [false, true]) await t.test(withoutFrames ? 'no animation runtime' : 'reduced motion', child => {
+        const f = setup(child, () => 0, { withoutFrames });
+        if (!withoutFrames) f.motion.matches = true;
+        f.controller.sync(); roomGesture(f, [310, 155]).up();
+        assert.deepEqual(f.position(), [100, -26]); assert.equal(f.root.pet.getAttribute('data-roam-mode'), 'manual');
+        assert.equal(f.root.pet.getAttribute('data-roam-state'), 'resting'); assert.equal(f.stage.hasAttribute('data-roam-target'), false);
+        f.tick(60000); f.controller.sync(); assert.deepEqual(f.position(), [100, -26]); assert.equal(f.frames.size, 0);
+        f.state.enabled = false; f.controller.sync(); assert.deepEqual(f.position(), [0, 0]);
+    });
 });

@@ -15566,6 +15566,12 @@ button.tf-avatar {
 }
 
 /* Free roaming moves the complete touch target; care poses keep their own transforms. */
+#tavern-forum-root .tf-companion-device .tf-pet-stage[data-roam-interactive] { cursor: crosshair; }
+#tavern-forum-root .tf-companion-device .tf-pet-move-guide { display: none; max-width: calc(100% - 16px); margin: 10px 8px 0; padding: 5px 10px; border: 1px solid #ffffff24; border-radius: 12px; color: #f7f8fb; background: #182033a6; font: 11px/1.6 sans-serif; text-align: center; overflow-wrap: anywhere; }
+#tavern-forum-root .tf-companion-device:has(.tf-pet-stage[data-roam-interactive]:not([hidden])) .tf-pet-move-guide { display: block; }
+#tavern-forum-root .tf-companion-device .tf-pet-move-target { display: none; position: absolute; z-index: 3; left: var(--tf-roam-target-x); top: var(--tf-roam-target-y); width: 22px; height: 10px; border: 1.5px solid #667c4f; border-radius: 50%; background: #f3f6df73; box-shadow: 0 0 0 3px #f3f6df40; translate: -50% -50%; pointer-events: none; }
+#tavern-forum-root .tf-companion-device .tf-pet-stage[data-roam-target] > .tf-pet-move-target { display: block; }
+#tavern-forum-root .tf-companion-device .tf-pet-move-target::after { content: ''; position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; border-radius: 50%; background: #667c4f; translate: -50% -50%; }
 #tavern-forum-root .tf-companion-device .tf-pet-sprite-control[data-roam-active] {
     translate: var(--tf-roam-x, 0px) var(--tf-roam-y, 0px);
     --tf-roam-gait: tf-roam-step;
@@ -15591,7 +15597,7 @@ button.tf-avatar {
 @keyframes tf-roam-hop { 0%,62%,100% { translate: 0 0; } 30% { translate: 0 -4px; } }
 @keyframes tf-roam-swim { 0%,100% { translate: 0 0; } 50% { translate: 0 -2px; } }
 @media (prefers-reduced-motion: reduce) {
-    #tavern-forum-root .tf-companion-device .tf-pet-sprite-control[data-roam-active] { translate: 0 0; }
+    #tavern-forum-root .tf-companion-device .tf-pet-sprite-control[data-roam-active]:not([data-roam-mode="manual"]) { translate: 0 0; }
     #tavern-forum-root .tf-companion-device .tf-pet-sprite-control[data-roam-active] > .tf-pixel-avatar { animation: none !important; translate: 0 0; scale: 1 1 !important; }
 }
 
