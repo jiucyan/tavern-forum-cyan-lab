@@ -1,4 +1,4 @@
-import { openCompanionMenu } from './companion-navigation.mjs';
+import { openCompanionMenu, returnCompanionHome } from './companion-navigation.mjs';
 import { COMPANION_HABITATS, renderCompanionScene } from '../src/companion-scenes.js';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
@@ -42,10 +42,7 @@ async function open(mobile = false) {
 
 
 const choose = async (page, panel) => {
-    if(panel==='home') {
-        if(await page.locator('.tf-companion-device').getAttribute('data-device-page') !== 'home')
-            await page.locator('[data-action="companion-menu-nav"][data-direction="1"]').click();
-    }
+    if(panel==='home') await returnCompanionHome(page);
     else await openCompanionMenu(page, panel);
 };
 const press = (page, key) => page.locator(key==='B'?'[data-action="companion-menu-confirm"]':'[data-action="companion-menu-nav"][data-direction="'+(key==='A'?-1:1)+'"]').click();
@@ -79,13 +76,17 @@ try {
     assert.equal(await page.locator('.tf-packing').isVisible(),false);
     assert.equal(await page.locator('.tf-device-icon-menu').isVisible(),false);
     assert.equal(await page.locator('.tf-pet-room-tools').isVisible(),false);
+    assert.equal(await page.locator('.tf-device-page-tabs:visible').count(),0);
     assert.equal(await page.locator('[data-action="companion-menu-nav"][data-direction="-1"]').getAttribute('aria-label'),'菜单');
     await press(page,'C');
     assert.equal(await page.evaluate(()=>petTest.viewState.companionPanel),'status');
     await press(page,'C');
     await press(page,'A'); await press(page,'B');
     assert.equal(await page.evaluate(()=>petTest.viewState.companionPanel),'status');
-    await press(page,'C'); await press(page,'A'); await press(page,'A'); await press(page,'B');
+    await press(page,'C');
+    assert.equal(await page.evaluate(()=>petTest.viewState.companionPanel),'home');
+    await press(page,'A');
+    await press(page,'A'); await press(page,'B');
     assert.equal(await page.locator('.tf-pet-food-select').isVisible(),true);
     await press(page,'B');
     assert.equal(await page.locator('.tf-pet-food-select').count(),0);
@@ -123,6 +124,7 @@ try {
     assert.equal(await page.locator('[data-action="companion-menu-confirm"]').getAttribute('aria-label'),'确认');
     assert.equal(await page.evaluate(async()=>(await import('/src/store.js')).getForumData().world.companion.life.game.paused),true);
     await press(page,'C');
+    assert.equal(await page.evaluate(()=>petTest.viewState.companionPanel),'home');
     assert.equal(await page.locator('[data-action="companion-menu-confirm"]').getAttribute('aria-label'),gameLabel);
     assert.equal(await page.evaluate(()=>layoutCanvas===document.querySelector('.tf-pet-arcade canvas')),true);
     await page.locator('.tf-arcade-pause [data-action="pet-game-stop"]').click();
@@ -139,6 +141,7 @@ try {
             await choose(mobile,panel);
             assert.equal(await mobile.locator('.tf-view').evaluate(el=>el.scrollWidth>el.clientWidth+1),false,width+' '+panel+' outer overflow');
             if(panel!=='home')assert.equal(await mobile.locator('.tf-pet-device-page:not([hidden]) .tf-pet-device-content').evaluate(el=>el.scrollWidth>el.clientWidth+1),false,width+' '+panel+' screen overflow');
+            assert.equal(await mobile.locator('.tf-device-page-tabs:visible').count(), ['home','menu'].includes(panel)?0:1, width+' '+panel+' page tabs visibility');
             await mobile.screenshot({path:join(output,panel+'-mobile-'+width+'.png')});
         }
         await checkScenes(mobile, String(width));

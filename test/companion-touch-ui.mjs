@@ -1,4 +1,4 @@
-import { openCompanionMenu } from './companion-navigation.mjs';
+import { openCompanionMenu, returnCompanionHome } from './companion-navigation.mjs';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
@@ -61,7 +61,9 @@ try {
     await page.mouse.move(food.x, food.y); await page.mouse.down(); await page.mouse.move(20, 120, { steps: 10 }); await page.mouse.up();
     assert.equal((await readPet(page)).satiety, fed); assert.equal(await page.locator('.tf-pet-drag-snack').count(), 0);
     assert.equal(await page.locator('.tf-pet-food-select').count(), 1);
-    await page.locator('[data-action="companion-food-back"]').click();
+    await page.locator('.tf-pet-food-select [data-action="companion-device-back"]').click();
+    assert.equal(await page.evaluate(() => petTest.viewState.companionPanel), 'menu');
+    await returnCompanionHome(page);
     pet = await point(page, '.tf-pet-sprite-control');
     await page.mouse.move(pet.x - 30, pet.y); await page.mouse.down(); await page.mouse.move(pet.x + 30, pet.y, { steps: 12 }); await page.mouse.up();
     await page.locator('.is-action-pet').waitFor();
@@ -138,7 +140,7 @@ try {
     await openCompanionMenu(sleeping, 'status', 'tap');
     await sleeping.locator('.tf-pet-care-settings > summary').tap();
     await sleeping.locator('.tf-pet-life [data-action="pet-mode"][data-mode="paused"]').tap();
-    await sleeping.locator('[data-action="companion-menu-nav"][data-direction="1"]').tap();
+    await returnCompanionHome(sleeping, 'tap');
     await sleeping.locator('[aria-label="继续照顾旅伴"]').tap();
     assert.equal((await readPet(sleeping)).life.mode, 'active');
     console.log('PASS sleeping and paused pets can resume directly from the screen');

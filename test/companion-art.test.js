@@ -24,14 +24,12 @@ test('every built-in companion uses the shared body, expression and action layer
         assert.match(artwork, /class="tf-pixel-back-rig"/, `${kind} has no independently animated rear layer`);
         assert.match(artwork, /class="tf-pixel-body-rig"/, `${kind} has no independently animated body layer`);
         assert.match(artwork, /class="tf-pixel-face-rig"/, `${kind} has no independently animated face layer`);
-        assert.match(artwork, /class="tf-pixel-pupils"/, `${kind} has no independently animated pupil layer`);
         assert.match(artwork, /class="tf-pixel-wearable-rig is-front-rig"/, `${kind} has no wearable motion layer`);
-        assert.match(artwork, /class="tf-pixel-body"/, `${kind} has no body color layer`);
-        assert.match(artwork, /tf-pixel-eyes-open/, `${kind} has no open-eye frame`);
-        assert.match(artwork, /tf-pixel-eyes-happy/, `${kind} has no happy-eye frame`);
-        assert.match(artwork, /tf-pixel-eyes-sleep/, `${kind} has no sleep-eye frame`);
-        assert.match(artwork, /tf-pixel-mouth-feed/, `${kind} has no feeding mouth frame`);
-        assert.match(artwork, new RegExp(articulatedParts[kind]), `${kind} has no species-specific articulated part`);
+        for (const frame of ['idle', 'happy', 'feed', 'sleep']) assert.match(artwork, new RegExp(`data-frame="${frame}"`));
+        assert.match(artwork, new RegExp(`${kind}-pixel-a-v1\\.png`));
+        assert.match(artwork, new RegExp(`tf-${kind === 'frog' ? 'frog' : 'animal'}-tint-body`));
+        assert.match(artwork, new RegExp(`tf-${kind === 'frog' ? 'frog' : 'animal'}-tint-accent`));
+        assert.doesNotMatch(artwork, /class="tf-pixel-pupils"/, `${kind} has legacy pupils layered over the sprite eyes`);
         assert.doesNotMatch(artwork, /data-accessory=/, `${kind} rendered an accessory while none was selected`);
     }
 });
@@ -66,8 +64,14 @@ test('every growth stage has distinct anatomy and supports the expression and ac
             const body = art.match(/<g class="tf-pixel-body-rig">([\s\S]*?)<g class="tf-pixel-face-rig">/)[1];
             silhouettes.add(body);
             assert.match(art, new RegExp(`data-growth-stage="${stage}"`));
-            for (const layer of ['tf-pixel-pupils', 'tf-pixel-eyes-sleep', 'tf-pixel-eyes-happy', 'tf-pixel-mouth-feed']) assert.ok(art.includes(layer), `${kind}/${stage}/${layer}`);
+            const expressionLayers = kind !== 'mystery' && stage === 'adult' ? ['tf-raster-frame is-idle', 'tf-raster-frame is-happy', 'tf-raster-frame is-feed', 'tf-raster-frame is-sleep'] : ['tf-pixel-pupils', 'tf-pixel-eyes-sleep', 'tf-pixel-eyes-happy', 'tf-pixel-mouth-feed'];
+            for (const layer of expressionLayers) assert.ok(art.includes(layer), `${kind}/${stage}/${layer}`);
             if (kind === 'mystery') continue;
+            if (stage !== 'adult') {
+                assert.doesNotMatch(art, /tf-(?:frog|animal)-raster/, `${kind}/${stage} unexpectedly uses adult artwork`);
+                const articulated = kind === 'frog' && stage === 'baby' ? 'tf-growth-swim-tail' : articulatedParts[kind];
+                assert.match(art, new RegExp(articulated), `${kind}/${stage} lost its articulated anatomy`);
+            }
             for (const accessory of accessories) {
                 const dressed = renderCompanionArtwork(kind, accessory, stage);
                 assert.match(dressed, new RegExp(`data-growth-fit="${stage}"`));
@@ -77,5 +81,8 @@ test('every growth stage has distinct anatomy and supports the expression and ac
         }
         assert.equal(silhouettes.size, 3, `${kind} only changes scale instead of anatomy`);
     }
-    assert.equal(renderCompanionArtwork('cat', 'none', 'invalid'), renderCompanionArtwork('cat', 'none', 'adult'));
+    // Raster filter IDs are unique per render; stage fallback must select the adult art.
+    const fallback = renderCompanionArtwork('cat', 'none', 'invalid');
+    assert.match(fallback, /data-growth-stage="adult"/);
+    assert.match(fallback, /cat-pixel-a-v1\.png/);
 });

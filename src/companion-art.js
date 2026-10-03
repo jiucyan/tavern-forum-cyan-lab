@@ -1,4 +1,6 @@
 import { getCompanionGrowthArt } from './companion-growth-art.js';
+import { renderFrogSpriteBody } from './companion-frog-sprite.js';
+import { getCompanionRasterData, renderCompanionRasterBody } from './companion-raster-sprite.js';
 
 const SPECIES_ART = Object.freeze({
     frog: {
@@ -254,7 +256,7 @@ function headphones(left, right, top, padY, padHeight = 15) {
 
 const SPECIES_ACCESSORIES = Object.freeze({
     frog: Object.freeze({
-        scarf: wearable('neck', 'collar', 'cloth', { front: '<path class="tf-pixel-accessory-shadow" d="M18 39h28v5H18zM39 43h7v13h-4v-6h-3z" transform="translate(1 1)"/><path d="M18 39h28v5H18zM39 43h7v13h-4v-6h-3z"/><rect class="tf-pixel-accessory-light" x="21" y="40" width="15" height="2"/>' }),
+        scarf: wearable('neck', 'collar', 'cloth', { front: '<path class="tf-pixel-accessory-shadow" d="M17 32h6v2h18v-2h6v5h-8v-1H25v1h-8zM39 36h6v12h-3v-6h-3z" transform="translate(.5 .5)"/><path d="M17 32h6v2h18v-2h6v5h-8v-1H25v1h-8zM39 36h6v12h-3v-6h-3z"/><rect class="tf-pixel-accessory-light" x="24" y="34" width="15" height="1"/>' }),
         satchel: wearable('side', 'right-flank', 'leather', { back: '<path class="tf-pixel-accessory-line is-thin" d="M24 31l24 19"/>', front: '<path class="tf-pixel-accessory-shadow" d="M40 43h14v12H40z" transform="translate(1 1)"/><path d="M40 43h14v12H40z"/><rect class="tf-pixel-accessory-light" x="43" y="45" width="8" height="2"/><rect class="tf-pixel-accessory-shadow" x="46" y="49" width="3" height="3"/>' }),
         flower: wearable('head', 'right-eye-ridge', 'botanical', { front: flowerPin(41, 8) }),
         charm: wearable('neck', 'belly-cord', 'crystal', { front: charmDrop(30, 44, 22, 43, 42) }),
@@ -466,12 +468,17 @@ export function renderCompanionArtwork(kind = 'mystery', accessory = 'none', sta
     kind = Object.hasOwn(SPECIES_ART, kind) ? kind : 'mystery';
     stage = ['baby', 'young', 'adult'].includes(stage) ? stage : 'adult';
     const growth = getCompanionGrowthArt(kind, stage);
+    const rasterFrog = kind === 'frog' && stage === 'adult';
+    const rasterAnimal = stage === 'adult' ? getCompanionRasterData(kind) : null;
+    const raster = rasterFrog || rasterAnimal;
     const species = growth || SPECIES_ART[kind];
+    const accessoryFit = rasterAnimal || growth;
     const selectedAccessory = ACCESSORY_KEYS.includes(accessory) && SPECIES_ACCESSORIES[kind]?.[accessory] ? accessory : 'none';
     const scale = Number(species.canvas || 64) / 64;
     const scaleLegacyLayer = markup => markup && scale !== 1 ? `<g transform="scale(${scale})">${markup}</g>` : markup;
-    const eyes = species.eyesMarkup || renderEyes(species.eyes);
-    const faces = `<g class="tf-pixel-mouth tf-pixel-mouth-default">${species.faces.default}</g><g class="tf-pixel-mouth tf-pixel-mouth-feed">${species.faces.feed}</g><g class="tf-pixel-mouth tf-pixel-mouth-sleep">${species.faces.sleep}</g>`;
+    const eyes = raster ? '' : species.eyesMarkup || renderEyes(species.eyes);
+    const faces = raster ? '' : `<g class="tf-pixel-mouth tf-pixel-mouth-default">${species.faces.default}</g><g class="tf-pixel-mouth tf-pixel-mouth-feed">${species.faces.feed}</g><g class="tf-pixel-mouth tf-pixel-mouth-sleep">${species.faces.sleep}</g>`;
+    const body = rasterFrog ? renderFrogSpriteBody() : rasterAnimal ? renderCompanionRasterBody(kind) : species.body;
     const travelKit = '<g class="tf-pixel-travel-kit"><path class="tf-pixel-body-shadow" d="M45 23h11v21H45z"/><path class="tf-pixel-accent" d="M43 21h12v21H43z"/><rect class="tf-pixel-light" x="46" y="25" width="6" height="5"/><rect class="tf-pixel-ink" x="41" y="27" width="4" height="12"/></g>';
-    return `<g class="tf-pixel-growth-motion" data-growth-stage="${stage}"><g class="tf-pixel-wearable-rig is-back-rig">${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'back', growth, stage))}</g><g class="tf-pixel-character"><g class="tf-pixel-back-rig">${species.back}</g><g class="tf-pixel-body-rig">${species.body}</g><g class="tf-pixel-face-rig">${eyes}${faces}</g></g><g class="tf-pixel-carry-rig">${scaleLegacyLayer(travelKit)}</g><g class="tf-pixel-wearable-rig is-front-rig">${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'front', growth, stage))}</g></g>`;
+    return `<g class="tf-pixel-growth-motion" data-growth-stage="${stage}"${raster ? ` data-raster-art="${kind}"` : ''}><g class="tf-pixel-wearable-rig is-back-rig">${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'back', accessoryFit, stage))}</g><g class="tf-pixel-character"><g class="tf-pixel-back-rig">${rasterAnimal ? '' : species.back}</g><g class="tf-pixel-body-rig">${body}</g><g class="tf-pixel-face-rig">${eyes}${faces}</g></g><g class="tf-pixel-carry-rig">${scaleLegacyLayer(travelKit)}</g><g class="tf-pixel-wearable-rig is-front-rig">${scaleLegacyLayer(renderAccessory(kind, selectedAccessory, 'front', accessoryFit, stage))}</g></g>`;
 }

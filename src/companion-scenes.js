@@ -20,6 +20,24 @@ export function normalizeCompanionHabitat(value) {
     return COMPANION_HABITATS.some(scene => scene.id === value) ? value : 'meadow';
 }
 
+// Scene changes belong to the current interaction, never to the saved habitat.
+// The caller supplies the already-resolved sleep/feedback state so this module
+// stays independent of life progression and does not need a clock or API call.
+export function resolveCompanionScene(companion, {
+    action = 'idle', cleaning = false, foodMenu = false, game = false,
+    feedbackKind = '', sleeping = false,
+} = {}) {
+    const selected = normalizeCompanionHabitat(companion?.habitat);
+    const scene = (habitat = selected, reason = '') => ({ habitat, temporary: habitat !== selected, reason });
+    if (companion?.status === 'away' || ['paused', 'daycare'].includes(companion?.life?.mode) || foodMenu) return scene();
+    if (game) return scene('garden', 'play');
+    if (cleaning || feedbackKind === 'clean') return scene('bathroom', 'clean');
+    if (action === 'feed') return scene('kitchen', 'feed');
+    if (sleeping || companion?.status === 'resting') return scene('bedroom', 'sleep');
+    if (action === 'play' || action === 'dance') return scene('garden', 'play');
+    return scene();
+}
+
 // Small, code-native pixel sets keep the foreground clear for the pet.
 const rect = (x, y, width, height, fill, extra = '') => `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${fill}" ${extra}/>`;
 const path = (d, fill, extra = '') => `<path d="${d}" fill="${fill}" ${extra}/>`;

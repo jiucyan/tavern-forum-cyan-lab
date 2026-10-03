@@ -17,6 +17,17 @@ const menuIcons = {
     dress: 'M5 1h6v3h4v3h-4v8H5V7H1V4h4Zm2 2v2h2V3Z',
 };
 const menuIcon = id => `<svg viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" fill-rule="evenodd" d="${menuIcons[id]}"></path></svg>`;
+const pageTabs = menu.filter(([id]) => ['status', 'games', 'album', 'travel', 'dress'].includes(id));
+
+function deviceControlLabels(home, state, petAction = '') {
+    if (state.companionFoodMenuOpen) return ['选择', '确认', '返回'];
+    if (!home) return ['选择', '确认', '回小窝'];
+    const returnFromCare = state.companionCareReturnPanel && state.companionCareReturnPanel !== 'home';
+    const middle = state.companionCleaning ? '擦洗' : petAction.includes('叫醒') ? '叫醒' : petAction.includes('继续') ? '继续' : '摸摸';
+    const last = state.companionCleaning ? returnFromCare ? '返回' : '收起' : '状态';
+    return ['菜单', middle, last];
+}
+const deviceControlHint = labels => labels.map((text, i) => `${'ABC'[i]} ${text}`).join(' · ');
 
 // Reuse the existing controls and handlers; only their placement and presentation change.
 export function renderCompanionDevice(html, data, state, extraActions) {
@@ -35,7 +46,8 @@ export function renderCompanionDevice(html, data, state, extraActions) {
         node.className = 'tf-pet-device-page tf-pet-life'; node.dataset.companionPanel = id;
         node.hidden = current !== id;
         node.setAttribute('aria-label', title);
-        node.innerHTML = `<header><b>${title}</b><button type="button" data-action="companion-panel" data-panel="home" aria-label="返回小窝"><svg viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" d="M6 2v3h6v2h2v6H6v-2h6V7H6v3L1 6Z"></path></svg></button></header><div class="tf-pet-device-content"></div>`;
+        const tabs = id === 'menu' ? `<b>${title}</b>` : `<nav class="tf-device-page-tabs" aria-label="切换旅伴功能">${pageTabs.map(([panel, , label]) => `<button type="button" data-action="companion-device-open" data-panel="${panel}" aria-current="${panel === id ? 'page' : 'false'}">${label}</button>`).join('')}</nav>`;
+        node.innerHTML = `<header class="${id === 'menu' ? '' : 'has-page-tabs'}">${tabs}<button type="button" class="tf-device-home" data-action="companion-panel" data-panel="home" aria-label="回到小窝">回小窝</button></header><div class="tf-pet-device-content"></div>`;
         return node;
     };
     const mainMenu = pane('menu', '今天做什么');
@@ -95,6 +107,16 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     nav.innerHTML = menu.map(([id, , label]) => `<button type="button" data-action="companion-device-open" data-panel="${id}" title="${label}" aria-label="${label}" aria-current="${current === id ? 'page' : 'false'}">${menuIcon(id)}<span>${label}</span>${id === 'album' && pet.life.growthNotice ? '<i></i>' : ''}</button>`).join('');
     const viewport = document.createElement('div'); viewport.className = 'tf-device-viewport';
     room.hidden = current !== 'home';
+    const need = {
+        hungry: ['肚子饿了', '喂食', 'feed'], dirty: ['想洗个澡', '清洁', 'clean'],
+        tired: ['有点困了', '休息', 'rest'], lonely: ['想你陪陪', '摸摸', 'pet'],
+    }[life.activity];
+    const busy = state.companionCleaning || state.companionFoodMenuOpen || state.companionGameResultOpen
+        || state.moduleBusy?.has('travel');
+    if (need && !busy && !canCareForCompanion(pet, need[2])) {
+        const action = need[2] === 'pet' ? 'data-action="companion-care" data-care="pet"' : `data-action="companion-device-open" data-panel="${need[2]}"`;
+        room.insertAdjacentHTML('beforeend', `<button type="button" class="tf-device-need" ${action} aria-label="${need[0]}，${need[1]}"><span>${need[0]}</span><b>· ${need[1]}</b><span aria-hidden="true">›</span></button>`);
+    }
     content(mainMenu).append(nav);
     viewport.append(room, mainMenu, status, games, memories, travel, dress);
     const food = take('.tf-pet-food-select');
@@ -102,7 +124,8 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     const top = take('.tf-pet-screen-top');
     top.innerHTML = `<b>${esc(pet.name)}</b><span>${life.stageLabel}</span><button class="tf-device-menu-toggle" type="button" data-action="companion-panel" data-panel="menu" aria-label="打开宠物机菜单" aria-expanded="${current === 'menu'}"><svg viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" d="M2 2h4v4H2zm8 0h4v4h-4zM2 10h4v4H2zm8 0h4v4h-4z"></path></svg><span>菜单</span>${pet.life.growthNotice ? '<i></i>' : ''}</button>`;
     const bottom = take('.tf-pet-screen-bottom');
-    bottom.innerHTML = `<span class="tf-device-selection-label" aria-live="polite">${pet.life.game ? '一起玩' : life.sleeping ? '呼…呼…' : 'A 选择 · B 确认 · C 返回'}</span>`;
+    const labels = deviceControlLabels(current === 'home', state, room.querySelector('.tf-pet-sprite-control')?.getAttribute('aria-label') || '');
+    bottom.innerHTML = `<span class="tf-device-selection-label" aria-live="polite">${pet.life.game ? '一起玩' : deviceControlHint(labels)}</span>`;
     screen.replaceChildren(top, viewport, bottom);
     if (pet.life.game || state.companionGameResultOpen) device.querySelectorAll('.tf-pet-device-controls button').forEach(node => {
         node.dataset.gameLabel = node.querySelector('span').innerHTML;
@@ -135,23 +158,28 @@ export function paintCompanionDeviceCursor(root, state, { scroll = false } = {})
     const home = page.dataset.devicePage === 'home';
     if (home && (page.classList.contains('is-playing-game') || state.companionGameResultOpen)) return;
     const petAction = page.querySelector('.tf-pet-sprite-control')?.getAttribute('aria-label') || '';
-    const labels = home && !state.companionFoodMenuOpen
-        ? ['菜单', state.companionCleaning ? '擦洗' : petAction.includes('叫醒') ? '叫醒' : petAction.includes('继续') ? '继续' : '摸摸', state.companionCleaning ? '收起' : '状态']
-        : ['选择', '确认', '返回'];
+    const labels = deviceControlLabels(home, state, petAction);
     page.querySelectorAll('.tf-pet-device-controls button').forEach((node, index) => {
         node.setAttribute('aria-label', labels[index]);
         node.querySelector('span').innerHTML = `${'ABC'[index]}<small>${labels[index]}</small>`;
     });
     const choices = getCompanionDeviceChoices(root);
     page.querySelectorAll('.is-device-selected').forEach(node => node.classList.remove('is-device-selected'));
-    const index = Math.min(choices.length - 1, state.companionDeviceCursor ?? -1);
+    let index = Math.min(choices.length - 1, state.companionDeviceCursor ?? -1);
+    if (page.dataset.devicePage === 'menu' && index < 0 && choices.length) {
+        index = Math.max(0, choices.findIndex(node => node.dataset.panel === state.companionMenuSelection));
+    }
     state.companionDeviceCursor = index;
     const chosen = choices[index];
     if (page.querySelector('.tf-pet-food-select')) choices.forEach((node, i) => node.classList.toggle('is-selected', i === index));
     if (chosen) {
         chosen.classList.add('is-device-selected');
+        if (page.dataset.devicePage === 'menu' && chosen.dataset.panel) state.companionMenuSelection = chosen.dataset.panel;
         if (scroll) chosen.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
     const label = page.querySelector('.tf-device-selection-label');
-    if (label) label.textContent = chosen ? chosen.getAttribute('aria-label') || chosen.getAttribute('title') || chosen.textContent.trim().slice(0, 28) || '确认选择' : 'A 选择 · B 确认 · C 返回';
+    if (label) {
+        const selected = chosen && (chosen.getAttribute('aria-label') || chosen.getAttribute('title') || chosen.textContent.trim().slice(0, 28) || '确认选择');
+        label.textContent = deviceControlHint(labels) + (selected ? ` · ${selected}` : '');
+    }
 }
