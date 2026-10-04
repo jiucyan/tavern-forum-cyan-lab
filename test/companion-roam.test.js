@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCompanionRoamController } from '../src/companion-roam.js';
 import { createCompanionIdleController } from '../src/companion-idle.js';
+import { ROOM_FLOOR_Y, normalizeCompanionRoom, getRoomInteraction, getRoomItemFootprint } from '../src/companion-room.js';
+import { roomPathObstacles, roomSegmentClear } from '../src/companion-room-path.js';
 
 class Events {
     listeners = new Map();
@@ -25,7 +27,7 @@ function pet() {
         querySelector(selector) { return selector === '.tf-pet-character-shadow' ? { offsetLeft: 35, offsetTop: 132, offsetWidth: 90, offsetHeight: 8 } : null; },
     };
 }
-function setup(t, random = () => .75, { onMotionChange, withoutFrames = false } = {}) {
+function setup(t, random = () => .75, { onMotionChange, onFurnitureInteraction, withoutFrames = false } = {}) {
     t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 100000 });
     const motion = Object.assign(new Events(), { matches: false }), window = new Events();
     window.matchMedia = () => motion;
@@ -46,6 +48,7 @@ function setup(t, random = () => .75, { onMotionChange, withoutFrames = false } 
     const controller = createCompanionRoamController({
         getRoot: () => root, getSnapshot: () => state, random, now: Date.now,
         onMotionChange: moving => { motions.push(moving); onMotionChange?.(moving); },
+        onFurnitureInteraction,
         requestFrame: withoutFrames ? undefined : callback => { const id = nextFrame++; frames.set(id, callback); return id; },
         cancelFrame: withoutFrames ? undefined : id => frames.delete(id),
     });
@@ -299,17 +302,17 @@ test('custom-room wall taps and resizing keep the resident feet on the floor', t
     const saved = structuredClone(f.state);
     assert.equal(f.controller.moveTo({ clientX: 210, clientY: 15 }), true);
     const targetY = Number.parseFloat(f.stage.style.getPropertyValue('--tf-roam-target-y'));
-    assert.ok(targetY >= f.stage.clientHeight * .59, 'a wall tap resolves to the floor instead of climbing the wall');
+    assert.ok(targetY >= f.stage.clientHeight * ROOM_FLOOR_Y / 240 + 4, 'a wall tap resolves to the floor instead of climbing the wall');
     for (let frame = 0; frame < 100; frame++) {
         f.advance(100);
         const shadow = f.root.pet.querySelector('.tf-pet-character-shadow');
         const footY = f.root.pet.offsetTop + shadow.offsetTop + shadow.offsetHeight / 2 + f.position()[1];
-        assert.ok(footY >= f.stage.clientHeight * .59, 'manual and idle movement remain on the floor');
+        assert.ok(footY >= f.stage.clientHeight * ROOM_FLOOR_Y / 240 + 4, 'manual and idle movement remain on the floor');
     }
     f.stage.clientHeight = 260;
     f.window.emit('resize');
     const shadow = f.root.pet.querySelector('.tf-pet-character-shadow');
-    assert.ok(f.root.pet.offsetTop + shadow.offsetTop + shadow.offsetHeight / 2 + f.position()[1] >= 260 * .59);
+    assert.ok(f.root.pet.offsetTop + shadow.offsetTop + shadow.offsetHeight / 2 + f.position()[1] >= 260 * ROOM_FLOOR_Y / 240 + 4);
     assert.deepEqual(f.state, saved, 'floor constraints do not alter the saved companion');
 });
 
@@ -393,4 +396,195 @@ test('reduced motion and missing animation frames allow explicit static placemen
         f.tick(60000); f.controller.sync(); assert.deepEqual(f.position(), [100, -26]); assert.equal(f.frames.size, 0);
         f.state.enabled = false; f.controller.sync(); assert.deepEqual(f.position(), [0, 0]);
     });
+});
+
+function customRoom(f, items = []) {
+    f.stage.clientWidth = 320; f.stage.clientHeight = 240;
+    Object.assign(f.root.pet, { offsetLeft: 116, offsetTop: 144, offsetWidth: 88, offsetHeight: 86 });
+    f.root.pet.querySelector = selector => selector === '.tf-pet-character-shadow'
+        ? { offsetLeft: 16, offsetTop: 68, offsetWidth: 56, offsetHeight: 6 } : null;
+    f.state.habitat = 'custom-room'; f.state.owner = {};
+    f.state.room = normalizeCompanionRoom({ enabled: true, items });
+}
+function roomFoot(f) {
+    const shadow = f.root.pet.querySelector('.tf-pet-character-shadow'), [x, y] = f.position();
+    return { x: (f.root.pet.offsetLeft + shadow.offsetLeft + shadow.offsetWidth / 2 + x) * 320 / f.stage.clientWidth,
+        y: (f.root.pet.offsetTop + shadow.offsetTop + shadow.offsetHeight / 2 + y) * 240 / f.stage.clientHeight };
+}
+
+test('custom-room commands route continuously around furniture and respect rotated contact footprints', t => {
+    const f = setup(t);
+    customRoom(f, [{ id: 'desk', type: 'table', x: 190, y: 180, rotation: 1 }]);
+    f.controller.sync(); const saved = structuredClone(f.state), obstacles = roomPathObstacles(f.state.room.items.map(getRoomItemFootprint).filter(Boolean), 4);
+    assert.equal(f.controller.moveTo({ clientX: 260, clientY: 155 }), true);
+    let previous = roomFoot(f), bent = false;
+    for (let index = 0; index < 120 && f.root.pet.getAttribute('data-roam-state') === 'walking'; index++) {
+        f.advance(100); const point = roomFoot(f);
+        assert.ok(roomSegmentClear(previous, point, obstacles), 'a visible animation frame may not cross furniture');
+        if (point.y > 210 && point.x > 190) bent = true;
+        previous = point;
+    }
+    assert.equal(f.root.pet.getAttribute('data-roam-state'), 'resting');
+    assert.ok(bent, 'the pet goes around the rotated table before turning toward its destination');
+    assert.ok(Math.hypot(roomFoot(f).x - 260, roomFoot(f).y - 155) < .01);
+    assert.deepEqual(f.state, saved, 'routing changes neither furniture nor care data');
+});
+
+test('furniture arrival happens once at its anchor, holds a pose, then returns to walkable floor', t => {
+    const events = [], arrivals = [], f = setup(t, () => .75, { onFurnitureInteraction: event => events.push(event) });
+    customRoom(f, [{ id: 'seat', type: 'sofa', x: 92, y: 160, rotation: 0 }]);
+    f.controller.sync(); const saved = structuredClone(f.state), spec = getRoomInteraction(f.state.room.items[0]);
+    assert.equal(f.controller.interactWith('seat', { onArrive: result => arrivals.push(result) }), true);
+    finishMove(f);
+    assert.equal(arrivals.length, 1); assert.deepEqual(arrivals[0], { itemId: 'seat', kind: 'sit' });
+    assert.equal(f.root.pet.getAttribute('data-room-pose'), 'sit');
+    assert.equal(f.root.pet.getAttribute('data-room-item-id'), 'seat');
+    assert.ok(Math.hypot(roomFoot(f).x - spec.anchor.x, roomFoot(f).y - spec.anchor.y) < .01);
+    const previous = roomFoot(f); f.tick(5000); assert.deepEqual(roomFoot(f), previous, 'the pet remains seated during its quiet interval');
+    f.tick(1000); finishMove(f);
+    assert.equal(f.root.pet.hasAttribute('data-room-interacting'), false);
+    assert.equal(arrivals.length, 1); assert.equal(events.filter(event => event.phase === 'finished').length, 1);
+    assert.ok(roomFoot(f).y >= ROOM_FLOOR_Y);
+    assert.deepEqual(f.state, saved);
+});
+
+test('room layout, owner and care changes cancel pending furniture callbacks; life ticks and rerenders preserve them', t => {
+    const f = setup(t), arrivals = [];
+    customRoom(f, [{ id: 'seat', type: 'sofa', x: 92, y: 160, rotation: 0 }]);
+    f.controller.sync();
+    assert.equal(f.controller.interactWith('seat', { onArrive: value => arrivals.push(value) }), true);
+    f.advance(100);
+    f.state.lifeTick = 1; f.controller.sync();
+    const previous = f.root.pet; previous.isConnected = false;
+    f.root.pet = { ...previous, isConnected: true }; f.controller.sync();
+    finishMove(f); assert.equal(arrivals.length, 1, 'same companion and layout retain the command across a harmless rerender');
+    for (const change of [
+        () => { f.state.room.items[0].rotation = 1; },
+        () => { f.state.owner = {}; },
+        () => { f.state.identity = {}; },
+        () => { f.state.activity = 'sleep'; },
+        () => { f.state.enabled = false; },
+        () => { f.root.emit('pointerdown', { pointerId: 9, target: f.root.pet }); f.document.emit('pointerup', { pointerId: 9, target: f.root.pet }); },
+    ]) {
+        f.state.activity = 'idle'; f.state.enabled = true; f.state.room.items[0].rotation = 0;
+        f.controller.cancel({ reset: true }); f.controller.sync();
+        const count = arrivals.length;
+        assert.equal(f.controller.interactWith('seat', { onArrive: value => arrivals.push(value) }), true);
+        f.advance(100); change(); f.controller.sync();
+        for (let index = 0; index < 120; index++) f.advance(100);
+        assert.equal(arrivals.length, count, 'an invalidated command cannot deliver late care');
+    }
+});
+
+test('explicit furniture holds preserve bed/feed anchors through rerender and resize and refuse floor commands', t => {
+    const f = setup(t), events = [];
+    customRoom(f, [{ id: 'bed', type: 'bed', x: 92, y: 160, rotation: 0 }]);
+    f.state.activity = 'room-care'; f.state.furnitureHold = { itemId: 'bed', kind: 'rest' };
+    f.controller.sync();
+    const before = roomFoot(f);
+    assert.equal(f.root.pet.getAttribute('data-room-pose'), 'rest');
+    assert.equal(f.controller.moveTo({ clientX: 280, clientY: 200 }), false);
+    assert.equal(f.controller.interactWith('bed', { onArrive: value => events.push(value) }), false);
+    f.tick(60000);
+    for (let index = 0; index < 20; index++) {
+        f.state.furnitureHold = { itemId: 'bed', kind: 'rest' }; f.controller.sync();
+        assert.deepEqual(roomFoot(f), before, 'a freshly constructed snapshot hold must not move or replay arrival');
+    }
+    assert.equal(f.frames.size, 0);
+    f.stage.clientWidth = 390; f.stage.clientHeight = 292.5; f.window.emit('resize');
+    assert.ok(Math.hypot(roomFoot(f).x - before.x, roomFoot(f).y - before.y) < .01, 'a resized room keeps scene-relative furniture placement');
+    f.state.enabled = false; f.controller.sync();
+    assert.equal(f.root.pet.hasAttribute('data-room-pose'), false); assert.deepEqual(events, []);
+});
+
+test('an overcrowded room rejects furniture commands and never teleports through a cabinet wall', t => {
+    const events = [], f = setup(t, () => .75, { onFurnitureInteraction: value => events.push(value) });
+    customRoom(f, [{ id: 'ball', type: 'toy', x: 265, y: 160, rotation: 0 },
+        ...[120, 154, 188, 220].map((y, index) => ({ id: `wall-${index}`, type: 'bookshelf', x: 215, y, rotation: 1 }))]);
+    f.controller.sync(); const before = f.position();
+    assert.equal(f.controller.interactWith('ball'), false);
+    assert.equal(events.at(-1)?.phase, 'rejected');
+    assert.deepEqual(f.position(), before); assert.equal(f.frames.size, 0);
+});
+
+test('automatic room use chooses only harmless furniture and never applies a care callback', t => {
+    const events = [], f = setup(t, () => 0, { onFurnitureInteraction: value => events.push(value) });
+    customRoom(f, [{ id: 'seat', type: 'sofa', x: 92, y: 160, rotation: 0 },
+        { id: 'bowl', type: 'food-bowl', x: 267, y: 145, rotation: 0 }, { id: 'bed', type: 'bed', x: 265, y: 192, rotation: 0 }]);
+    f.controller.sync(); const saved = structuredClone(f.state);
+    f.tick(1500); finishMove(f);
+    assert.equal(events.at(-1)?.itemId, 'seat'); assert.equal(events.at(-1)?.automatic, true);
+    assert.equal(f.root.pet.getAttribute('data-room-pose'), 'sit');
+    assert.deepEqual(f.state, saved, 'spontaneous relaxation never eats or starts real sleeping');
+});
+
+test('reduced-motion furniture commands place a static pose and resize preserves its scene anchor', t => {
+    const f = setup(t), arrivals = [];
+    customRoom(f, [{ id: 'seat', type: 'sofa', x: 92, y: 160, rotation: 0 }]);
+    f.motion.matches = true; f.controller.sync();
+    assert.equal(f.controller.interactWith('seat', { onArrive: value => arrivals.push(value) }), true);
+    assert.equal(arrivals.length, 1); assert.equal(f.frames.size, 0);
+    assert.equal(f.root.pet.getAttribute('data-room-pose'), 'sit');
+    const anchor = roomFoot(f);
+    f.stage.clientWidth = 390; f.stage.clientHeight = 292.5; f.window.emit('resize');
+    assert.ok(Math.hypot(roomFoot(f).x - anchor.x, roomFoot(f).y - anchor.y) < .01);
+    assert.equal(f.root.pet.getAttribute('data-room-pose'), 'sit');
+    f.tick(3000); f.controller.sync(); assert.equal(arrivals.length, 1); assert.equal(f.frames.size, 0);
+    f.state.enabled = false; f.controller.sync(); f.tick(30000);
+    assert.equal(f.root.pet.hasAttribute('data-room-pose'), false); assert.equal(arrivals.length, 1);
+});
+
+test('held furniture rejects stale layouts and allows a fresh hold after the previous care ends', t => {
+    const f = setup(t);
+    customRoom(f, [{ id: 'bed', type: 'bed', x: 92, y: 160, rotation: 0 }]);
+    f.state.activity = 'room-care'; f.state.furnitureHold = { itemId: 'bed', kind: 'rest' };
+    f.controller.sync();
+    f.state.room.items[0].rotation = 1; f.state.furnitureHold = { itemId: 'bed', kind: 'rest' }; f.controller.sync();
+    assert.equal(f.root.pet.hasAttribute('data-room-pose'), false, 'a draft/layout change cannot keep an old bed interaction');
+    f.state.furnitureHold = null; f.controller.sync();
+    f.state.room.items[0].rotation = 0; f.state.furnitureHold = { itemId: 'bed', kind: 'rest' };
+    f.controller.sync();
+    assert.equal(f.root.pet.getAttribute('data-room-pose'), 'rest', 'a newly authorized care operation can use the edited room');
+});
+
+test('arrival may begin real room care without clearing the new hold or repeating its callback', t => {
+    const f = setup(t), arrivals = [];
+    customRoom(f, [{ id: 'bed', type: 'bed', x: 92, y: 160, rotation: 0 }]);
+    f.controller.sync();
+    assert.equal(f.controller.interactWith('bed', { onArrive: result => {
+        arrivals.push(result); f.state.furnitureHold = { itemId: 'bed', kind: 'rest' }; f.state.activity = 'room-care';
+        f.controller.cancel({ reset: true });
+    } }), true);
+    finishMove(f);
+    assert.equal(arrivals.length, 1); assert.equal(f.root.pet.getAttribute('data-room-pose'), 'rest');
+    const anchor = roomFoot(f);
+    f.tick(60000); f.controller.sync(); assert.deepEqual(roomFoot(f), anchor); assert.equal(arrivals.length, 1);
+    f.state.furnitureHold = null; f.state.activity = 'idle'; f.controller.cancel({ reset: true });
+    assert.equal(f.root.pet.hasAttribute('data-room-pose'), false);
+});
+
+test('care resets choose an unoccupied floor spawn instead of trapping the pet inside furniture', t => {
+    const f = setup(t);
+    customRoom(f, [{ id: 'desk', type: 'table', x: 160, y: 200, rotation: 0 }]);
+    f.controller.sync(); const initial = f.position();
+    assert.notDeepEqual(initial, [0, 0], 'initial placement resolves an occupied default floor position');
+    f.controller.cancel({ reset: true }); assert.deepEqual(f.position(), initial, 'care reset reuses a safe nearby initial position');
+    assert.equal(f.controller.moveTo({ clientX: 260, clientY: 155 }), true);
+    finishMove(f); assert.ok(Math.hypot(roomFoot(f).x - 260, roomFoot(f).y - 155) < .01);
+});
+
+test('cancelling or retargeting a furniture command reports one cancellation after its callback is discarded', t => {
+    const events = [], arrivals = [], f = setup(t, () => .75, { onFurnitureInteraction: event => events.push(event) });
+    customRoom(f, [{ id: 'seat', type: 'sofa', x: 92, y: 160, rotation: 0 }]);
+    f.controller.sync();
+    assert.equal(f.controller.interactWith('seat', { onArrive: value => arrivals.push(value) }), true);
+    f.advance(100); f.controller.cancel(); f.controller.cancel();
+    assert.equal(events.filter(event => event.phase === 'cancelled').length, 1);
+    assert.deepEqual(events[0], { itemId: 'seat', kind: 'sit', phase: 'cancelled', automatic: false });
+    for (let index = 0; index < 100; index++) f.advance(100);
+    assert.deepEqual(arrivals, []);
+    assert.equal(f.controller.interactWith('seat', { onArrive: value => arrivals.push(value) }), true);
+    f.advance(100); assert.equal(f.controller.moveTo({ clientX: 260, clientY: 155 }), true);
+    assert.equal(events.filter(event => event.phase === 'cancelled').length, 2);
+    finishMove(f); assert.deepEqual(arrivals, []);
 });

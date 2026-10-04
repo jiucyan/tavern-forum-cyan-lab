@@ -6,7 +6,8 @@ import { decorateCompanionLife, renderCompanionNavigation, renderCompanionSummar
 import { DEVICE_PAGES, renderCompanionDevice, getCompanionDeviceChoices, paintCompanionDeviceCursor } from './companion-device-ui.js';
 import { bindCompanionTouch } from './companion-touch.js';
 import { COMPANION_HABITATS, renderCompanionScene, resolveCompanionScene } from './companion-scenes.js';
-import { ROOM_FURNITURE, ROOM_MAX_ITEMS, normalizeCompanionRoom, createCompanionRoomPreset, addRoomItem, updateRoomItem, removeRoomItem, renderCompanionRoom } from './companion-room.js';
+import { ROOM_FURNITURE, ROOM_MAX_ITEMS, normalizeCompanionRoom, createCompanionRoomPreset, addRoomItem, updateRoomItem, removeRoomItem, renderCompanionRoom, getRoomInteraction } from './companion-room.js';
+import { renderCompanionRoomLive } from './companion-room-live-ui.js';
 import { renderCompanionRoomEditor } from './companion-room-ui.js';
 import { createCompanionIdleController } from './companion-idle.js';
 import { createCompanionRoamController } from './companion-roam.js';
@@ -585,6 +586,9 @@ const viewState = {
     companionFoodIndex: 0,
     companionAppearanceDraft: null,
     companionRoomDraft: null,
+    companionRoomCare: null,
+    companionRoomFoodTarget: null,
+    companionRoomCommand: null,
     companionVisualAction: '',
     companionActionTimer: 0,
     companionActionToken: 0,
@@ -1876,7 +1880,7 @@ function getLocalCompanionWeather(data, time, date = new Date()) {
     };
 }
 
-function renderPixelCompanion(species, status = 'home', mini = false, appearance = null) {
+function renderPixelCompanion(species, status = 'home', mini = false, appearance = null, roomPoses = false) {
     const kind = getCompanionSpecies(species)?.id || 'mystery';
     const safeStatus = ['home', 'away', 'resting'].includes(status) ? status : 'home';
     const currentCompanion = getForumData()?.world?.companion;
@@ -1898,7 +1902,7 @@ function renderPixelCompanion(species, status = 'home', mini = false, appearance
         accessoryColor ? `--pet-accessory-user:${accessoryColor}` : '',
     ].filter(Boolean).join(';');
     const stage = ['baby', 'young', 'adult'].includes(liveAppearance?.life?.stage) ? liveAppearance.life.stage : 'adult';
-    const artwork = renderCompanionArtwork(kind, accessory, stage);
+    const artwork = renderCompanionArtwork(kind, accessory, stage, { roomPoses });
     const artViewBox = kind === 'cat' ? '0 0 72 64' : '0 0 64 64';
     return `<svg class="tf-pixel-pet is-kind-${kind} is-growth-${stage} is-${safeStatus} is-accessory-${accessory}${mini ? ' is-mini' : ''}" ${customStyle ? `style="${customStyle}"` : ''} viewBox="${artViewBox}" aria-hidden="true" shape-rendering="crispEdges">${artwork}</svg>`;
 }
@@ -1979,7 +1983,107 @@ function prepareCompanionGreeting(data) {
     return true;
 }
 
+function makeCompanionRoomTarget(itemId) {
+    const data = getForumData(), owner = data.world.companion;
+    return { forumOwner: data, owner, current: captureChatScope(), itemId, layout: JSON.stringify(normalizeCompanionRoom(owner.room)) };
+}
+
+function validCompanionRoomTarget(target, { home = true } = {}) {
+    if (!target?.current() || !viewState.open || getSettings().ui.activeTab !== 'services' || viewState.worldPage !== 'travel') return false;
+    try { assertForumDataCurrent(target.forumOwner); } catch { return false; }
+    const data = getForumData(), companion = data.world.companion, life = getCompanionLifeView(companion);
+    return data === target.forumOwner && companion === target.owner && companion.room?.enabled
+        && companion.status !== 'away' && life.life.mode === 'active' && !life.life.game
+        && !viewState.moduleBusy.has('travel') && (!home || viewState.companionPanel === 'home')
+        && JSON.stringify(normalizeCompanionRoom(companion.room)) === target.layout
+        && companion.room.items.some(item => item.id === target.itemId);
+}
+
+function getCompanionRoomCare(companion) {
+    const care = viewState.companionRoomCare;
+    const valid = care && companion === care.owner && validCompanionRoomTarget(care, { home: false })
+        && (care.kind === 'rest' ? getCompanionLifeView(companion).sleeping : care.until > performance.now());
+    if (valid) return care;
+    viewState.companionRoomCare = null;
+    if (companion.room?.enabled && companion.life?.roomBedId && getCompanionLifeView(companion).sleeping
+        && companion.room.items.some(item => item.id === companion.life.roomBedId && item.type === 'bed')
+        && viewState.open && getSettings().ui.activeTab === 'services' && viewState.worldPage === 'travel') {
+        const restored = { ...makeCompanionRoomTarget(companion.life.roomBedId), kind: 'rest' };
+        if (restored.owner === companion && validCompanionRoomTarget(restored, { home: false })) return viewState.companionRoomCare = restored;
+    }
+    return null;
+}
+
+function cancelCompanionRoomCommand() {
+    if (viewState.companionRoomCommand) companionRoamController?.cancel();
+    viewState.companionRoomCommand = null;
+}
+
+function paintCompanionRoomInteraction({ itemId, kind, phase, automatic }) {
+    if (['rejected', 'cancelled', 'finished'].includes(phase) && viewState.companionRoomCommand?.itemId === itemId) viewState.companionRoomCommand = null;
+    const caption = getRoot()?.querySelector('.tf-room-live-caption');
+    if (!caption) return;
+    const messages = { sit: '在沙发上坐一会儿', lie: '软垫好舒服，趴一会儿', play: '找到玩具球啦', look: '看看窗外今天的风景', rest: '在自己的小床睡个好觉', feed: '到饭碗开饭啦' };
+    caption.textContent = phase === 'arrived' ? messages[kind] || '' : phase === 'rejected' && !automatic ? '这里暂时走不过去，挪一挪旁边的家具吧。' : '';
+}
+
+function walkToCompanionRoom(target, kind, onArrive) {
+    cancelCompanionRoomCommand();
+    if (!validCompanionRoomTarget(target)) return false;
+    clearCompanionRitual();
+    clearTimeout(viewState.companionActionTimer);
+    clearTimeout(viewState.companionFeedbackTimer);
+    viewState.companionActionTimer = 0;
+    viewState.companionActionToken += 1;
+    viewState.companionVisualAction = '';
+    viewState.companionFeedback = null;
+    viewState.companionRoomCommand = target;
+    render({ preserveScroll: true });
+    syncCompanionIdle();
+    const accepted = companionRoamController?.interactWith(target.itemId, { onArrive: () => {
+        if (viewState.companionRoomCommand !== target || !validCompanionRoomTarget(target)
+            || viewState.companionFoodMenuOpen || viewState.companionCleaning || viewState.companionGameResultOpen) return;
+        const item = target.owner.room.items.find(value => value.id === target.itemId);
+        if (getRoomInteraction(item)?.kind !== kind) return;
+        if (!onArrive) return;
+        viewState.companionRoomCommand = null;
+        Promise.resolve(onArrive?.()).catch(error => { if (error.name !== 'AbortError') notify('error', error.message); });
+    } });
+    if (!accepted) {
+        viewState.companionRoomCommand = null;
+        paintCompanionRoomInteraction({ itemId: target.itemId, kind, phase: 'rejected' });
+    }
+    return accepted;
+}
+
+function interactWithCompanionRoom(itemId) {
+    const target = makeCompanionRoomTarget(itemId);
+    if (!validCompanionRoomTarget(target) || viewState.companionFoodMenuOpen || viewState.companionCleaning) return;
+    const item = target.owner.room.items.find(value => value.id === itemId), spec = getRoomInteraction(item);
+    if (!spec) return;
+    const blocked = canCareForCompanion(target.owner, spec.kind === 'rest' ? 'rest' : spec.kind === 'feed' ? 'feed' : 'pet');
+    if (blocked) return notify('info', blocked);
+    if (getCompanionRoomCare(target.owner)) return;
+    if (spec.kind === 'feed') return openCompanionFoodMenu(target);
+    return walkToCompanionRoom(target, spec.kind, spec.kind === 'rest' ? () => careForCompanion('rest', null, target) : null);
+}
+
+function chooseCompanionRoomFood(foodId) {
+    const food = COMPANION_FOODS.find(item => item.id === foodId);
+    if (!food || !viewState.companionFoodMenuOpen || viewState.companionRoomCommand) return;
+    const target = viewState.companionRoomFoodTarget;
+    viewState.companionRoomFoodTarget = null;
+    if (!target) return feedCompanionFood(food);
+    if (!validCompanionRoomTarget(target)) return returnCompanionPanel();
+    viewState.companionFoodMenuOpen = false;
+    finishCompanionCare();
+    clearCompanionRitual();
+    render({ preserveScroll: true });
+    return walkToCompanionRoom(target, 'feed', () => feedCompanionFood(food, target));
+}
+
 function getCompanionDisplayedScene(companion) {
+    if (getCompanionRoomCare(companion)) return { habitat: 'custom-room', customized: true, reason: 'room-care' };
     const scene = resolveCompanionScene(companion, {
         action: getCompanionVisualAction(companion),
         cleaning: viewState.companionCleaning,
@@ -1997,19 +2101,23 @@ function getCompanionAmbientSnapshot() {
     try { assertForumDataCurrent(session.data); } catch { return { enabled: false }; }
     const data = session.data, companion = data.world.companion;
     const life = getCompanionLifeView(companion);
+    const roomCare = getCompanionRoomCare(companion);
     return {
         identity: data,
+        owner: companion,
+        room: companion.room,
+        furnitureHold: roomCare ? { itemId: roomCare.itemId, kind: roomCare.kind } : null,
         species: getCompanionSpecies(companion.species)?.id || 'mystery',
         habitat: getCompanionDisplayedScene(companion).habitat,
-        activity: life.activity,
+        activity: roomCare ? 'room-care' : viewState.companionRoomCommand?.owner === companion ? 'room-command' : life.activity,
         enabled: Boolean(viewState.open && session.settings.ui.activeTab === 'services'
             && viewState.worldPage === 'travel' && viewState.companionPanel === 'home'
-            && companion.status !== 'away' && !life.sleeping && life.life.mode === 'active'
+            && companion.status !== 'away' && (roomCare || !life.sleeping) && life.life.mode === 'active'
             && !life.life.game && !viewState.companionGameResultOpen
             && !viewState.companionCleaning && !viewState.companionFoodMenuOpen
-            && !(viewState.companionFeedback?.until > Date.now())
-            && !viewState.companionRitual
-            && !viewState.moduleBusy.has('travel') && getCompanionVisualAction(companion) === 'idle'
+            && (roomCare || !(viewState.companionFeedback?.until > Date.now()))
+            && (roomCare || !viewState.companionRitual)
+            && !viewState.moduleBusy.has('travel') && (roomCare || getCompanionVisualAction(companion) === 'idle')
             && !getRoot()?.querySelector('.tf-pet-sprite-control.is-touching')),
     };
 }
@@ -2021,13 +2129,15 @@ function syncCompanionIdle() {
         getRoot,
         getSnapshot: () => {
             const snapshot = getCompanionAmbientSnapshot();
-            snapshot.enabled &&= getRoot()?.querySelector('.tf-pet-sprite-control')?.dataset.roamState !== 'walking';
+            const pet = getRoot()?.querySelector('.tf-pet-sprite-control');
+            snapshot.enabled &&= pet?.dataset.roamState !== 'walking' && !pet?.dataset.roomInteracting && !snapshot.furnitureHold;
             return snapshot;
         },
     });
     companionRoamController ||= createCompanionRoamController({
         getRoot,
         getSnapshot: getCompanionAmbientSnapshot,
+        onFurnitureInteraction: paintCompanionRoomInteraction,
         onMotionChange: walking => {
             if (walking) companionIdleController?.cancel();
             else companionIdleController?.sync();
@@ -2113,7 +2223,7 @@ function renderCompanionAppV3(data) {
     const skin = COMPANION_DEVICE_SKINS.find(item => item.id === companion.deviceSkin) || COMPANION_DEVICE_SKINS[0];
     const menuItems = COMPANION_CARE_ACTIONS;
     const menuIndex = Math.max(0, Math.min(menuItems.length - 1, Number(viewState.companionMenuIndex || 0)));
-    const portrait = `<button class="tf-pet-sprite-control" data-action="companion-care" data-care="pet" title="摸摸${escapeHtml(companion.name)}"><span class="tf-pet-character-shadow" aria-hidden="true"></span><span class="tf-pixel-avatar" role="img" aria-label="${escapeHtml(companion.species)}像素宠物">${renderPixelCompanion(companion.species, companion.status)}</span></button>`;
+    const portrait = `<button class="tf-pet-sprite-control" data-action="companion-care" data-care="pet" title="摸摸${escapeHtml(companion.name)}"><span class="tf-pet-character-shadow" aria-hidden="true"></span><span class="tf-pixel-avatar" role="img" aria-label="${escapeHtml(companion.species)}像素宠物">${renderPixelCompanion(companion.species, companion.status, false, null, Boolean(companion.room?.enabled))}</span></button>`;
     const speciesOptions = COMPANION_SPECIES.map(species => {
         const selected = getCompanionSpecies(companion.species)?.id === species.id;
         return `<button type="button" class="tf-pet-species-option ${selected ? 'is-selected' : ''}" data-action="choose-companion-species" data-species-id="${species.id}" aria-pressed="${selected}"><span>${renderPixelCompanion(species.name, 'home', true)}</span><b>${species.name}</b></button>`;
@@ -2136,10 +2246,10 @@ function renderCompanionAppV3(data) {
     const lastFood = COMPANION_FOODS.find(item => item.id === companion.lastFood) || COMPANION_FOODS[0];
     const animationLayer = `<span class="tf-pet-animation-layer" aria-hidden="true"><span class="tf-feed-drop" data-food-animation="${escapeHtml(lastFood.id)}"><i class="tf-food-tray"><b></b><em></em></i><i class="tf-food-offering">${renderCompanionFoodArt(lastFood.id)}</i><i class="tf-food-crumb is-one"></i><i class="tf-food-crumb is-two"></i><i class="tf-food-crumb is-three"></i><i class="tf-food-species-fx"></i></span><span class="tf-pet-hearts"><i>♥</i><i>♥</i><i>♥</i><i>♥</i></span><span class="tf-play-ball">◆</span><span class="tf-play-trail"><i></i><i></i><i></i></span><span class="tf-sleep-cloud"><i>Z</i><i>z</i><i>z</i></span><span class="tf-touch-rings"><i></i><i></i><i></i></span><span class="tf-pet-stars"><i>✦</i><i>·</i><i>✦</i><i>·</i></span><span class="tf-care-action-fx"><i></i><i></i><i></i></span><span class="tf-betta-bubbles"><i></i><i></i><i></i><i></i><i></i><i></i></span></span>`;
     const weatherLayer = `<span class="tf-pet-weather" aria-hidden="true"><span class="tf-weather-sun"><i></i></span><span class="tf-weather-moon">☾<i>·</i><i>·</i><i>·</i></span><span class="tf-weather-cloud"><i></i><i></i></span><span class="tf-weather-rain">${'<i></i>'.repeat(8)}</span><span class="tf-weather-snow"><i>✣</i><i>·</i><i>✣</i><i>·</i><i>✣</i><i>·</i></span><span class="tf-weather-wind"><i></i><i></i><i></i><b>◆</b></span></span>`;
-    const habitatArt = displayScene.customized ? renderCompanionRoom(companion.room) : renderCompanionScene(displayScene.habitat);
+    const habitatArt = displayScene.customized ? renderCompanionRoom(companion.room, { furniture: false }) : renderCompanionScene(displayScene.habitat);
     const habitatLayer = `<span class="tf-pet-habitat-layer" data-habitat="${displayScene.habitat}" aria-hidden="true">${habitatArt || '<i class="is-backdrop"></i><i class="is-landmark"></i><i class="is-detail-one"></i><i class="is-detail-two"></i><i class="is-foreground"></i>'}</span>`;
     const tripSchedule = activeTrip ? `<section class="tf-companion-trip-schedule"><header><span>${icon('message')}预生成行程</span><b>${deliveredSignals}/${tripSignals.length} 则来信</b></header><progress max="100" value="${tripProgress}"></progress><footer><span>预计 ${formatTimeUntil(activeTrip.returnAt)} 后返家</span><small>消息按时间在本地释放，不再调用 API</small></footer></section>` : '';
-    return `<div class="tf-companion-page tf-companion-v3 is-panel-${panel} is-species-${speciesId} is-device-${skin.id} is-action-${escapeHtml(visualAction)} is-weather-${weather.id}">${renderCompanionNavigation(data, panel)}<section class="tf-card tf-companion-home" ${['home', 'dress'].includes(panel) ? '' : 'hidden'}><div class="tf-pet-console-wrap"><div class="tf-pet-console"><span class="tf-device-ornaments" aria-hidden="true"><i></i><i></i><b></b><em></em></span><div class="tf-pet-console-brand"><span>${escapeHtml(skin.brand)}</span><b>${escapeHtml(skin.name)}</b></div><div class="tf-pet-screen-bezel"><div class="tf-pet-screen"><div class="tf-pet-screen-top"><b>${statusCode}</b><span>${escapeHtml(companion.mood || '好奇')}</span><span class="tf-pet-signal"><i></i><i></i><i></i></span></div><div class="tf-pet-stage">${habitatLayer}${portrait}${animationLayer}${weatherLayer}<span class="tf-pet-cloud is-one"></span><span class="tf-pet-cloud is-two"></span><span class="tf-pet-ground"></span></div><div class="tf-pet-screen-menu">${menuItems.map((item, index) => `<button class="${index === menuIndex ? 'is-selected' : ''}" data-action="companion-care" data-care="${item.id}" title="${item.label}"><span>${item.symbol}</span><b>${item.label}</b></button>`).join('')}</div><div class="tf-pet-screen-bottom"><span>${escapeHtml(companion.species)}</span><span title="${escapeHtml(weather.note)}">${weather.icon} ${escapeHtml(weather.label)}</span><span>♥ ${String(bond).padStart(3, '0')}</span></div></div></div><div class="tf-pet-device-controls"><button type="button" data-action="companion-menu-nav" data-direction="-1" aria-label="上一个功能"><i></i><span>PREV</span></button><button type="button" data-action="companion-menu-confirm" aria-label="确认当前功能"><i></i><span>OK</span></button><button type="button" data-action="companion-menu-nav" data-direction="1" aria-label="下一个功能"><i></i><span>NEXT</span></button></div></div></div>${renderCompanionSummary(data)}</section><section class="tf-pet-section" data-companion-panel="album" ${panel === 'album' ? '' : 'hidden'}><!-- companion-album --></section><section class="tf-pet-section tf-pet-travel-panel" data-companion-panel="travel" ${panel === 'travel' ? '' : 'hidden'}><header class="tf-pet-section-heading"><small>LET'S GO SOMEWHERE</small><h2>${companion.status === 'away' ? escapeHtml(companion.name) + '的旅途' : '准备一次小小的远行'}</h2><p>${companion.status === 'away' ? escapeHtml(statusLabel) : '带上背包里的食物和小物件，等它把沿途的故事带回来。'}</p></header>${companion.message && (companion.status === 'away' || companion.lastAction === 'return') ? `<div class="tf-pet-travel-message" role="status"><b>${companion.status === 'away' ? '旅途来信' : '平安回家啦'}</b><p>${escapeHtml(companion.message)}</p></div>` : ''}${luckyDirection ? `<p class="tf-pet-luck-note">${icon('sparkles')}幸运方向：${escapeHtml(luckyDirection)}</p>` : ''}${tripSchedule}${renderCompanionPacking(data)}${companion.status !== 'away' ? renderCompanionPackingPreview(data) : ''}<footer class="tf-pet-trip-actions"><button class="tf-primary-button tf-pet-main-action" data-action="${companion.status === 'away' ? 'companion-signal-local' : 'companion-depart-ai'}" ${viewState.moduleBusy.has('travel') ? 'disabled' : ''}>${viewState.moduleBusy.has('travel') ? '<span class="tf-spinner"></span>正在整理行囊' : companion.status === 'away' ? '查看行程进度' : '准备这次远行'}</button>${companion.status === 'away' ? '<button class="tf-secondary-button" data-action="companion-return">立即召回</button>' : ''}</footer>${renderCompanionTravelHistory(data)}</section><section class="tf-pet-section tf-pet-dress-panel" data-companion-panel="dress" ${panel === 'dress' ? '' : 'hidden'}><details class="tf-card tf-companion-profile-card" ${viewState.companionProfileOpen ? 'open' : ''}><summary data-action="toggle-companion-profile"><span class="tf-companion-profile-avatar">${renderPixelCompanion(companion.species, 'home', true)}</span><div><small>TRAVELER PROFILE</small><h3>${escapeHtml(companion.name)} · ${escapeHtml(companion.species)}</h3><p>${escapeHtml(skin.name)} · 点击展开更换旅伴或设备</p></div><span class="tf-profile-expand">编辑档案⌄</span></summary><div class="tf-companion-profile-content"><section class="tf-companion-identity-section"><header><div><small>COMPANION</small><h3>旅伴与资料</h3><p>更换形象不会清除亲密度、行囊和旅行记录。</p></div></header><div class="tf-pet-species-grid tf-pet-species-compact">${speciesOptions}<button type="button" class="tf-pet-species-option is-custom ${customSelected ? 'is-selected' : ''}" data-action="choose-companion-custom"><span>＋</span><b>自定义</b></button></div><div class="tf-companion-profile-grid"><label><span>名字</span><input data-companion-field="name" value="${escapeHtml(companion.name)}" maxlength="32"></label>${customSelected ? `<label><span>自定义种类</span><input data-companion-field="species" value="${escapeHtml(companion.species === '自定义旅伴' ? '' : companion.species)}" placeholder="例如：史莱姆、龙、机械犬"></label>` : ''}</div></section>${appearanceControls}${environmentControls}<section class="tf-device-skin-section"><header><div><small>DEVICE COLLECTION</small><h3>设备外观</h3><p>10 款机身均有独立轮廓、材质、屏幕与控制细节，不改变宠物数据。</p></div></header><div class="tf-device-skin-grid">${deviceOptions}</div></section></div></details><!-- companion-decorate --></section></div>`;
+    return `<div class="tf-companion-page tf-companion-v3 is-panel-${panel} is-species-${speciesId} is-device-${skin.id} is-action-${escapeHtml(visualAction)}${getCompanionRoomCare(companion) ? ' is-room-care' : ''} is-weather-${weather.id}">${renderCompanionNavigation(data, panel)}<section class="tf-card tf-companion-home" ${['home', 'dress'].includes(panel) ? '' : 'hidden'}><div class="tf-pet-console-wrap"><div class="tf-pet-console"><span class="tf-device-ornaments" aria-hidden="true"><i></i><i></i><b></b><em></em></span><div class="tf-pet-console-brand"><span>${escapeHtml(skin.brand)}</span><b>${escapeHtml(skin.name)}</b></div><div class="tf-pet-screen-bezel"><div class="tf-pet-screen"><div class="tf-pet-screen-top"><b>${statusCode}</b><span>${escapeHtml(companion.mood || '好奇')}</span><span class="tf-pet-signal"><i></i><i></i><i></i></span></div><div class="tf-pet-stage">${habitatLayer}${displayScene.customized ? renderCompanionRoomLive(companion.room) : ''}${portrait}${animationLayer}${weatherLayer}<span class="tf-pet-cloud is-one"></span><span class="tf-pet-cloud is-two"></span><span class="tf-pet-ground"></span></div><div class="tf-pet-screen-menu">${menuItems.map((item, index) => `<button class="${index === menuIndex ? 'is-selected' : ''}" data-action="companion-care" data-care="${item.id}" title="${item.label}"><span>${item.symbol}</span><b>${item.label}</b></button>`).join('')}</div><div class="tf-pet-screen-bottom"><span>${escapeHtml(companion.species)}</span><span title="${escapeHtml(weather.note)}">${weather.icon} ${escapeHtml(weather.label)}</span><span>♥ ${String(bond).padStart(3, '0')}</span></div></div></div><div class="tf-pet-device-controls"><button type="button" data-action="companion-menu-nav" data-direction="-1" aria-label="上一个功能"><i></i><span>PREV</span></button><button type="button" data-action="companion-menu-confirm" aria-label="确认当前功能"><i></i><span>OK</span></button><button type="button" data-action="companion-menu-nav" data-direction="1" aria-label="下一个功能"><i></i><span>NEXT</span></button></div></div></div>${renderCompanionSummary(data)}</section><section class="tf-pet-section" data-companion-panel="album" ${panel === 'album' ? '' : 'hidden'}><!-- companion-album --></section><section class="tf-pet-section tf-pet-travel-panel" data-companion-panel="travel" ${panel === 'travel' ? '' : 'hidden'}><header class="tf-pet-section-heading"><small>LET'S GO SOMEWHERE</small><h2>${companion.status === 'away' ? escapeHtml(companion.name) + '的旅途' : '准备一次小小的远行'}</h2><p>${companion.status === 'away' ? escapeHtml(statusLabel) : '带上背包里的食物和小物件，等它把沿途的故事带回来。'}</p></header>${companion.message && (companion.status === 'away' || companion.lastAction === 'return') ? `<div class="tf-pet-travel-message" role="status"><b>${companion.status === 'away' ? '旅途来信' : '平安回家啦'}</b><p>${escapeHtml(companion.message)}</p></div>` : ''}${luckyDirection ? `<p class="tf-pet-luck-note">${icon('sparkles')}幸运方向：${escapeHtml(luckyDirection)}</p>` : ''}${tripSchedule}${renderCompanionPacking(data)}${companion.status !== 'away' ? renderCompanionPackingPreview(data) : ''}<footer class="tf-pet-trip-actions"><button class="tf-primary-button tf-pet-main-action" data-action="${companion.status === 'away' ? 'companion-signal-local' : 'companion-depart-ai'}" ${viewState.moduleBusy.has('travel') ? 'disabled' : ''}>${viewState.moduleBusy.has('travel') ? '<span class="tf-spinner"></span>正在整理行囊' : companion.status === 'away' ? '查看行程进度' : '准备这次远行'}</button>${companion.status === 'away' ? '<button class="tf-secondary-button" data-action="companion-return">立即召回</button>' : ''}</footer>${renderCompanionTravelHistory(data)}</section><section class="tf-pet-section tf-pet-dress-panel" data-companion-panel="dress" ${panel === 'dress' ? '' : 'hidden'}><details class="tf-card tf-companion-profile-card" ${viewState.companionProfileOpen ? 'open' : ''}><summary data-action="toggle-companion-profile"><span class="tf-companion-profile-avatar">${renderPixelCompanion(companion.species, 'home', true)}</span><div><small>TRAVELER PROFILE</small><h3>${escapeHtml(companion.name)} · ${escapeHtml(companion.species)}</h3><p>${escapeHtml(skin.name)} · 点击展开更换旅伴或设备</p></div><span class="tf-profile-expand">编辑档案⌄</span></summary><div class="tf-companion-profile-content"><section class="tf-companion-identity-section"><header><div><small>COMPANION</small><h3>旅伴与资料</h3><p>更换形象不会清除亲密度、行囊和旅行记录。</p></div></header><div class="tf-pet-species-grid tf-pet-species-compact">${speciesOptions}<button type="button" class="tf-pet-species-option is-custom ${customSelected ? 'is-selected' : ''}" data-action="choose-companion-custom"><span>＋</span><b>自定义</b></button></div><div class="tf-companion-profile-grid"><label><span>名字</span><input data-companion-field="name" value="${escapeHtml(companion.name)}" maxlength="32"></label>${customSelected ? `<label><span>自定义种类</span><input data-companion-field="species" value="${escapeHtml(companion.species === '自定义旅伴' ? '' : companion.species)}" placeholder="例如：史莱姆、龙、机械犬"></label>` : ''}</div></section>${appearanceControls}${environmentControls}<section class="tf-device-skin-section"><header><div><small>DEVICE COLLECTION</small><h3>设备外观</h3><p>10 款机身均有独立轮廓、材质、屏幕与控制细节，不改变宠物数据。</p></div></header><div class="tf-device-skin-grid">${deviceOptions}</div></section></div></details><!-- companion-decorate --></section></div>`;
 }
 
 function renderCompanionPackingPreview(data) {
@@ -2403,6 +2513,7 @@ function showCompanionPanel(panel, { focus = true, preserveCareSource = false } 
     page.querySelector('.tf-device-menu-toggle')?.setAttribute('aria-expanded', String(panel === 'menu'));
     if (viewState.companionFoodMenuOpen) {
         viewState.companionFoodMenuOpen = false;
+        viewState.companionRoomFoodTarget = null;
         page.querySelector('.tf-pet-food-select')?.remove();
         page.querySelector('.tf-device-viewport').classList.remove('is-selecting-food');
     }
@@ -2424,6 +2535,8 @@ function showCompanionPanel(panel, { focus = true, preserveCareSource = false } 
 }
 
 function returnCompanionPanel({ focus = false } = {}) {
+    viewState.companionRoomFoodTarget = null;
+    cancelCompanionRoomCommand();
     if (viewState.companionFoodMenuOpen || viewState.companionCleaning) {
         const source = viewState.companionCareReturnPanel || 'home';
         viewState.companionCareReturnPanel = '';
@@ -2433,6 +2546,9 @@ function returnCompanionPanel({ focus = false } = {}) {
 }
 
 function beginCompanionCare() {
+    cancelCompanionRoomCommand();
+    viewState.companionRoomCare = null;
+    viewState.companionRoomFoodTarget = null;
     clearCompanionRitual();
     companionRoamController?.cancel({ reset: true });
     if (!(viewState.companionCleaning || viewState.companionFoodMenuOpen) || !viewState.companionCareReturnPanel) viewState.companionCareReturnPanel = viewState.companionPanel;
@@ -2446,13 +2562,14 @@ function finishCompanionCare() {
     viewState.companionDeviceCursor = -1;
 }
 
-function openCompanionFoodMenu() {
+function openCompanionFoodMenu(roomTarget = null) {
     if (viewState.moduleBusy.has('travel')) return notify('info', '旅行准备完成后再照顾旅伴');
     const companion = getForumData().world.companion;
     advanceCompanionLife(companion);
     const blocked = canCareForCompanion(companion, 'feed');
     if (blocked) return notify('info', blocked);
     beginCompanionCare();
+    viewState.companionRoomFoodTarget = roomTarget;
     viewState.companionCleaning = false;
     viewState.companionCleanProgress = 0;
     viewState.companionMoreMenuOpen = false;
@@ -2460,6 +2577,104 @@ function openCompanionFoodMenu() {
     viewState.companionFoodIndex = 0;
     viewState.companionDeviceCursor = 0;
     viewState.companionFoodMenuOpen = true;
+    return render({ preserveScroll: true });
+}
+
+async function feedCompanionFood(food, roomTarget = null) {
+    if (viewState.moduleBusy.has('travel')) return;
+    if (viewState.companionRitual?.kind === 'meal' && viewState.companionRitual.until > Date.now()) return;
+    const data = getForumData();
+    const companion = data.world.companion;
+    advanceCompanionLife(companion);
+    const before = { ...companion, cleanliness: companion.life.cleanliness };
+    const blocked = canCareForCompanion(companion, 'feed');
+    if (blocked) return notify('info', blocked);
+    const rewarded = recordCompanionCare(companion, 'feed', { food });
+    const habit = getCompanionHabit(companion);
+    const favorite = food.id === (getCompanionLifeView(companion).favoriteFood?.id || habit.favorite);
+    const liked = favorite || habit.likes.includes(food.id);
+    const happiness = food.happiness + (favorite ? 8 : liked ? 3 : -4);
+    if (rewarded) {
+        companion.satiety = Math.min(100, Number(companion.satiety || 0) + food.satiety);
+        companion.energy = Math.min(100, Number(companion.energy || 0) + food.energy);
+        companion.happiness = Math.max(0, Math.min(100, Number(companion.happiness || 0) + happiness));
+        companion.bond = Math.min(100, Number(companion.bond || 0) + (favorite ? 3 : liked ? 2 : 1));
+    }
+    companion.mood = favorite ? '最喜欢' : liked ? '满足' : '迟疑';
+    companion.lastFood = food.id;
+    companion.lastAction = 'feed';
+    companion.message = favorite ? `${companion.name}一眼认出最喜欢的${food.name}，开心得整只都跳了起来！` : liked ? `${companion.name}认真吃完${food.name}，满足地靠近了屏幕。` : `${companion.name}试探着尝了一口${food.name}；这并不是它最习惯的食物。`;
+    if (!rewarded) companion.message = `${companion.name}还在回味刚才的点心，暂时吃不下更多了。`;
+    showCompanionFeedback(companion, before, rewarded ? `吃到${food.name}啦` : '还在回味，过会儿再吃');
+    companion.lastInteractionAt = Date.now();
+    companion.updatedAt = Date.now();
+    if (companion.status === 'resting') companion.status = 'home';
+    if (roomTarget) viewState.companionRoomCare = { ...roomTarget, kind: 'feed', until: performance.now() + Math.max(COMPANION_ACTION_DURATIONS.feed || 0, rewarded ? 3600 : 0) };
+    else viewState.companionRoomCare = null;
+    activateCompanionVisualAction('feed');
+    viewState.companionFoodMenuOpen = false;
+    finishCompanionCare();
+    if (rewarded) startCompanionRitual(data, { kind: 'meal', foodName: food.name, favorite, message: favorite ? `${companion.name}吃到了心爱的${food.name}，开心地回应你。` : `${companion.name}吃完${food.name}，满足地看向你。` });
+    await saveForumData(data, true);
+    syncInjection();
+    return render({ preserveScroll: true });
+}
+
+async function careForCompanion(care, target, roomTarget = null) {
+    if (viewState.moduleBusy.has('travel')) return notify('info', '旅行准备完成后再照顾旅伴');
+    const data = getForumData();
+    const companion = data.world.companion;
+    advanceCompanionLife(companion);
+    const before = { ...companion, cleanliness: companion.life.cleanliness };
+    const blocked = canCareForCompanion(companion, care);
+    if (blocked) return notify('info', blocked);
+    if (care === 'pet' && viewState.companionCleaning) {
+        if (scrubCompanion(.34)) return handlePetLifeAction('pet-clean-complete', target);
+        return;
+    }
+    if (care === 'feed') return openCompanionFoodMenu();
+    viewState.companionCleaning = false; viewState.companionCleanProgress = 0;
+    const deltas = {
+        pet: { satiety: 0, energy: 1, happiness: 12, bond: 3, mood: '亲昵' },
+        play: { satiety: -5, energy: -9, happiness: 16, bond: 2, mood: '兴奋' },
+        rest: { satiety: -2, energy: 22, happiness: 3, bond: 1, mood: '安心' },
+        brush: { satiety: 0, energy: -2, happiness: 10, bond: 3, mood: '舒适' },
+        dance: { satiety: -4, energy: -8, happiness: 15, bond: 2, mood: '雀跃' },
+        train: { satiety: -3, energy: -7, happiness: 9, bond: 3, mood: '专注' },
+        hide: { satiety: -1, energy: -3, happiness: 11, bond: 2, mood: '顽皮' },
+        talk: { satiety: 0, energy: -1, happiness: 9, bond: 3, mood: '亲近' },
+        dress: { satiety: 0, energy: -1, happiness: 10, bond: 2, mood: '得意' },
+    }[care];
+    if (!deltas) return;
+    finishCompanionCare();
+    const careIndex = COMPANION_CARE_ACTIONS.findIndex(item => item.id === care);
+    viewState.companionMoreMenuOpen = careIndex >= 4;
+    viewState.companionMenuIndex = careIndex >= 4 ? careIndex - 4 : careIndex;
+    if (care !== 'rest' && recordCompanionCare(companion, care)) {
+        for (const field of ['satiety', 'energy', 'happiness', 'bond']) companion[field] = Math.max(0, Math.min(100, Number(companion[field] || 0) + deltas[field]));
+        if (care === 'brush') companion.life.cleanliness = Math.min(100, companion.life.cleanliness + 12);
+    }
+    companion.mood = deltas.mood;
+    companion.lastAction = care;
+    companion.message = ['pet', 'play', 'rest'].includes(care)
+        ? personalizeCompanionReaction(companion, getCompanionHabit(companion)[care])
+        : getCompanionExtraReaction(companion, care);
+    if (care === 'dress') maybeCompanionSelfChangeAccessory(companion, { force: true });
+    else maybeCompanionSelfChangeAccessory(companion);
+    companion.lastInteractionAt = Date.now();
+    companion.updatedAt = Date.now();
+    if (care === 'rest') {
+        tendCompanion(companion, 'rest');
+        companion.life.roomBedId = roomTarget?.itemId || '';
+    }
+    else if (companion.status === 'resting') companion.status = 'home';
+    if (roomTarget && care === 'rest') viewState.companionRoomCare = { ...roomTarget, kind: 'rest' };
+    else viewState.companionRoomCare = null;
+    activateCompanionVisualAction(care);
+    showCompanionFeedback(companion, before, { pet: '蹭蹭你的手', play: '一起玩真开心', rest: '晚安，慢慢恢复体力', brush: '毛毛整理好啦' }[care] || '收到你的陪伴啦');
+    if (care === 'rest') startCompanionRitual(data, { kind: 'bedtime', message: `晚安，${companion.name}。今天也被好好照顾了。` });
+    await saveForumData(data, true);
+    syncInjection();
     return render({ preserveScroll: true });
 }
 
@@ -4130,6 +4345,9 @@ function syncCompanionGamePlayer(root) {
 function handleCompanionGameInput(direction, event) { companionGamePlayer?.press(direction, event); }
 
 async function handlePetLifeAction(action, target) {
+    cancelCompanionRoomCommand();
+    viewState.companionRoomCare = null;
+    viewState.companionRoomFoodTarget = null;
     if (action === 'pet-game-pause') { if (viewState.companionPanel !== 'home') showCompanionPanel('home'); return companionGamePlayer?.togglePause(); }
     if (action === 'pet-growth-show') {
         showCompanionPanel('album');
@@ -4718,6 +4936,7 @@ async function handleRootClick(event) {
         return;
     }
     const action = target.dataset.action;
+    if (action !== 'companion-room-interact' && action !== 'companion-feed-food') cancelCompanionRoomCommand();
     if (action.startsWith('room-')) return handleCompanionRoomAction(action, target, event);
     if (action.startsWith('pet-')) return handlePetLifeAction(action, target);
     if (['toggle-event-hub', 'select-story-event', 'open-story-event', 'track-post-event'].includes(action)) {
@@ -4948,46 +5167,7 @@ async function handleRootClick(event) {
         return;
     }
     if (action === 'companion-food-back') return returnCompanionPanel();
-    if (action === 'companion-feed-food') {
-        if (viewState.moduleBusy.has('travel')) return notify('info', '旅行准备完成后再照顾旅伴');
-        if (viewState.companionRitual?.kind === 'meal' && viewState.companionRitual.until > Date.now()) return;
-        viewState.companionDeviceCursor = -1;
-        const food = COMPANION_FOODS.find(item => item.id === target.dataset.foodId);
-        if (!food) return;
-        const data = getForumData();
-        const companion = data.world.companion;
-        advanceCompanionLife(companion);
-        const before = { ...companion, cleanliness: companion.life.cleanliness };
-        const blocked = canCareForCompanion(companion, 'feed');
-        if (blocked) return notify('info', blocked);
-        const rewarded = recordCompanionCare(companion, 'feed', { food });
-        const habit = getCompanionHabit(companion);
-        const favorite = food.id === (getCompanionLifeView(companion).favoriteFood?.id || habit.favorite);
-        const liked = favorite || habit.likes.includes(food.id);
-        const happiness = food.happiness + (favorite ? 8 : liked ? 3 : -4);
-        if (rewarded) {
-            companion.satiety = Math.min(100, Number(companion.satiety || 0) + food.satiety);
-            companion.energy = Math.min(100, Number(companion.energy || 0) + food.energy);
-            companion.happiness = Math.max(0, Math.min(100, Number(companion.happiness || 0) + happiness));
-            companion.bond = Math.min(100, Number(companion.bond || 0) + (favorite ? 3 : liked ? 2 : 1));
-        }
-        companion.mood = favorite ? '最喜欢' : liked ? '满足' : '迟疑';
-        companion.lastFood = food.id;
-        companion.lastAction = 'feed';
-        companion.message = favorite ? `${companion.name}一眼认出最喜欢的${food.name}，开心得整只都跳了起来！` : liked ? `${companion.name}认真吃完${food.name}，满足地靠近了屏幕。` : `${companion.name}试探着尝了一口${food.name}；这并不是它最习惯的食物。`;
-        if (!rewarded) companion.message = `${companion.name}还在回味刚才的点心，暂时吃不下更多了。`;
-        showCompanionFeedback(companion, before, rewarded ? `吃到${food.name}啦` : '还在回味，过会儿再吃');
-        companion.lastInteractionAt = Date.now();
-        companion.updatedAt = Date.now();
-        if (companion.status === 'resting') companion.status = 'home';
-        activateCompanionVisualAction('feed');
-        viewState.companionFoodMenuOpen = false;
-        finishCompanionCare();
-        if (rewarded) startCompanionRitual(data, { kind: 'meal', foodName: food.name, favorite, message: favorite ? `${companion.name}吃到了心爱的${food.name}，开心地回应你。` : `${companion.name}吃完${food.name}，满足地看向你。` });
-        await saveForumData(data, true);
-        syncInjection();
-        return render({ preserveScroll: true });
-    }
+    if (action === 'companion-feed-food') return chooseCompanionRoomFood(target.dataset.foodId);
     if (action === 'choose-companion-device') {
         const skin = COMPANION_DEVICE_SKINS.find(item => item.id === target.dataset.deviceSkin);
         if (!skin) return;
@@ -5020,58 +5200,10 @@ async function handleRootClick(event) {
         return;
     }
     if (action === 'companion-care') {
-        if (viewState.moduleBusy.has('travel')) return notify('info', '旅行准备完成后再照顾旅伴');
-        const data = getForumData();
-        const companion = data.world.companion;
-        const care = target.dataset.care;
-        advanceCompanionLife(companion);
-        const before = { ...companion, cleanliness: companion.life.cleanliness };
-        const blocked = canCareForCompanion(companion, care);
-        if (blocked) return notify('info', blocked);
-        if (care === 'pet' && viewState.companionCleaning) {
-            if (scrubCompanion(.34)) return handlePetLifeAction('pet-clean-complete', target);
-            return;
-        }
-        if (care === 'feed') return openCompanionFoodMenu();
-        viewState.companionCleaning = false; viewState.companionCleanProgress = 0;
-        const deltas = {
-            pet: { satiety: 0, energy: 1, happiness: 12, bond: 3, mood: '亲昵' },
-            play: { satiety: -5, energy: -9, happiness: 16, bond: 2, mood: '兴奋' },
-            rest: { satiety: -2, energy: 22, happiness: 3, bond: 1, mood: '安心' },
-            brush: { satiety: 0, energy: -2, happiness: 10, bond: 3, mood: '舒适' },
-            dance: { satiety: -4, energy: -8, happiness: 15, bond: 2, mood: '雀跃' },
-            train: { satiety: -3, energy: -7, happiness: 9, bond: 3, mood: '专注' },
-            hide: { satiety: -1, energy: -3, happiness: 11, bond: 2, mood: '顽皮' },
-            talk: { satiety: 0, energy: -1, happiness: 9, bond: 3, mood: '亲近' },
-            dress: { satiety: 0, energy: -1, happiness: 10, bond: 2, mood: '得意' },
-        }[care];
-        if (!deltas) return;
-        finishCompanionCare();
-        const careIndex = COMPANION_CARE_ACTIONS.findIndex(item => item.id === care);
-        viewState.companionMoreMenuOpen = careIndex >= 4;
-        viewState.companionMenuIndex = careIndex >= 4 ? careIndex - 4 : careIndex;
-        if (care !== 'rest' && recordCompanionCare(companion, care)) {
-            for (const field of ['satiety', 'energy', 'happiness', 'bond']) companion[field] = Math.max(0, Math.min(100, Number(companion[field] || 0) + deltas[field]));
-            if (care === 'brush') companion.life.cleanliness = Math.min(100, companion.life.cleanliness + 12);
-        }
-        companion.mood = deltas.mood;
-        companion.lastAction = care;
-        companion.message = ['pet', 'play', 'rest'].includes(care)
-            ? personalizeCompanionReaction(companion, getCompanionHabit(companion)[care])
-            : getCompanionExtraReaction(companion, care);
-        if (care === 'dress') maybeCompanionSelfChangeAccessory(companion, { force: true });
-        else maybeCompanionSelfChangeAccessory(companion);
-        companion.lastInteractionAt = Date.now();
-        companion.updatedAt = Date.now();
-        if (care === 'rest') tendCompanion(companion, 'rest');
-        else if (companion.status === 'resting') companion.status = 'home';
-        activateCompanionVisualAction(care);
-        showCompanionFeedback(companion, before, { pet: '蹭蹭你的手', play: '一起玩真开心', rest: '晚安，慢慢恢复体力', brush: '毛毛整理好啦' }[care] || '收到你的陪伴啦');
-        if (care === 'rest') startCompanionRitual(data, { kind: 'bedtime', message: `晚安，${companion.name}。今天也被好好照顾了。` });
-        await saveForumData(data, true);
-        syncInjection();
-        return render({ preserveScroll: true });
+        cancelCompanionRoomCommand();
+        return careForCompanion(target.dataset.care, target);
     }
+    if (action === 'companion-room-interact') return interactWithCompanionRoom(target.dataset.roomItemId);
     if (action === 'companion-depart-ai' || action === 'companion-depart-local') {
         const companion = getForumData().world.companion;
         const blocked = canCareForCompanion(companion, 'trip');
@@ -6995,7 +7127,7 @@ function bindSillyTavernEvents() {
         if (viewState.autoRefreshTimer) window.clearTimeout(viewState.autoRefreshTimer);
         viewState.autoRefreshTimer = 0;
     };
-    if (context.eventTypes?.CHAT_CHANGED) context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => { companionRoamController?.cancel({ reset: true }); clearCompanionRitual(); viewState.companionDeviceCursor = -1; viewState.companionMenuSelection = 'status'; viewState.companionCareReturnPanel = ''; viewState.companionPanel = 'home'; viewState.companionProfileOpen = false; viewState.companionAppearanceDraft = null; viewState.companionRoomDraft = null; companionGamePlayer?.stop(false); viewState.companionGameResultOpen = false; cancelCompanionTouch(); viewState.companionCleaning = false; viewState.companionCleanProgress = 0; viewState.companionFeedback = null; viewState.companionFoodMenuOpen = false; viewState.companionVisualAction = ""; viewState.companionActionToken += 1; clearTimeout(viewState.companionActionTimer); clearTimeout(viewState.companionFeedbackTimer); cancelAutoRefresh(); viewState.generationController?.abort(); viewState.generationStage = ''; viewState.pendingImport = null; viewState.worldCatalog = []; viewState.promptSourceContext = null; viewState.selectedNpcId = ''; viewState.publicNpcId = ''; viewState.selectedPostId = ''; viewState.selectedConversationId = ''; viewState.selectedEventId = ''; viewState.eventHubOpen = false; viewState.deliverySelections.clear(); viewState.deliveryReviews.clear(); viewState.replyTarget = null; viewState.expandedComments.clear(); refresh(); });
+    if (context.eventTypes?.CHAT_CHANGED) context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => { companionRoamController?.cancel({ reset: true }); clearCompanionRitual(); viewState.companionDeviceCursor = -1; viewState.companionMenuSelection = 'status'; viewState.companionCareReturnPanel = ''; viewState.companionPanel = 'home'; viewState.companionProfileOpen = false; viewState.companionAppearanceDraft = null; viewState.companionRoomDraft = null; viewState.companionRoomCare = null; viewState.companionRoomFoodTarget = null; viewState.companionRoomCommand = null; companionGamePlayer?.stop(false); viewState.companionGameResultOpen = false; cancelCompanionTouch(); viewState.companionCleaning = false; viewState.companionCleanProgress = 0; viewState.companionFeedback = null; viewState.companionFoodMenuOpen = false; viewState.companionVisualAction = ""; viewState.companionActionToken += 1; clearTimeout(viewState.companionActionTimer); clearTimeout(viewState.companionFeedbackTimer); cancelAutoRefresh(); viewState.generationController?.abort(); viewState.generationStage = ''; viewState.pendingImport = null; viewState.worldCatalog = []; viewState.promptSourceContext = null; viewState.selectedNpcId = ''; viewState.publicNpcId = ''; viewState.selectedPostId = ''; viewState.selectedConversationId = ''; viewState.selectedEventId = ''; viewState.eventHubOpen = false; viewState.deliverySelections.clear(); viewState.deliveryReviews.clear(); viewState.replyTarget = null; viewState.expandedComments.clear(); refresh(); });
     if (context.eventTypes?.MESSAGE_RECEIVED) context.eventSource.on(context.eventTypes.MESSAGE_RECEIVED, (_messageId, type) => {
         if (type === 'first_message' || !getSettings().generation.autoRefreshOnMessage || !getSettings().modules.forum.enabled || !hasActiveChat()) return;
         cancelAutoRefresh();

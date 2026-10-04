@@ -1,6 +1,6 @@
 {
   "name": "tavern-forum-cyan",
-  "version": "0.11.11",
+  "version": "0.11.12",
   "private": true,
   "type": "module",
   "description": "An immersive in-world social forum extension for SillyTavern.",
@@ -9,8 +9,8 @@
     "url": "https://github.com/jiucyan/tavern-forum-cyan.git"
   },
   "scripts": {
-    "check": "node --check index.js && node --check src/api.js && node --check src/companion-art.js && node --check src/forum.js && node --check src/prompt.js && node --check src/store.js && node --check src/world.js && node --check src/ui-v3.js && node --check src/workflows.js && node --check src/backup.js && node --check src/memory.js && node --check src/events.js && node --check src/task-delivery.js && node --check src/companion-life.js && node --check src/companion-life-ui.js && node --check src/companion-ritual-ui.js && node --check src/companion-touch.js && node --check src/companion-games.js && node --check src/companion-game-player.js && node --check src/companion-growth-art.js && node --check src/companion-device-ui.js && node --check src/companion-scenes.js && node --check src/companion-room.js && node --check src/companion-room-ui.js && node --check src/companion-idle.js && node --check src/companion-roam.js && node --check src/companion-icons.js",
-    "test": "node --test test/companion-art.test.js test/prompt.test.js test/store.test.js test/version.test.js test/world.test.js test/workflows.test.js test/memory.test.js test/packing.test.js test/events-delivery.test.js test/companion-life.test.js test/companion-games.test.js test/companion-scenes.test.js test/companion-room.test.js test/companion-idle.test.js test/companion-roam.test.js",
+    "check": "node --check index.js && node --check src/api.js && node --check src/companion-art.js && node --check src/forum.js && node --check src/prompt.js && node --check src/store.js && node --check src/world.js && node --check src/ui-v3.js && node --check src/workflows.js && node --check src/backup.js && node --check src/memory.js && node --check src/events.js && node --check src/task-delivery.js && node --check src/companion-life.js && node --check src/companion-life-ui.js && node --check src/companion-ritual-ui.js && node --check src/companion-touch.js && node --check src/companion-games.js && node --check src/companion-game-player.js && node --check src/companion-growth-art.js && node --check src/companion-device-ui.js && node --check src/companion-scenes.js && node --check src/companion-room.js && node --check src/companion-room-ui.js && node --check src/companion-idle.js && node --check src/companion-roam.js && node --check src/companion-icons.js && node --check src/companion-room-live-ui.js && node --check src/companion-room-path.js && node --check src/companion-room-pose.js",
+    "test": "node --test test/companion-art.test.js test/prompt.test.js test/store.test.js test/version.test.js test/world.test.js test/workflows.test.js test/memory.test.js test/packing.test.js test/events-delivery.test.js test/companion-life.test.js test/companion-games.test.js test/companion-scenes.test.js test/companion-room.test.js test/companion-idle.test.js test/companion-roam.test.js test/companion-room-path.test.js",
     "test:visual": "node test/visual-preview.mjs",
     "test:workflows": "node test/workflow-ui.mjs",
     "test:companion-touch": "node test/companion-touch-ui.mjs",

@@ -1,28 +1,29 @@
 // A room uses the same 320 × 240 coordinate system as the pet scene.
 // Item positions are center anchors; the editor and the live room share this art.
 export const ROOM_MAX_ITEMS = 24;
+export const ROOM_FLOOR_Y = 112;
 
 export const ROOM_FURNITURE = Object.freeze([
-    { id: 'bed', name: '小床', category: 'furniture', width: 72, height: 46 },
-    { id: 'sofa', name: '软沙发', category: 'furniture', width: 70, height: 40 },
-    { id: 'table', name: '圆角茶几', category: 'furniture', width: 50, height: 40 },
-    { id: 'chair', name: '木椅', category: 'furniture', width: 28, height: 34 },
-    { id: 'bookshelf', name: '书柜', category: 'furniture', width: 44, height: 78 },
-    { id: 'drawer', name: '抽屉柜', category: 'furniture', width: 44, height: 38 },
-    { id: 'lamp', name: '落地灯', category: 'furniture', width: 26, height: 60 },
-    { id: 'stool', name: '小圆凳', category: 'furniture', width: 28, height: 22 },
-    { id: 'plant', name: '绿植', category: 'decor', width: 30, height: 42 },
-    { id: 'flowers', name: '花盆', category: 'decor', width: 30, height: 32 },
-    { id: 'rug', name: '织纹地毯', category: 'decor', width: 82, height: 28 },
-    { id: 'cushion', name: '软垫', category: 'decor', width: 40, height: 26 },
-    { id: 'food-bowl', name: '饭碗', category: 'decor', width: 30, height: 18 },
-    { id: 'toy', name: '玩具球', category: 'decor', width: 26, height: 26 },
-    { id: 'basket', name: '收纳篮', category: 'decor', width: 34, height: 30 },
-    { id: 'aquarium', name: '小鱼缸', category: 'decor', width: 46, height: 34 },
-    { id: 'window', name: '小窗', category: 'wall', width: 64, height: 54 },
-    { id: 'picture', name: '风景画', category: 'wall', width: 38, height: 32 },
-    { id: 'clock', name: '挂钟', category: 'wall', width: 28, height: 28 },
-    { id: 'wall-shelf', name: '壁挂架', category: 'wall', width: 52, height: 34 },
+    { id: 'bed', name: '小床', category: 'furniture', width: 112, height: 68 },
+    { id: 'sofa', name: '软沙发', category: 'furniture', width: 116, height: 58 },
+    { id: 'table', name: '圆角茶几', category: 'furniture', width: 68, height: 50 },
+    { id: 'chair', name: '木椅', category: 'furniture', width: 42, height: 48 },
+    { id: 'bookshelf', name: '书柜', category: 'furniture', width: 60, height: 88 },
+    { id: 'drawer', name: '抽屉柜', category: 'furniture', width: 62, height: 48 },
+    { id: 'lamp', name: '落地灯', category: 'furniture', width: 34, height: 72 },
+    { id: 'stool', name: '小圆凳', category: 'furniture', width: 40, height: 30 },
+    { id: 'plant', name: '绿植', category: 'decor', width: 42, height: 56 },
+    { id: 'flowers', name: '花盆', category: 'decor', width: 40, height: 42 },
+    { id: 'rug', name: '织纹地毯', category: 'decor', width: 112, height: 44 },
+    { id: 'cushion', name: '软垫', category: 'decor', width: 64, height: 40 },
+    { id: 'food-bowl', name: '饭碗', category: 'decor', width: 38, height: 24 },
+    { id: 'toy', name: '玩具球', category: 'decor', width: 32, height: 32 },
+    { id: 'basket', name: '收纳篮', category: 'decor', width: 44, height: 36 },
+    { id: 'aquarium', name: '小鱼缸', category: 'decor', width: 60, height: 42 },
+    { id: 'window', name: '小窗', category: 'wall', width: 84, height: 64 },
+    { id: 'picture', name: '风景画', category: 'wall', width: 50, height: 40 },
+    { id: 'clock', name: '挂钟', category: 'wall', width: 32, height: 32 },
+    { id: 'wall-shelf', name: '壁挂架', category: 'wall', width: 70, height: 40 },
 ].map(Object.freeze));
 
 export const ROOM_WALLS = Object.freeze([
@@ -63,6 +64,71 @@ export function getRoomItemBounds(item) {
     return { x: number(item.x, 160) - width / 2, y: number(item.y, 190) - height / 2, width, height };
 }
 
+function roomPoint(item, u, v) {
+    const definition = furnitureById.get(item?.type);
+    const dx = (u - .5) * definition.width, dy = (v - .5) * definition.height;
+    const turn = rotate(item.rotation);
+    const offset = [[dx, dy], [-dy, dx], [-dx, -dy], [dy, -dx]][turn];
+    return { x: number(item.x, 160) + offset[0], y: number(item.y, 190) + offset[1] };
+}
+
+// Only the floor projection blocks walking. A tall cupboard's upper half
+// occupies wall space, and rugs or soft cushions can be walked over.
+const floorProjections = Object.freeze({
+    bed: [.08, .48, .86, .44], sofa: [.08, .48, .84, .43], table: [.12, .42, .76, .49],
+    chair: [.14, .50, .74, .44], bookshelf: [.08, .79, .82, .17], drawer: [.08, .61, .83, .32],
+    lamp: [.17, .83, .68, .12], stool: [.10, .43, .80, .45], plant: [.18, .70, .64, .24],
+    flowers: [.18, .70, .64, .22], 'food-bowl': [.10, .47, .80, .43], toy: [.12, .56, .76, .35],
+    basket: [.13, .53, .74, .40], aquarium: [.08, .77, .86, .17],
+});
+
+export function getRoomItemFootprint(item) {
+    const footprint = floorProjections[item?.type];
+    if (!furnitureById.has(item?.type) || !footprint) return null;
+    const [left, top, width, height] = footprint;
+    const corners = [[left, top], [left + width, top], [left, top + height], [left + width, top + height]].map(([u, v]) => roomPoint(item, u, v));
+    const x = Math.min(...corners.map(point => point.x)), y = Math.min(...corners.map(point => point.y));
+    return { x, y, width: Math.max(...corners.map(point => point.x)) - x, height: Math.max(...corners.map(point => point.y)) - y };
+}
+
+export function getRoomItemDepth(item) {
+    const definition = furnitureById.get(item?.type);
+    if (!definition || definition.category === 'wall') return 0;
+    if (item.type === 'rug') return 1;
+    const footprint = getRoomItemFootprint(item);
+    const bounds = getRoomItemBounds(item);
+    return footprint ? footprint.y + footprint.height : bounds.y + bounds.height - 3;
+}
+
+export function getRoomInteraction(item) {
+    if (!furnitureById.has(item?.type)) return null;
+    const interactions = {
+        bed: { kind: 'rest', label: '睡一会儿', u: .57, v: .42 },
+        sofa: { kind: 'sit', label: '坐一会儿', u: .51, v: .60 },
+        cushion: { kind: 'lie', label: '趴在软垫上', u: .5, v: .56 },
+        'food-bowl': { kind: 'feed', label: '去饭碗看看', u: .5, v: 1.1 },
+        toy: { kind: 'play', label: '去玩球', u: .5, v: 1.1 },
+        window: { kind: 'look', label: '看看窗外', u: .5, v: 1.18 },
+    };
+    const interaction = interactions[item.type];
+    if (!interaction) return null;
+    const anchor = roomPoint(item, interaction.u, interaction.v);
+    const proposed = roomPoint(item, .5, 1 + 15 / furnitureById.get(item.type).height);
+    const footprint = getRoomItemFootprint(item);
+    const limit = point => ({ x: clamp(point.x, 12, 308), y: clamp(point.y, ROOM_FLOOR_Y + 8, 232) });
+    let approach = limit(proposed);
+    const clear = point => !footprint || point.x <= footprint.x - 8 || point.x >= footprint.x + footprint.width + 8 || point.y <= footprint.y - 8 || point.y >= footprint.y + footprint.height + 8;
+    if (!clear(approach)) {
+        const candidates = [
+            { x: footprint.x - 9, y: proposed.y }, { x: footprint.x + footprint.width + 9, y: proposed.y },
+            { x: proposed.x, y: footprint.y + footprint.height + 9 }, { x: proposed.x, y: footprint.y - 9 },
+        ].map(limit).filter(clear).sort((a, b) => Math.hypot(a.x - proposed.x, a.y - proposed.y) - Math.hypot(b.x - proposed.x, b.y - proposed.y));
+        if (candidates.length) approach = candidates[0];
+    }
+    if (['feed', 'play', 'look'].includes(interaction.kind)) Object.assign(anchor, approach);
+    return { kind: interaction.kind, label: interaction.label, itemId: item.id, type: item.type, approach, anchor, rotation: rotate(item.rotation), facing: rotate(item.rotation) === 1 ? 'left' : rotate(item.rotation) === 3 ? 'right' : item.x < 160 ? 'right' : 'left' };
+}
+
 export function normalizeCompanionRoom(raw) {
     const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
     const seen = new Set();
@@ -81,10 +147,15 @@ export function normalizeCompanionRoom(raw) {
         seen.add(id);
         const item = { id, type: definition.id, x: number(candidate.x, 160), y: number(candidate.y, definition.category === 'wall' ? 78 : 190), rotation: rotate(candidate.rotation), color: colorsById.has(candidate.color) ? candidate.color : 'natural' };
         const bounds = getRoomItemBounds(item);
-        const minY = definition.category === 'wall' ? 18 : 142;
-        const maxY = definition.category === 'wall' ? 145 : 240;
         item.x = clamp(item.x, bounds.width / 2, 320 - bounds.width / 2);
-        item.y = clamp(item.y, minY + bounds.height / 2, maxY - bounds.height / 2);
+        if (definition.category === 'wall') {
+            // Preserve low wall decorations saved before the deeper floor was introduced.
+            item.y = clamp(item.y, 18 + bounds.height / 2, 145 - bounds.height / 2);
+        } else {
+            const contact = roomPoint(item, .5, .94);
+            const minimum = getRoomItemFootprint(item) ? Math.max(bounds.height / 2, ROOM_FLOOR_Y + 4 - (contact.y - item.y)) : ROOM_FLOOR_Y + bounds.height / 2;
+            item.y = clamp(item.y, minimum, 240 - bounds.height / 2);
+        }
         items.push(item);
     }
     return { enabled: source.enabled === true, wall: chosenId(ROOM_WALLS, source.wall, 'cream'), floor: chosenId(ROOM_FLOORS, source.floor, 'wood'), items };
@@ -95,14 +166,23 @@ export function addRoomItem(room, type, x, y, color = 'natural') {
     if (!furnitureById.has(type) || current.items.length >= ROOM_MAX_ITEMS) return current;
     let counter = 1;
     while (current.items.some(item => item.id === `room-item-${counter}`)) counter++;
-    return normalizeCompanionRoom({ ...current, items: [...current.items, { id: `room-item-${counter}`, type, x, y, color, rotation: 0 }] });
+    return normalizeEditedItem({ ...current, items: [...current.items, { id: `room-item-${counter}`, type, x, y, color, rotation: 0 }] }, `room-item-${counter}`);
+}
+
+function normalizeEditedItem(room, id) {
+    const normalized = normalizeCompanionRoom(room), item = normalized.items.find(value => value.id === id);
+    if (item && furnitureById.get(item.type).category === 'wall') {
+        const bounds = getRoomItemBounds(item);
+        item.y = clamp(item.y, 18 + bounds.height / 2, ROOM_FLOOR_Y - bounds.height / 2);
+    }
+    return normalized;
 }
 
 export function updateRoomItem(room, id, changes) {
     const current = normalizeCompanionRoom(room);
     const patch = changes && typeof changes === 'object' ? changes : {};
     // Identity and furniture kind belong to the placed item, not to an edit patch.
-    return normalizeCompanionRoom({ ...current, items: current.items.map(item => item.id === id ? { ...item, x: patch.x ?? item.x, y: patch.y ?? item.y, rotation: patch.rotation ?? item.rotation, color: patch.color ?? item.color } : item) });
+    return normalizeEditedItem({ ...current, items: current.items.map(item => item.id === id ? { ...item, x: patch.x ?? item.x, y: patch.y ?? item.y, rotation: patch.rotation ?? item.rotation, color: patch.color ?? item.color } : item) }, id);
 }
 
 export function removeRoomItem(room, id) {
@@ -112,9 +192,9 @@ export function removeRoomItem(room, id) {
 
 export function createCompanionRoomPreset(id = 'cozy') {
     const presets = {
-        cozy: { wall: 'cream', floor: 'wood', items: [['window', 72, 64], ['clock', 176, 53], ['picture', 253, 73, 'rose'], ['bed', 58, 196, 'rose'], ['lamp', 108, 178], ['rug', 175, 216, 'sage'], ['plant', 279, 182, 'sage'], ['basket', 266, 224]] },
-        garden: { wall: 'sage', floor: 'lightwood', items: [['window', 170, 64, 'sage'], ['wall-shelf', 64, 93], ['picture', 264, 81, 'sage'], ['sofa', 58, 188, 'sage'], ['table', 92, 220], ['rug', 187, 218, 'sage'], ['flowers', 278, 175, 'rose'], ['plant', 253, 216, 'sage']] },
-        study: { wall: 'blue', floor: 'lightwood', items: [['window', 152, 66, 'sky'], ['clock', 273, 57], ['wall-shelf', 57, 97], ['bookshelf', 37, 186], ['drawer', 281, 168], ['table', 257, 207, 'sky'], ['chair', 203, 221, 'sky'], ['rug', 139, 215]] },
+        cozy: { wall: 'cream', floor: 'wood', items: [['window', 164, 51], ['picture', 61, 54, 'rose'], ['sofa', 62, 152, 'sage'], ['bed', 258, 161, 'rose'], ['lamp', 20, 101], ['plant', 235, 104, 'sage'], ['rug', 162, 202, 'sage'], ['food-bowl', 174, 226, 'rose'], ['toy', 128, 222], ['basket', 291, 218]] },
+        garden: { wall: 'sage', floor: 'lightwood', items: [['window', 176, 51, 'sage'], ['picture', 61, 55, 'sage'], ['sofa', 62, 145, 'sage'], ['cushion', 262, 171, 'sage'], ['table', 55, 207], ['plant', 225, 106, 'sage'], ['flowers', 278, 104, 'rose'], ['rug', 166, 198, 'sage'], ['food-bowl', 256, 222, 'sage'], ['toy', 130, 223, 'rose']] },
+        study: { wall: 'blue', floor: 'lightwood', items: [['window', 156, 51, 'sky'], ['wall-shelf', 270, 55], ['sofa', 62, 150, 'sky'], ['bed', 263, 162], ['bookshelf', 31, 106], ['plant', 230, 106, 'sage'], ['rug', 166, 199], ['table', 67, 211, 'sky'], ['food-bowl', 270, 225, 'sky'], ['toy', 131, 222]] },
     };
     const preset = presets[id] || presets.cozy;
     return normalizeCompanionRoom({ ...preset, enabled: true, items: preset.items.map(([type, x, y, color = 'natural'], index) => ({ id: `room-item-${index + 1}`, type, x, y, rotation: 0, color })) });
@@ -129,7 +209,7 @@ const tint = (hex, amount, target = '#f6f0df') => {
 };
 const contactShadow = (width, height) => path(`M4 ${height - 5}H${width - 4}V${height - 4}H${width - 1}V${height - 2}H${width - 5}V${height}H5V${height - 1}H1V${height - 3}H4Z`, '#6e6653', 'opacity=".17"');
 
-function itemArt(type, color) {
+function smallItemArt(type, color) {
     const p = colorsById.get(color) || ROOM_COLORS[0];
     const r = rect;
     const top = tint(p.wood, .38), side = tint(p.wood, .2, p.dark);
@@ -283,6 +363,49 @@ function itemArt(type, color) {
     }
 }
 
+// Secondary pieces keep the established palette and detail rhythm, with a
+// furniture-scale footprint. Upholstered pieces have their own larger drawing.
+const originalArtSizes = Object.freeze({
+    table: [50, 40], chair: [28, 34], bookshelf: [44, 78], drawer: [44, 38], lamp: [26, 60], stool: [28, 22],
+    plant: [30, 42], flowers: [30, 32], rug: [82, 28], 'food-bowl': [30, 18], toy: [26, 26], basket: [34, 30], aquarium: [46, 34],
+    window: [64, 54], picture: [38, 32], clock: [28, 28], 'wall-shelf': [52, 34],
+});
+
+function itemArt(type, color) {
+    const definition = furnitureById.get(type), p = colorsById.get(color) || ROOM_COLORS[0], r = rect;
+    const top = tint(p.wood, .34), side = tint(p.wood, .18, p.dark), fabric = tint(p.accent, .35), seam = tint(p.accent, .3, p.dark), cream = '#f4ead5';
+    if (type === 'sofa') return [
+        contactShadow(116, 58), path('M16 3H100V5H104V30H12V7H16Z', seam), r(17, 5, 82, 3, tint(fabric, .32)),
+        path('M16 9H55V29H15V11H16ZM58 9H99V11H101V29H58Z', fabric), r(19, 11, 31, 1, tint(fabric, .38)), r(63, 11, 31, 1, tint(fabric, .38)),
+        r(54, 10, 2, 16, seam), r(57, 10, 1, 16, tint(fabric, .28)),
+        r(10, 29, 96, 18, p.accent), path('M14 30H54V39H13V32H14ZM58 30H102V32H104V39H58Z', p.soft), r(15, 31, 36, 2, cream), r(61, 31, 39, 2, cream),
+        r(14, 40, 88, 2, seam), r(15, 43, 87, 3, fabric), r(17, 47, 83, 2, seam),
+        path('M3 20H12V23H15V43H12V46H3V44H0V23H3Z', seam), r(3, 21, 9, 3, p.soft), r(3, 25, 9, 16, fabric), r(3, 26, 2, 12, tint(fabric, .3)),
+        path('M104 20H113V23H116V43H113V46H104V43H101V23H104Z', seam), r(104, 21, 9, 3, p.soft), r(104, 25, 8, 16, fabric), r(110, 26, 2, 13, seam),
+        r(13, 48, 7, 6, side), r(96, 48, 7, 6, side), r(14, 48, 2, 3, top), r(97, 48, 2, 3, top),
+        path('M24 15H40V17H42V28H24V26H22V17H24Z', seam), r(24, 16, 16, 10, p.soft), r(26, 17, 12, 1, cream), r(30, 20, 4, 3, p.accent),
+        r(82, 22, 12, 11, tint(p.accent, .55)), r(83, 23, 10, 1, cream), r(91, 24, 2, 8, seam),
+    ].join('');
+    if (type === 'bed') return [
+        contactShadow(112, 68), path('M6 3H19V5H22V51H5V5H6Z', side), r(8, 5, 10, 3, top), r(8, 10, 9, 33, p.wood), r(9, 12, 2, 26, top),
+        r(10, 48, 98, 12, side), r(12, 49, 94, 3, p.wood), r(16, 58, 7, 6, p.dark), r(96, 58, 7, 6, p.dark),
+        path('M20 12H101V15H106V45H104V50H20Z', seam), r(21, 13, 80, 3, cream), r(22, 17, 82, 27, p.soft), r(22, 45, 82, 4, tint(p.soft, .2, p.dark)),
+        path('M27 17H43V19H46V33H43V35H26V32H24V20H27Z', '#d8c9aa'), r(27, 18, 16, 13, cream), r(29, 19, 12, 2, '#fff6e4'), r(28, 31, 14, 2, '#e3d4b7'),
+        r(49, 16, 54, 28, fabric), r(52, 18, 48, 20, p.accent), r(53, 19, 2, 17, tint(p.accent, .5)), r(97, 19, 2, 18, seam),
+        r(49, 39, 54, 6, p.soft), r(50, 39, 51, 2, cream), [57, 68, 79, 90].map(x => r(x, 42, 5, 1, seam)).join(''),
+        r(16, 54, 84, 1, top), r(27, 56, 17, 1, tint(p.wood, .35)), path('M104 40H111V57H107V60H104Z', side), r(105, 40, 6, 2, top),
+    ].join('');
+    if (type === 'cushion') return [
+        contactShadow(64, 40), path('M12 3H52V5H58V9H62V15H64V27H60V32H54V35H10V32H4V27H0V15H3V9H7V5H12Z', seam),
+        path('M13 5H51V7H56V11H60V16H61V24H57V29H51V31H13V29H7V24H3V16H5V11H9V7H13Z', fabric),
+        r(15, 7, 33, 2, tint(fabric, .35)), r(11, 11, 2, 15, p.soft), r(51, 11, 2, 15, seam),
+        path('M13 27H51V30H47V32H17V30H13Z', p.accent), r(28, 17, 9, 5, p.accent), r(29, 17, 7, 2, p.soft),
+        [19, 31, 43].map(x => r(x, 12, 3, 1, p.soft) + r(x, 25, 3, 1, seam)).join(''),
+    ].join('');
+    const [width, height] = originalArtSizes[type];
+    return `<g transform="scale(${definition.width / width} ${definition.height / height})">${smallItemArt(type, color)}</g>`;
+}
+
 function placedArt(item) {
     const definition = furnitureById.get(item.type);
     return `<g data-room-item="${item.id}" transform="translate(${item.x} ${item.y}) rotate(${item.rotation * 90})"><g transform="translate(${-definition.width / 2} ${-definition.height / 2})">${itemArt(item.type, item.color)}</g></g>`;
@@ -298,15 +421,21 @@ export function renderRoomFurniture(type, color = 'natural', rotation = 0) {
     return `<svg class="tf-room-furniture-art" viewBox="0 0 ${bounds.width + 8} ${bounds.height + 8}" shape-rendering="crispEdges" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">${placedArt(item)}</svg>`;
 }
 
+export function renderRoomPlacedFurniture(item) {
+    if (!furnitureById.has(item?.type)) return '';
+    const normalized = normalizeCompanionRoom({ items: [item] }).items[0];
+    return `<svg class="tf-scene-art tf-room-placed-art" data-room-type="${normalized.type}" viewBox="0 0 320 240" preserveAspectRatio="none" shape-rendering="crispEdges" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">${placedArt(normalized)}</svg>`;
+}
+
 function floorArt(floor) {
-    let art = rect(0, 142, 320, 98, floor.color);
-    const project = (x, y) => Math.round(160 + (x - 160) * (1 + (y - 142) / 190));
+    let art = rect(0, ROOM_FLOOR_Y, 320, 240 - ROOM_FLOOR_Y, floor.color);
+    const project = (x, y) => Math.round(160 + (x - 160) * (1 + (y - ROOM_FLOOR_Y) / 220));
     const line = (x1, y1, x2, y2, color, opacity = 1) => `<path d="M${x1} ${y1}L${x2} ${y2}" stroke="${color}" stroke-width="1" opacity="${opacity}" fill="none"/>`;
-    const rows = [142, 154, 171, 191, 214, 240];
+    const rows = [ROOM_FLOOR_Y, 127, 146, 169, 198, 240];
     if (floor.id === 'wood' || floor.id === 'lightwood') {
         for (let x = -20; x <= 340; x += 36) {
-            art += line(project(x, 142), 142, project(x, 240), 240, floor.line, .64);
-            art += line(project(x, 142) + 1, 142, project(x, 240) + 1, 240, tint(floor.color, .34), .8);
+            art += line(project(x, ROOM_FLOOR_Y), ROOM_FLOOR_Y, project(x, 240), 240, floor.line, .64);
+            art += line(project(x, ROOM_FLOOR_Y) + 1, ROOM_FLOOR_Y, project(x, 240) + 1, 240, tint(floor.color, .34), .8);
         }
         for (let row = 0; row < rows.length - 1; row++) {
             const y = rows[row + 1];
@@ -336,23 +465,23 @@ function floorArt(floor) {
             }
         }
     }
-    return art + `<g opacity=".1">${rect(0, 142, 320, 3, '#5e6655')}</g><g opacity=".08">${rect(0, 146, 320, 7, floor.line)}</g>`;
+    return art + `<g opacity=".1">${rect(0, ROOM_FLOOR_Y, 320, 3, '#5e6655')}</g><g opacity=".08">${rect(0, ROOM_FLOOR_Y + 4, 320, 7, floor.line)}</g>`;
 }
 
 function wallArt(wall) {
     const upper = tint(wall.color, .13), panel = tint(wall.color, .18, '#a3987f');
-    let art = rect(0, 0, 320, 142, wall.color) + rect(8, 8, 304, 94, upper);
+    let art = rect(0, 0, 320, ROOM_FLOOR_Y, wall.color) + rect(8, 8, 304, 64, upper);
     art += rect(0, 0, 320, 4, '#e2d8bf') + rect(0, 4, 320, 2, '#f4ecd7') + rect(0, 6, 320, 2, tint(wall.color, .18, '#a3987f'));
     // Recessed panels give the empty room architecture without adding fixed props.
-    art += rect(0, 103, 320, 33, panel) + rect(0, 102, 320, 2, tint(wall.color, .26, '#a3987f')) + rect(0, 104, 320, 2, tint(wall.color, .45));
+    art += rect(0, 76, 320, 30, panel) + rect(0, 75, 320, 2, tint(wall.color, .26, '#a3987f')) + rect(0, 77, 320, 2, tint(wall.color, .45));
     for (let x = 15; x < 320; x += 48) {
-        art += rect(x, 111, 38, 22, tint(panel, .16, '#a3987f')) + rect(x + 1, 112, 36, 20, panel) + rect(x + 2, 113, 35, 1, tint(panel, .28));
-        art += rect(x + 1, 112, 1, 19, tint(panel, .24)) + rect(x + 36, 113, 1, 18, tint(panel, .12, '#a3987f'));
+        art += rect(x, 82, 38, 21, tint(panel, .16, '#a3987f')) + rect(x + 1, 83, 36, 19, panel) + rect(x + 2, 84, 35, 1, tint(panel, .28));
+        art += rect(x + 1, 83, 1, 18, tint(panel, .24)) + rect(x + 36, 84, 1, 17, tint(panel, .12, '#a3987f'));
     }
-    art += rect(0, 136, 320, 3, '#bcab8f') + rect(0, 136, 320, 1, '#e9ddc3') + rect(0, 139, 320, 3, '#a7977f');
+    art += rect(0, ROOM_FLOOR_Y - 6, 320, 3, '#bcab8f') + rect(0, ROOM_FLOOR_Y - 6, 320, 1, '#e9ddc3') + rect(0, ROOM_FLOOR_Y - 3, 320, 3, '#a7977f');
     for (let edge = 0; edge < 4; edge++) {
         const shade = tint(wall.color, .12 - edge * .024, '#938b75');
-        art += rect(edge * 2, 8, 2, 128, shade) + rect(318 - edge * 2, 8, 2, 128, shade);
+        art += rect(edge * 2, 8, 2, ROOM_FLOOR_Y - 14, shade) + rect(318 - edge * 2, 8, 2, ROOM_FLOOR_Y - 14, shade);
     }
     return art;
 }
@@ -372,13 +501,14 @@ function roomLight(items) {
     return art;
 }
 
-export function renderCompanionRoom(room) {
+export function renderCompanionRoom(room, { furniture = true } = {}) {
     const current = normalizeCompanionRoom(room);
     const wall = ROOM_WALLS.find(item => item.id === current.wall);
     const floor = ROOM_FLOORS.find(item => item.id === current.floor);
     const items = [...current.items].sort((a, b) => {
         const layer = item => furnitureById.get(item.type).category === 'wall' ? 0 : item.type === 'rug' ? 1 : 2;
-        return layer(a) - layer(b) || a.y - b.y;
+        return layer(a) - layer(b) || getRoomItemDepth(a) - getRoomItemDepth(b);
     });
-    return `<svg class="tf-scene-art" data-scene="custom-room" data-indoor="true" viewBox="0 0 320 240" preserveAspectRatio="none" shape-rendering="crispEdges" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">${wallArt(wall)}${floorArt(floor)}${roomLight(items)}${items.map(placedArt).join('')}</svg>`;
+    const visible = furniture ? items : items.filter(item => furnitureById.get(item.type).category === 'wall' || item.type === 'rug');
+    return `<svg class="tf-scene-art" data-scene="custom-room" data-indoor="true" viewBox="0 0 320 240" preserveAspectRatio="none" shape-rendering="crispEdges" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">${wallArt(wall)}${floorArt(floor)}${roomLight(items)}${visible.map(placedArt).join('')}</svg>`;
 }

@@ -11,6 +11,20 @@ const T = new Date(2026, 8, 26, 12).getTime(), M = 60000, H = 60 * M;
 const pet = () => ({ name: '团子', species: '青蛙', status: 'home', satiety: 75, energy: 80, happiness: 70, bond: 8, life: normalizeCompanionLife({ autoSleep: false }, T) });
 const data = () => ({ world: normalizeWorldState({ companion: pet(), inventory: [] }) });
 
+test('a selected room bed survives normalization and explicit wake or ordinary rest releases it', () => {
+    const companion = pet();
+    companion.life.roomBedId = 'bed-saved-1';
+    companion.life.sleepUntil = T + H;
+    assert.equal(normalizeCompanionLife(companion.life, T).roomBedId, 'bed-saved-1');
+    assert.equal(normalizeCompanionLife({ roomBedId: '<script>' }, T).roomBedId, '');
+    assert.equal(normalizeCompanionLife({ roomBedId: 123 }, T).roomBedId, '');
+    tendCompanion(companion, 'wake', T);
+    assert.equal(companion.life.roomBedId, '');
+    companion.life.roomBedId = 'bed-saved-1';
+    tendCompanion(companion, 'rest', T);
+    assert.equal(companion.life.roomBedId, '');
+});
+
 test('together days count local calendar boundaries, including a short first day and clock rollback', () => {
     const companion = pet(), beforeMidnight = new Date(2026, 8, 26, 23, 59, 59).getTime();
     companion.life.startedAt = beforeMidnight;

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-    ROOM_COLORS, ROOM_FLOORS, ROOM_FURNITURE, ROOM_MAX_ITEMS, ROOM_WALLS,
-    addRoomItem, createCompanionRoomPreset, getRoomItemBounds, normalizeCompanionRoom,
-    removeRoomItem, renderCompanionRoom, renderRoomFurniture, updateRoomItem,
+    ROOM_COLORS, ROOM_FLOORS, ROOM_FURNITURE, ROOM_MAX_ITEMS, ROOM_WALLS, ROOM_FLOOR_Y,
+    addRoomItem, createCompanionRoomPreset, getRoomItemBounds, normalizeCompanionRoom, getRoomItemFootprint, getRoomItemDepth, getRoomInteraction,
+    removeRoomItem, renderCompanionRoom, renderRoomFurniture, renderRoomPlacedFurniture, updateRoomItem,
 } from '../src/companion-room.js';
 import { normalizeForumDataShape } from '../src/forum.js';
 import { DEFAULT_SETTINGS } from '../src/constants.js';
@@ -71,16 +71,19 @@ test('malformed import cleans unsafe identities and unknown pieces deterministic
     assert.equal(normalizeCompanionRoom({ items: new Array(100).fill({ type: 'chair' }) }).items.length, ROOM_MAX_ITEMS);
 });
 
-test('all quarter-turn bounds stay inside their wall or floor zone even at extreme positions', () => {
+test('all quarter-turn bounds fit the canvas and tall floor furniture keeps its contact point on the floor', () => {
     for (const furniture of ROOM_FURNITURE) {
         for (const rotation of [0, 1, 2, 3]) {
             for (const [x, y] of [[-1e6, -1e6], [1e6, 1e6], [160, 190]]) {
                 const item = normalizeCompanionRoom({ items: [{ id: 'item', type: furniture.id, x, y, rotation }] }).items[0];
                 const bounds = getRoomItemBounds(item);
                 assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 320, `${furniture.id}/${rotation} horizontal bounds`);
-                const minimum = furniture.category === 'wall' ? 18 : 142;
-                const maximum = furniture.category === 'wall' ? 145 : 240;
-                assert.ok(bounds.y >= minimum && bounds.y + bounds.height <= maximum, `${furniture.id}/${rotation} vertical bounds`);
+                assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= 240, `${furniture.id}/${rotation} canvas vertical bounds`);
+                if (furniture.category === 'wall') assert.ok(bounds.y >= 18 && bounds.y + bounds.height <= 145, `${furniture.id}/${rotation} legacy wall zone`);
+                else if (getRoomItemFootprint(item)) {
+                    const footOffsets = [.44 * furniture.height, 0, -.44 * furniture.height, 0];
+                    assert.ok(item.y + footOffsets[rotation] >= ROOM_FLOOR_Y + 4 - .000001, `${furniture.id}/${rotation} floor contact`);
+                } else assert.ok(bounds.y >= ROOM_FLOOR_Y, `${furniture.id}/${rotation} soft floor furnishing`);
                 assert.equal(bounds.width, rotation % 2 ? furniture.height : furniture.width);
                 assert.equal(bounds.height, rotation % 2 ? furniture.width : furniture.height);
             }
@@ -99,7 +102,7 @@ test('item edits are immutable, identity is stable, and rotation clamps the comp
     assert.equal(changed.items[0].id, id);
     assert.equal(changed.items[0].type, 'bed');
     assert.equal(changed.items[0].color, 'sky');
-    assert.deepEqual(getRoomItemBounds(changed.items[0]), { x: 0, y: 142, width: 46, height: 72 });
+    assert.deepEqual(getRoomItemBounds(changed.items[0]), { x: 0, y: 60, width: 68, height: 112 });
     const removed = removeRoomItem(changed, id);
     assert.equal(removed.items.length, 0);
     assert.equal(changed.items.length, 1);
@@ -108,6 +111,53 @@ test('item edits are immutable, identity is stable, and rotation clamps the comp
     assert.deepEqual(addRoomItem(added, 'unknown', 100, 190), added);
     const full = normalizeCompanionRoom({ items: new Array(ROOM_MAX_ITEMS).fill({ type: 'toy' }) });
     assert.deepEqual(addRoomItem(full, 'chair', 100, 190), full);
+});
+
+test('newly placed or moved wall decorations stay on the wall while old lower positions remain compatible', () => {
+    const legacy = normalizeCompanionRoom({ items: [{ id: 'old', type: 'picture', x: 160, y: 121, rotation: 0, color: 'rose' }] });
+    assert.equal(legacy.items[0].y, 121);
+    const added = addRoomItem(legacy, 'window', 250, 220);
+    assert.equal(added.items[0].y, 121, 'adding another piece does not move an existing wall decoration');
+    const newBounds = getRoomItemBounds(added.items[1]);
+    assert.equal(newBounds.y + newBounds.height, ROOM_FLOOR_Y);
+    const edited = updateRoomItem(legacy, 'old', { y: 220 });
+    const editedBounds = getRoomItemBounds(edited.items[0]);
+    assert.equal(editedBounds.y + editedBounds.height, ROOM_FLOOR_Y);
+});
+
+test('walking projections use furniture floor bases and rotate with the placed piece', () => {
+    for (const type of ['window', 'picture', 'clock', 'wall-shelf', 'rug', 'cushion']) assert.equal(getRoomItemFootprint({ type, x: 160, y: 160 }), null);
+    const original = getRoomItemFootprint({ type: 'bookshelf', x: 160, y: 170, rotation: 0 });
+    const rotated = getRoomItemFootprint({ type: 'bookshelf', x: 160, y: 170, rotation: 1 });
+    assert.ok(original.height < 88 / 4, 'the upper cupboard does not occupy the walking floor');
+    assert.ok(Math.abs(original.width - rotated.height) < .000001);
+    assert.ok(Math.abs(original.height - rotated.width) < .000001);
+    assert.equal(getRoomItemDepth({ type: 'bookshelf', x: 160, y: 170 }), original.y + original.height);
+    assert.equal(getRoomItemDepth({ type: 'window', x: 160, y: 60 }), 0);
+    assert.equal(getRoomItemDepth({ type: 'rug', x: 160, y: 190 }), 1);
+});
+
+test('every furniture interaction has a rotated anchor and a legal approach outside its own walking projection', () => {
+    const expected = { bed: 'rest', sofa: 'sit', cushion: 'lie', 'food-bowl': 'feed', toy: 'play', window: 'look' };
+    for (const [type, kind] of Object.entries(expected)) for (const rotation of [0, 1, 2, 3]) for (const [x, y] of [[160, 150], [0, 0], [320, 240]]) {
+        const item = normalizeCompanionRoom({ items: [{ id: 'placed', type, x, y, rotation }] }).items[0];
+        const interaction = getRoomInteraction(item), footprint = getRoomItemFootprint(item);
+        assert.equal(interaction.kind, kind);
+        assert.equal(interaction.itemId, 'placed');
+        assert.equal(interaction.rotation, rotation);
+        assert.ok(interaction.approach.x >= 12 && interaction.approach.x <= 308);
+        assert.ok(interaction.approach.y >= ROOM_FLOOR_Y + 8 && interaction.approach.y <= 232);
+        if (footprint) assert.ok(interaction.approach.x <= footprint.x - 8 || interaction.approach.x >= footprint.x + footprint.width + 8 || interaction.approach.y <= footprint.y - 8 || interaction.approach.y >= footprint.y + footprint.height + 8, `${type}/${rotation} approach outside its own footprint`);
+        const bounds = getRoomItemBounds(item);
+        if (['rest', 'sit', 'lie'].includes(kind)) assert.ok(interaction.anchor.x >= bounds.x && interaction.anchor.x <= bounds.x + bounds.width && interaction.anchor.y >= bounds.y && interaction.anchor.y <= bounds.y + bounds.height);
+        else assert.deepEqual(interaction.anchor, interaction.approach);
+    }
+    assert.equal(getRoomInteraction({ type: 'table' }), null);
+    assert.equal(getRoomInteraction({ type: 'unknown' }), null);
+    const sofa = { id: 'sofa', type: 'sofa', x: 160, y: 160, rotation: 0 };
+    const anchor = getRoomInteraction(sofa).anchor, turned = getRoomInteraction({ ...sofa, rotation: 1 }).anchor;
+    assert.ok(Math.abs(turned.x - (160 - (anchor.y - 160))) < .000001);
+    assert.ok(Math.abs(turned.y - (160 + (anchor.x - 160))) < .000001);
 });
 
 test('all starter layouts are independent editable rooms with different furnishings', () => {
@@ -122,6 +172,8 @@ test('all starter layouts are independent editable rooms with different furnishi
     presets[0].items[0].x = 1;
     assert.notEqual(createCompanionRoomPreset('cozy').items[0].x, 1);
     assert.deepEqual(createCompanionRoomPreset('unknown'), createCompanionRoomPreset('cozy'));
+    const cozyTypes = createCompanionRoomPreset('cozy').items.map(item => item.type);
+    for (const type of ['sofa', 'bed', 'food-bowl', 'toy']) assert.ok(cozyTypes.includes(type), `${type}: complete companion interaction starter room`);
 });
 
 test('catalog renders distinct local SVG pieces with selectable palettes, without fixed furnishings', () => {
@@ -146,5 +198,11 @@ test('catalog renders distinct local SVG pieces with selectable palettes, withou
     const room = createCompanionRoomPreset('cozy');
     const rendered = renderCompanionRoom(room);
     assert.equal((rendered.match(/data-room-item=/g) || []).length, room.items.length);
+    const background = renderCompanionRoom(room, { furniture: false });
+    assert.equal((background.match(/data-room-item=/g) || []).length, room.items.filter(item => ROOM_FURNITURE.find(type => type.id === item.type).category === 'wall' || item.type === 'rug').length);
+    const placed = renderRoomPlacedFurniture(room.items.find(item => item.type === 'sofa'));
+    assert.match(placed, /viewBox="0 0 320 240" preserveAspectRatio="none"/);
+    assert.equal((placed.match(/data-room-item=/g) || []).length, 1);
+    assert.doesNotMatch(placed, /data-scene="custom-room"/);
     assert.doesNotMatch(rendered, /<(?:image|foreignObject|script)\b|\son\w+=|(?:href|src)="https?:\/\//);
 });

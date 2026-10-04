@@ -5,6 +5,18 @@ import { renderCompanionArtwork } from '../src/companion-art.js';
 
 const species = ['frog', 'cat', 'rabbit', 'fox', 'penguin', 'robo-bird', 'octopus', 'goldfish', 'soot'];
 const accessories = ['scarf', 'satchel', 'flower', 'charm', 'ribbon', 'glasses', 'crown', 'leaf', 'headphones', 'cape', 'bell'];
+
+test('room resting art retains fitted heads and unique paint IDs across growth stages', () => {
+    for (const kind of species) for (const stage of ['baby', 'young', 'adult']) {
+        assert.doesNotMatch(renderCompanionArtwork(kind, 'crown', stage), /tf-room-pose-art/);
+        const markup = renderCompanionArtwork(kind, 'crown', stage, { roomPoses: true });
+        assert.match(markup, /class="tf-room-pose-art"/);
+        assert.doesNotMatch(markup, /undefined|NaN|scale\([^)]*,/);
+        const ids = [...markup.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
+        assert.equal(new Set(ids).size, ids.length, `${kind}/${stage} has conflicting head and body paint IDs`);
+        assert.match(markup.slice(markup.indexOf('class="tf-room-pose-art"')), /data-accessory="crown"/);
+    }
+});
 const articulatedParts = {
     frog: 'tf-pixel-legs',
     cat: 'tf-cat-ear',

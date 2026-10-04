@@ -1,3 +1,6 @@
+import { ROOM_FLOOR_Y, getRoomItemFootprint, getRoomItemDepth, getRoomInteraction } from './companion-room.js';
+import { planRoomPath, nearestRoomPoint } from './companion-room-path.js';
+
 // Room movement is temporary presentation state. It does not consume care,
 // write saves or call a model, and it uses translate independently of care FX.
 const blockedActivities = new Set(['away', 'sleep', 'paused', 'daycare', 'tired']);
@@ -6,13 +9,15 @@ const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, v
 
 export function createCompanionRoamController({
     getRoot, getSnapshot, random = Math.random, now = () => performance.now(),
-    onMotionChange = () => {}, requestFrame = globalThis.requestAnimationFrame,
+    onMotionChange = () => {}, onFurnitureInteraction = () => {}, requestFrame = globalThis.requestAnimationFrame,
     cancelFrame = globalThis.cancelAnimationFrame,
 }) {
     let observed = null, boundRoot = null, boundDocument = null, boundWindow = null, motionQuery = null;
     let timer = null, frame = null, due = null, lastFrame = 0, destroyed = false, walking = false;
     let x = 0, y = 0, wanderY = 0, destination = null, direction = '', speed = 20, blockedUntil = 0, mode = '';
     let focused = false, resizeObserver = null, resizeStage = null, tap = null;
+    let route = [], interaction = null, interactionTimer = null, furnitureHeld = null, holdStamp = null, geometry = '', needsSpawn = false;
+    let routeGoal = null, routeOptions = null;
     const pointers = new Set();
     const unitRandom = () => clamp(Number(random()) || 0, 0, .999999);
     const settleDelay = () => 8000 + unitRandom() * 4000;
@@ -21,10 +26,11 @@ export function createCompanionRoamController({
 
     function read() {
         const root = getRoot(), snapshot = getSnapshot() || {};
-        return { ...snapshot, root, stage: root?.querySelector('.tf-pet-stage') || null, pet: root?.querySelector('.tf-pet-sprite-control') || null };
+        const roomKey = snapshot.habitat === 'custom-room' ? JSON.stringify(snapshot.room || null) : '';
+        return { ...snapshot, roomKey, root, stage: root?.querySelector('.tf-pet-stage') || null, pet: root?.querySelector('.tf-pet-sprite-control') || null };
     }
     function sameRoom(a, b) {
-        return Boolean(a && b && a.identity === b.identity && a.species === b.species && a.habitat === b.habitat);
+        return Boolean(a && b && a.identity === b.identity && a.owner === b.owner && a.species === b.species && a.habitat === b.habitat && a.roomKey === b.roomKey);
     }
     function available(state) {
         return Boolean(state.enabled && state.root?.isConnected && state.pet?.isConnected && state.stage?.isConnected
@@ -49,6 +55,9 @@ export function createCompanionRoamController({
         pet?.removeAttribute('data-roam-state');
         pet?.removeAttribute('data-roam-direction');
         pet?.removeAttribute('data-roam-mode');
+        pet?.removeAttribute('data-room-interacting');
+        pet?.removeAttribute('data-room-item-id');
+        pet?.removeAttribute('data-room-pose');
         pet?.style?.removeProperty('--tf-roam-x');
         pet?.style?.removeProperty('--tf-roam-y');
     }
@@ -59,6 +68,8 @@ export function createCompanionRoamController({
     }
     function clearStage(stage) {
         stage?.removeAttribute('data-roam-interactive');
+        stage?.style?.removeProperty('--tf-room-pet-depth');
+        for (const hit of stage?.querySelectorAll?.('.tf-room-live-hit') || []) hit.removeAttribute('data-active');
         clearTarget(stage);
     }
     function foot() {
@@ -80,10 +91,30 @@ export function createCompanionRoamController({
         pet.style.setProperty('--tf-roam-y', `${y.toFixed(3)}px`);
         pet.setAttribute('data-roam-active', 'true');
         pet.setAttribute('data-roam-state', walking ? 'walking' : 'resting');
-        if (mode === 'manual') pet.setAttribute('data-roam-mode', mode);
+        if (mode === 'manual' || mode === 'furniture') pet.setAttribute('data-roam-mode', mode);
         else pet.removeAttribute('data-roam-mode');
         if (direction) pet.setAttribute('data-roam-direction', direction);
         else pet.removeAttribute('data-roam-direction');
+        const furniture = furnitureHeld || interaction;
+        if (furniture) {
+            pet.setAttribute('data-room-interacting', 'true');
+            pet.setAttribute('data-room-item-id', furniture.itemId);
+            if (furnitureHeld || interaction.phase === 'using') pet.setAttribute('data-room-pose', furniture.kind);
+            else pet.removeAttribute('data-room-pose');
+        } else {
+            pet.removeAttribute('data-room-interacting'); pet.removeAttribute('data-room-item-id'); pet.removeAttribute('data-room-pose');
+        }
+        if (observed.habitat === 'custom-room') {
+            let depth = scenePoint({ x, y }).y;
+            const active = furnitureHeld || (interaction?.phase === 'using' ? interaction : null);
+            if (active) depth = Math.max(depth, getRoomItemDepth(observed.room?.items?.find(item => item.id === active.itemId)) + 2);
+            observed.stage.style.setProperty('--tf-room-pet-depth', depth.toFixed(3));
+            for (const hit of observed.stage.querySelectorAll?.('.tf-room-live-hit') || []) {
+                if (active && hit.getAttribute('data-room-item-id') === active.itemId) hit.setAttribute('data-active', 'true');
+                else hit.removeAttribute('data-active');
+            }
+        }
+        else observed.stage.style.removeProperty('--tf-room-pet-depth');
     }
     function setWalking(value) {
         if (walking === value) return;
@@ -93,15 +124,20 @@ export function createCompanionRoamController({
     }
     function stop(reset = false) {
         const active = observed?.pet?.hasAttribute('data-roam-active');
+        const cancelled = interaction;
         if (mode === 'manual' && !reset) wanderY = y;
-        clearTimer(); clearFrame(); due = null; destination = null; clearTarget();
+        clearTimer(); clearFrame(); due = null; destination = null; route = []; routeGoal = null; routeOptions = null; clearTarget();
+        clearTimeout(interactionTimer); interactionTimer = null;
+        if (interaction) interaction.onArrive = null;
+        interaction = null;
         setWalking(false);
         if (reset) {
-            x = 0; y = 0; wanderY = 0; direction = ''; mode = '';
+            x = 0; y = 0; wanderY = 0; direction = ''; mode = ''; furnitureHeld = null; needsSpawn = true;
             clearPet(observed?.pet);
         } else if (active) paint();
+        if (cancelled) onFurnitureInteraction({ itemId: cancelled.itemId, kind: cancelled.kind, phase: 'cancelled', automatic: cancelled.automatic });
     }
-    function bounds() {
+    function bounds({ allowFurniture = false } = {}) {
         const { stage, pet } = observed || {};
         if (!stage || !pet) return null;
         const width = stage.clientWidth, height = stage.clientHeight;
@@ -110,7 +146,7 @@ export function createCompanionRoamController({
         const area = { minX: 8 - left, maxX: width - 8 - left - petWidth, minY: 8 - top, maxY: height - 8 - top - petHeight };
         // The resident's feet stay on the floor of the 320 × 240 custom room.
         // Keep the complete touch target in bounds while allowing the body above the skirting.
-        if (observed.habitat === 'custom-room') area.minY = Math.max(area.minY, height * (142 / 240) + 4 - top - foot().y);
+        if (observed.habitat === 'custom-room' && !allowFurniture) area.minY = Math.max(area.minY, height * (ROOM_FLOOR_Y / 240) + 4 - top - foot().y);
         return area.maxX >= area.minX && area.maxY >= area.minY ? area : null;
     }
     function constrain(area) {
@@ -119,7 +155,97 @@ export function createCompanionRoamController({
             destination.x = clamp(destination.x, area.minX, area.maxX);
             destination.y = clamp(destination.y, area.minY, area.maxY);
         }
+        for (const point of route) { point.x = clamp(point.x, area.minX, area.maxX); point.y = clamp(point.y, area.minY, area.maxY); }
         paint(); paintTarget();
+    }
+    function scenePoint(point) {
+        const { stage, pet } = observed, anchor = foot();
+        return { x: (pet.offsetLeft + anchor.x + point.x) * 320 / stage.clientWidth, y: (pet.offsetTop + anchor.y + point.y) * 240 / stage.clientHeight };
+    }
+    function offsetPoint(point) {
+        const { stage, pet } = observed, anchor = foot();
+        return { x: point.x * stage.clientWidth / 320 - pet.offsetLeft - anchor.x, y: point.y * stage.clientHeight / 240 - pet.offsetTop - anchor.y };
+    }
+    function sceneBounds(area) {
+        const min = scenePoint({ x: area.minX, y: area.minY }), max = scenePoint({ x: area.maxX, y: area.maxY });
+        return { minX: min.x, minY: min.y, maxX: max.x, maxY: max.y };
+    }
+    function footprints(ignoreItem = '') {
+        return (observed.room?.items || []).filter(item => item.id !== ignoreItem).map(getRoomItemFootprint).filter(Boolean);
+    }
+    function planTo(target, area, { ignoreItem = '', exact = false } = {}) {
+        if (observed.habitat !== 'custom-room') return [target];
+        const path = planRoomPath(scenePoint({ x, y }), scenePoint(target), sceneBounds(area), footprints(ignoreItem), { clearance: 4, exact });
+        return path?.points.map(offsetPoint) || null;
+    }
+    function beginRoute(target, { area = bounds(), ignoreItem = '', exact = false, fast = false } = {}) {
+        if (!area) return false;
+        const points = planTo(target, area, { ignoreItem, exact });
+        if (!points?.length) return false;
+        route = points; destination = route.at(-1);
+        routeGoal = scenePoint(destination); routeOptions = { ignoreItem, exact, fast, allowFurniture: Boolean(interaction && interaction.phase !== 'approach') };
+        speed = (speciesSpeed[observed.species] || 20) * (fast ? 2 : 1);
+        if (route[0].x !== x) direction = route[0].x < x ? 'left' : 'right';
+        due = null; clearTimer(); clearFrame(); lastFrame = now();
+        if (!canAnimate()) { x = destination.x; y = destination.y; route = []; destination = null; paint(); reached(); }
+        else { setWalking(true); paintTarget(); frame = requestFrame(advance); }
+        return true;
+    }
+    function rejectFurniture(itemId, kind = '', automatic = false) {
+        if (!walking && !interaction) { mode = ''; paint(); }
+        if (!automatic) onFurnitureInteraction({ itemId, kind, phase: 'rejected', automatic: false });
+        return false;
+    }
+    function interactWith(itemId, { onArrive, automatic = false } = {}) {
+        if (destroyed || pointers.size) return false;
+        sync();
+        if (!available(observed) || furnitureHeld || observed.furnitureHold || observed.habitat !== 'custom-room') return false;
+        const item = observed.room?.items?.find(value => value.id === itemId), spec = getRoomInteraction(item);
+        if (!spec) return rejectFurniture(itemId, '', automatic);
+        stop();
+        const area = bounds();
+        const target = offsetPoint(spec.approach);
+        if (!area) return rejectFurniture(itemId, spec.kind, automatic);
+        interaction = { ...spec, phase: 'approach', automatic, onArrive: typeof onArrive === 'function' ? onArrive : null };
+        mode = 'furniture'; blockedUntil = 0;
+        if (!beginRoute(target, { area, fast: !automatic })) { stop(); return rejectFurniture(itemId, spec.kind, automatic); }
+        if (interaction?.phase === 'approach' && destination) interaction.approach = scenePoint(destination);
+        paint();
+        return true;
+    }
+    function reached() {
+        if (!interaction) {
+            if (mode === 'manual') wanderY = y;
+            clearTarget(); setWalking(false); paint(); waitUntil(now() + 5500 + unitRandom() * 2500);
+            return;
+        }
+        const current = interaction;
+        if (current.phase === 'approach') {
+            current.phase = 'anchor';
+            const area = bounds({ allowFurniture: true }), target = offsetPoint(current.anchor);
+            target.x = clamp(target.x, area.minX, area.maxX); target.y = clamp(target.y, area.minY, area.maxY);
+            if (beginRoute(target, { area, ignoreItem: current.itemId, exact: true, fast: !current.automatic })) return;
+            stop(); rejectFurniture(current.itemId, current.kind, current.automatic); sync(); return;
+        }
+        if (current.phase === 'return') {
+            interaction = null; mode = ''; wanderY = y;
+            setWalking(false); paint();
+            onFurnitureInteraction({ itemId: current.itemId, kind: current.kind, phase: 'finished', automatic: current.automatic });
+            waitUntil(now() + 5500 + unitRandom() * 2500); return;
+        }
+        current.phase = 'using'; setWalking(false); paint();
+        onFurnitureInteraction({ itemId: current.itemId, kind: current.kind, phase: 'arrived', automatic: current.automatic });
+        const callback = current.onArrive; current.onArrive = null;
+        if (callback && available(read()) && sameRoom(read(), observed)) callback({ itemId: current.itemId, kind: current.kind });
+        if (interaction !== current || !available(read()) || read().furnitureHold) return;
+        interactionTimer = setTimeout(() => {
+            interactionTimer = null;
+            if (interaction !== current || !sync() || !available(observed)) return;
+            current.phase = 'return';
+            if (!beginRoute(offsetPoint(current.approach), { area: bounds({ allowFurniture: true }), ignoreItem: current.itemId, exact: true })) {
+                stop(); sync();
+            }
+        }, 4500 + unitRandom() * 2000);
     }
     function waitUntil(deadline) {
         clearTimer(); due = deadline;
@@ -137,34 +263,38 @@ export function createCompanionRoamController({
         const area = bounds();
         if (!area) { stop(true); return; }
         constrain(area);
+        if (observed.habitat === 'custom-room' && observed.room?.items?.length && unitRandom() < .22) {
+            const choices = observed.room.items.filter(item => ['sofa', 'cushion', 'window', 'toy'].includes(item.type));
+            if (choices.length && interactWith(choices[Math.floor(unitRandom() * choices.length)].id, { automatic: true })) return;
+        }
         const span = area.maxX - area.minX, distance = span * (.30 + unitRandom() * .45);
         const sign = unitRandom() < .5 ? -1 : 1;
         let targetX = clamp(x + sign * distance, area.minX, area.maxX);
         if (Math.abs(targetX - x) < Math.min(8, span * .10)) targetX = clamp(x - sign * distance, area.minX, area.maxX);
         const minY = clamp(wanderY - 13, area.minY, area.maxY), maxY = clamp(wanderY + 13, area.minY, area.maxY);
-        destination = { x: targetX, y: minY + unitRandom() * (maxY - minY) };
+        const target = { x: targetX, y: minY + unitRandom() * (maxY - minY) };
         if (targetX !== x) direction = targetX < x ? 'left' : 'right';
         mode = '';
-        speed = speciesSpeed[observed.species] || 20;
-        due = null; clearTimer(); lastFrame = now();
-        setWalking(true); paintTarget(); frame = requestFrame(advance);
+        if (!beginRoute(target, { area })) waitUntil(now() + 5500 + unitRandom() * 2500);
     }
     function advance() {
         frame = null;
         if (destroyed || !sync() || !walking) return;
-        const area = bounds();
+        const area = bounds({ allowFurniture: Boolean(interaction && interaction.phase !== 'approach') });
         if (!area) { stop(true); return; }
         constrain(area);
         const elapsed = clamp((now() - lastFrame) / 1000, 0, .1);
         lastFrame = now();
-        const dx = destination.x - x, dy = destination.y - y, remaining = Math.hypot(dx, dy), step = speed * elapsed;
+        const next = route[0] || destination;
+        if (!next) { stop(); sync(); return; }
+        const dx = next.x - x, dy = next.y - y, remaining = Math.hypot(dx, dy), step = speed * elapsed;
         if (remaining <= Math.max(step, .01)) {
-            x = destination.x; y = destination.y;
-            if (mode === 'manual') wanderY = y;
-            destination = null; clearTarget();
-            // The idle scheduler needs up to five seconds to begin a gesture.
-            // Always leave that opportunity, then let the gesture finish below.
-            setWalking(false); paint(); waitUntil(now() + 5500 + unitRandom() * 2500);
+            x = next.x; y = next.y; route.shift();
+            if (route.length) {
+                if (route[0].x !== x) direction = route[0].x < x ? 'left' : 'right';
+                paint(); frame = requestFrame(advance); return;
+            }
+            destination = null; routeGoal = null; routeOptions = null; reached();
             return;
         }
         x += dx / remaining * step; y += dy / remaining * step;
@@ -219,7 +349,7 @@ export function createCompanionRoamController({
     function moveTo({ clientX, clientY }) {
         if (destroyed || pointers.size || !Number.isFinite(clientX) || !Number.isFinite(clientY)) return false;
         sync();
-        if (!available(observed)) return false;
+        if (!available(observed) || furnitureHeld || observed.furnitureHold) return false;
         const area = bounds(), rect = observed.stage.getBoundingClientRect?.();
         if (!area || !rect?.width || !rect?.height) return false;
         // Empty floor clicks deliberately release keyboard focus on the pet.
@@ -230,22 +360,12 @@ export function createCompanionRoamController({
         }
         stop();
         const anchor = foot();
-        destination = {
+        const target = {
             x: clamp((clientX - rect.left) * observed.stage.clientWidth / rect.width - observed.pet.offsetLeft - anchor.x, area.minX, area.maxX),
             y: clamp((clientY - rect.top) * observed.stage.clientHeight / rect.height - observed.pet.offsetTop - anchor.y, area.minY, area.maxY),
         };
-        if (destination.x !== x) direction = destination.x < x ? 'left' : 'right';
         mode = 'manual'; blockedUntil = 0; lastFrame = now();
-        const distance = Math.hypot(destination.x - x, destination.y - y);
-        if (!canAnimate() || distance < .01) {
-            x = destination.x; y = destination.y; wanderY = y; destination = null;
-            paint(); clearTarget();
-            if (canAnimate()) waitUntil(now() + 5500 + unitRandom() * 2500);
-        } else {
-            speed = (speciesSpeed[observed.species] || 20) * 2;
-            setWalking(true); paint(); paintTarget(); frame = requestFrame(advance);
-        }
-        return true;
+        return beginRoute(target, { area, fast: true });
     }
     function keyboardInput() {
         tap = null;
@@ -305,7 +425,7 @@ export function createCompanionRoamController({
         if (destroyed) return false;
         const current = read(); bind(current.root);
         const changed = !sameRoom(current, observed);
-        if (changed) { tap = null; stop(true); blockedUntil = 0; }
+        if (changed) { tap = null; stop(true); blockedUntil = 0; geometry = ''; }
         if (observed?.stage !== current.stage) { clearStage(observed?.stage); tap = null; }
         if (observed?.pet !== current.pet) {
             clearPet(observed?.pet);
@@ -315,22 +435,61 @@ export function createCompanionRoamController({
         }
         observed = current;
         if (!available(current)) { tap = null; clearStage(current.stage); stop(!pointers.size); return false; }
-        const area = bounds();
+        if (!current.furnitureHold) { furnitureHeld = null; holdStamp = null; }
+        else {
+            const holdKey = `${current.furnitureHold.itemId}:${current.furnitureHold.kind}`;
+            if (!holdStamp || holdStamp.key !== holdKey) holdStamp = { key: holdKey, roomKey: current.roomKey, owner: current.owner, identity: current.identity };
+            const item = current.room?.items?.find(value => value.id === current.furnitureHold.itemId), spec = getRoomInteraction(item);
+            if (!spec || spec.kind !== current.furnitureHold.kind || current.habitat !== 'custom-room'
+                || holdStamp.roomKey !== current.roomKey || holdStamp.owner !== current.owner || holdStamp.identity !== current.identity) {
+                furnitureHeld = null; clearStage(current.stage); stop(true); return false;
+            }
+            stop(); furnitureHeld = spec; mode = 'furniture';
+            const holdingArea = bounds({ allowFurniture: true });
+            if (!holdingArea) { stop(true); return false; }
+            const point = offsetPoint(spec.anchor);
+            x = clamp(point.x, holdingArea.minX, holdingArea.maxX); y = clamp(point.y, holdingArea.minY, holdingArea.maxY);
+            direction = spec.facing || direction;
+            current.stage.removeAttribute('data-roam-interactive'); paint(); return true;
+        }
+        const area = bounds({ allowFurniture: Boolean(interaction && interaction.phase !== 'approach') });
         if (!area) { tap = null; clearStage(current.stage); stop(true); return false; }
+        if ((changed || needsSpawn) && current.habitat === 'custom-room') {
+            const spawn = nearestRoomPoint(scenePoint({ x, y }), sceneBounds(area), footprints(), 4);
+            if (!spawn) { clearStage(current.stage); stop(true); return false; }
+            ({ x, y } = offsetPoint(spawn)); wanderY = y;
+        }
+        needsSpawn = false;
         current.stage.setAttribute('data-roam-interactive', 'true');
         if (!canAnimate()) {
-            if (mode === 'manual' && !walking) { stop(); constrain(area); }
+            if (interaction?.phase === 'using') {
+                const point = offsetPoint(interaction.anchor);
+                x = point.x; y = point.y; constrain(area);
+            }
+            else if (mode === 'manual' && !walking) { stop(); constrain(area); }
             else stop(true);
             return true;
         }
         constrain(area);
+        const currentGeometry = [current.stage.clientWidth, current.stage.clientHeight, current.pet.offsetLeft, current.pet.offsetTop,
+            current.pet.offsetWidth, current.pet.offsetHeight, foot().x, foot().y].join(':');
+        if (geometry && currentGeometry !== geometry && interaction?.phase === 'using') {
+            const point = offsetPoint(interaction.anchor);
+            x = clamp(point.x, area.minX, area.maxX); y = clamp(point.y, area.minY, area.maxY); paint();
+        }
+        if (geometry && currentGeometry !== geometry && walking && routeGoal && current.habitat === 'custom-room') {
+            const next = planTo(offsetPoint(routeGoal), area, routeOptions || {});
+            if (!next?.length) { stop(); sync(); return false; }
+            route = next; destination = route.at(-1); lastFrame = now(); paintTarget();
+        }
+        geometry = currentGeometry;
         if (pointers.size || focused) { stop(); return true; }
         if (blockedUntil > now()) {
             if (walking) stop();
             if (due !== blockedUntil || timer === null) waitUntil(blockedUntil);
             return true;
         }
-        if (!walking && due === null) waitUntil(now() + 1500 + unitRandom() * 1000);
+        if (!walking && !interaction && due === null) waitUntil(now() + 1500 + unitRandom() * 1000);
         return true;
     }
     function cancel({ reset = false } = {}) {
@@ -343,5 +502,5 @@ export function createCompanionRoamController({
         if (destroyed) return;
         destroyed = true; tap = null; stop(true); clearStage(observed?.stage); bind(null); observed = null;
     }
-    return { sync, cancel, destroy, moveTo };
+    return { sync, cancel, destroy, moveTo, interactWith };
 }

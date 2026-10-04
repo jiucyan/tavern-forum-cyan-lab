@@ -60,6 +60,7 @@ export function normalizeCompanionLife(value, now = Date.now()) {
         mode: ['active', 'paused', 'daycare'].includes(life.mode) ? life.mode : 'active',
         cleanliness: number(life.cleanliness, 85, 0, 100), sleepStart: Math.floor(number(life.sleepStart, 22, 0, 23)), sleepEnd: Math.floor(number(life.sleepEnd, 8, 0, 23)),
         autoSleep: life.autoSleep !== false, awakeUntil: number(life.awakeUntil, 0), sleepUntil: number(life.sleepUntil, 0),
+        roomBedId: typeof life.roomBedId === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(life.roomBedId) ? life.roomBedId : '',
         growthMinutes: number(life.growthMinutes, 0), stage: STAGES.includes(life.stage) ? life.stage : 'baby',
         growthAlbum: [...new Map(list(life.growthAlbum).slice(0, 12).map(growthPhoto).filter(Boolean).map(photo => [photo.stage, photo])).values()].slice(0, 3),
         growthNotice: life.growthNotice && text(life.growthNotice.id) && STAGES.includes(life.growthNotice.from) && STAGES.indexOf(life.growthNotice.to) > STAGES.indexOf(life.growthNotice.from) && STAGES.indexOf(life.growthNotice.to) <= STAGES.indexOf(life.stage) ? { id: text(life.growthNotice.id), from: life.growthNotice.from, to: life.growthNotice.to, at: number(life.growthNotice.at, now) } : null,
@@ -287,10 +288,10 @@ export function tendCompanion(companion, action, now = Date.now()) {
     const blocked = canCareForCompanion(companion, action, now); if (blocked) throw new Error(blocked);
     const life = companion.life;
     if (action === 'wake') {
-        life.sleepUntil = 0; life.awakeUntil = now + 2 * HOUR; companion.status = 'home';
+        life.sleepUntil = 0; life.roomBedId = ''; life.awakeUntil = now + 2 * HOUR; companion.status = 'home';
         companion.message = `${companion.name}揉揉眼睛醒来了，会陪你待上两个小时。`;
     } else if (action === 'rest') {
-        life.sleepUntil = now + HOUR; companion.status = 'resting';
+        life.sleepUntil = now + HOUR; life.roomBedId = ''; companion.status = 'resting';
         recordCompanionCare(companion, 'rest', { now });
         if (dayHasPassed(life.bedtimeDay, now)) life.bedtimeDay = keyOfDay(now);
         addCompanionMilestone(companion, 'first-bedtime', `第一次道过晚安后，你替${companion.name}盖好小被子，一起把安稳的梦留在小窝里。`, now);
