@@ -160,15 +160,15 @@ const COMPANION_PALETTES = Object.freeze({
 });
 const COMPANION_DEVICE_SKINS = Object.freeze([
     { id: 'classic', name: '经典蛋机', note: '柔雾蓝机身 · 奶油按键', brand: 'POCKET TRAVELER' },
-    { id: 'pocket', name: '口袋掌机', note: '肩角机身 · 雾蓝面板', brand: 'GAMEFIELD JR.' },
-    { id: 'crystal', name: '透明糖果机', note: '可见内构 · 冰蓝光屏', brand: 'CLEARLINK 02' },
-    { id: 'arcane', name: '魔法通讯器', note: '鎏金符文 · 紫晶视窗', brand: 'FAMILIAR LINK' },
-    { id: 'terminal', name: '机械终端', note: '铆接装甲 · 琥珀雷达', brand: 'FIELD UNIT 07' },
-    { id: 'camp', name: '露营电台', note: '木纹护角 · 苔绿荧屏', brand: 'TRAIL RADIO' },
-    { id: 'marine', name: '深海观察窗', note: '黄铜舷窗 · 海蓝声呐', brand: 'ABYSS WATCH' },
-    { id: 'arcade', name: '迷你街机', note: '霓虹边灯 · 靛青像素屏', brand: 'STAR ARCADE' },
-    { id: 'lunar', name: '月相怀表', note: '星轨表圈 · 月白夜屏', brand: 'LUNAR PHASE' },
-    { id: 'berry', name: '莓果翻盖机', note: '双色折叠 · 莓粉亮屏', brand: 'BERRY FLIP' },
+    { id: 'pocket', name: '口袋掌机', note: '雾蓝机身 · 奶白方键', brand: 'GAMEFIELD JR.' },
+    { id: 'crystal', name: '透明糖果机', note: '冰青透壳 · 细线电路', brand: 'CLEARLINK 02' },
+    { id: 'arcane', name: '魔法通讯器', note: '鎏金符印 · 紫晶机身', brand: 'FAMILIAR LINK' },
+    { id: 'terminal', name: '机械终端', note: '方角装甲 · 琥珀条键', brand: 'FIELD UNIT 07' },
+    { id: 'camp', name: '露营电台', note: '木纹护角 · 苔绿电台', brand: 'TRAIL RADIO' },
+    { id: 'marine', name: '深海观察窗', note: '黄铜镶边 · 海青舷窗', brand: 'ABYSS WATCH' },
+    { id: 'arcade', name: '迷你街机', note: '霓虹边灯 · 双色街机键', brand: 'STAR ARCADE' },
+    { id: 'lunar', name: '月相怀表', note: '月白表壳 · 星轨冠钮', brand: 'LUNAR PHASE' },
+    { id: 'berry', name: '莓果翻盖机', note: '双色机身 · 屏下铰链', brand: 'BERRY FLIP' },
 ]);
 const COMPANION_FOODS = Object.freeze([
     { id: 'bug-cookie', symbol: '✹', name: '虫虫饼', satiety: 22, energy: 4, happiness: 7 },
