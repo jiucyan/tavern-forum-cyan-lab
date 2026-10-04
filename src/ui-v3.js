@@ -159,7 +159,7 @@ const COMPANION_PALETTES = Object.freeze({
     mystery: { body: '#74658b', accent: '#d1a7bd' },
 });
 const COMPANION_DEVICE_SKINS = Object.freeze([
-    { id: 'classic', name: '经典蛋机', note: '奶油机身 · 珊瑚按键', brand: 'POCKET TRAVELER' },
+    { id: 'classic', name: '经典蛋机', note: '柔雾蓝机身 · 奶油按键', brand: 'POCKET TRAVELER' },
     { id: 'pocket', name: '口袋掌机', note: '肩角机身 · 雾蓝面板', brand: 'GAMEFIELD JR.' },
     { id: 'crystal', name: '透明糖果机', note: '可见内构 · 冰蓝光屏', brand: 'CLEARLINK 02' },
     { id: 'arcane', name: '魔法通讯器', note: '鎏金符文 · 紫晶视窗', brand: 'FAMILIAR LINK' },
