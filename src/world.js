@@ -4,6 +4,7 @@ import { applyRelationshipTransition, recordRelationshipEvent } from './memory.j
 import { DEFAULT_BUILTIN_PROMPTS, WORLD_MODULE_DEFINITIONS } from './constants.js';
 import { createId, parseJsonResponse } from './prompt.js';
 import { normalizeCompanionHabitat } from './companion-scenes.js';
+import { normalizeCompanionRoom } from './companion-room.js';
 
 function text(value, fallback = '') {
     return typeof value === 'string' && value.trim() ? value.trim() : fallback;
@@ -143,6 +144,7 @@ function normalizeWorldStateValues(value) {
         accessoryColor: color(companion.accessoryColor),
         autoAccessory: Boolean(companion.autoAccessory),
         habitat: normalizeCompanionHabitat(companion.habitat),
+        room: normalizeCompanionRoom(companion.room),
         weather: ['auto', 'sunny', 'cloudy', 'rain', 'wind', 'snow'].includes(companion.weather) ? companion.weather : 'auto',
         timeOfDay: ['auto', 'dawn', 'day', 'dusk', 'night'].includes(companion.timeOfDay) ? companion.timeOfDay : 'auto',
         lastInteractionAt: Math.max(0, Number(companion.lastInteractionAt || 0)),

@@ -1,11 +1,12 @@
 import { getCompanionLifeView, canCareForCompanion } from './companion-life.js';
 import { renderCompanionIcon } from './companion-icons.js';
+import { renderCompanionRoomEditor } from './companion-room-ui.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-export const DEVICE_PAGES = ['home', 'menu', 'status', 'games', 'album', 'travel', 'dress'];
+export const DEVICE_PAGES = ['home', 'menu', 'status', 'games', 'album', 'travel', 'dress', 'room'];
 const menu = [
     ['status', '状态'], ['feed', '喂食'], ['games', '游戏'], ['clean', '清洁'],
-    ['rest', '休息'], ['album', '相册'], ['travel', '旅行'], ['dress', '装扮'],
+    ['rest', '休息'], ['album', '相册'], ['travel', '旅行'], ['dress', '装扮'], ['room', '装修'],
 ];
 const pageTabs = menu.filter(([id]) => ['status', 'games', 'album', 'travel', 'dress'].includes(id));
 
@@ -31,6 +32,8 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     room.insertAdjacentHTML('beforeend', '<span class="tf-pet-move-target" aria-hidden="true"></span>');
     const dashboard = take('.tf-pet-dashboard'), album = take('.tf-pet-memory-book');
     page.classList.add('tf-companion-device');
+    page.classList.remove(...DEVICE_PAGES.map(id => 'is-panel-' + id));
+    page.classList.add('is-panel-' + current);
     page.dataset.devicePage = current;
     const pane = (id, title) => {
         const node = document.createElement('section');
@@ -43,7 +46,7 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     };
     const mainMenu = pane('menu', '今天做什么');
     const status = pane('status', '看看状态'), games = pane('games', '一起玩'), memories = pane('album', '成长相册');
-    const travel = pane('travel', '准备旅行'), dress = pane('dress', '装扮与设置');
+    const travel = pane('travel', '准备旅行'), dress = pane('dress', '装扮与设置'), roomEditor = pane('room', '装修小窝');
     travel.classList.add('tf-pet-travel-panel');
     const content = node => node.querySelector('.tf-pet-device-content');
     const statusContent = content(status);
@@ -93,9 +96,11 @@ export function renderCompanionDevice(html, data, state, extraActions) {
         details.append(section); content(dress).append(details);
     }
     content(dress).append(take('.tf-pet-decorate'));
+    content(dress).insertAdjacentHTML('afterbegin', `<button type="button" class="tf-room-entry" data-action="companion-device-open" data-panel="room">${renderCompanionIcon('brush')}<span>自己装修小窝</span></button>`);
+    content(roomEditor).innerHTML = renderCompanionRoomEditor(pet.room, state.companionRoomDraft);
     const nav = document.createElement('nav');
     nav.className = 'tf-pet-navigation tf-device-icon-menu'; nav.setAttribute('aria-label', '宠物机功能');
-    nav.innerHTML = menu.map(([id, label]) => `<button type="button" data-action="companion-device-open" data-panel="${id}" title="${label}" aria-label="${label}" aria-current="${current === id ? 'page' : 'false'}">${renderCompanionIcon(id)}<span>${label}</span>${id === 'album' && pet.life.growthNotice ? '<i></i>' : ''}</button>`).join('');
+    nav.innerHTML = menu.map(([id, label]) => `<button type="button" data-action="companion-device-open" data-panel="${id}" title="${label}" aria-label="${label}" aria-current="${current === id ? 'page' : 'false'}">${renderCompanionIcon(id === 'room' ? 'brush' : id)}<span>${label}</span>${id === 'album' && pet.life.growthNotice ? '<i></i>' : ''}</button>`).join('');
     const viewport = document.createElement('div'); viewport.className = 'tf-device-viewport';
     room.hidden = current !== 'home';
     const need = {
@@ -109,7 +114,7 @@ export function renderCompanionDevice(html, data, state, extraActions) {
         room.insertAdjacentHTML('beforeend', `<button type="button" class="tf-device-need" ${action} aria-label="${need[0]}，${need[1]}"><span>${need[0]}</span><b>· ${need[1]}</b>${renderCompanionIcon('right')}</button>`);
     }
     content(mainMenu).append(nav);
-    viewport.append(room, mainMenu, status, games, memories, travel, dress);
+    viewport.append(room, mainMenu, status, games, memories, travel, dress, roomEditor);
     const food = take('.tf-pet-food-select');
     if (food) { viewport.classList.add('is-selecting-food'); viewport.append(food); }
     const top = take('.tf-pet-screen-top');

@@ -6,6 +6,8 @@ import { decorateCompanionLife, renderCompanionNavigation, renderCompanionSummar
 import { DEVICE_PAGES, renderCompanionDevice, getCompanionDeviceChoices, paintCompanionDeviceCursor } from './companion-device-ui.js';
 import { bindCompanionTouch } from './companion-touch.js';
 import { COMPANION_HABITATS, renderCompanionScene, resolveCompanionScene } from './companion-scenes.js';
+import { ROOM_FURNITURE, ROOM_MAX_ITEMS, normalizeCompanionRoom, createCompanionRoomPreset, addRoomItem, updateRoomItem, removeRoomItem, renderCompanionRoom } from './companion-room.js';
+import { renderCompanionRoomEditor } from './companion-room-ui.js';
 import { createCompanionIdleController } from './companion-idle.js';
 import { createCompanionRoamController } from './companion-roam.js';
 
@@ -582,6 +584,7 @@ const viewState = {
     companionFoodMenuOpen: false,
     companionFoodIndex: 0,
     companionAppearanceDraft: null,
+    companionRoomDraft: null,
     companionVisualAction: '',
     companionActionTimer: 0,
     companionActionToken: 0,
@@ -1977,7 +1980,7 @@ function prepareCompanionGreeting(data) {
 }
 
 function getCompanionDisplayedScene(companion) {
-    return resolveCompanionScene(companion, {
+    const scene = resolveCompanionScene(companion, {
         action: getCompanionVisualAction(companion),
         cleaning: viewState.companionCleaning,
         foodMenu: viewState.companionFoodMenuOpen,
@@ -1985,6 +1988,7 @@ function getCompanionDisplayedScene(companion) {
         sleeping: getCompanionLifeView(companion).sleeping,
         feedbackKind: viewState.companionFeedback?.until > Date.now() ? viewState.companionFeedback.kind : '',
     });
+    return companion.room?.enabled && !scene.reason ? { ...scene, habitat: 'custom-room', customized: true } : scene;
 }
 
 function getCompanionAmbientSnapshot() {
@@ -2121,16 +2125,19 @@ function renderCompanionAppV3(data) {
     const deviceOptions = COMPANION_DEVICE_SKINS.map(item => `<button type="button" class="tf-device-skin-option ${skin.id === item.id ? 'is-selected' : ''}" data-action="choose-companion-device" data-device-skin="${item.id}" aria-pressed="${skin.id === item.id}" title="${escapeHtml(item.name)} · ${escapeHtml(item.note)}"><span class="tf-device-swatch is-${item.id}" aria-hidden="true"><i></i><b></b><em></em><small></small></span><div><b>${item.name}</b><small>${item.note}</small></div></button>`).join('');
     const renderEnvironmentGroup = (field, label, kicker, options, current) => {
         const selected = options.find(item => item.id === current) || options[0];
+        const customRoom = field === 'habitat' && companion.room?.enabled;
+        const isSelected = item => !customRoom && selected.id === item.id;
         const environmentIcon = item => renderCompanionIcon(field === 'habitat' ? 'home' : item.id);
-        const cards = options.map(item => `<button type="button" class="tf-environment-option is-${field}-${item.id} ${selected.id === item.id ? 'is-selected' : ''}" data-action="choose-companion-environment" data-environment-field="${field}" data-environment-value="${item.id}" role="option" aria-selected="${selected.id === item.id}"><i class="tf-environment-preview" aria-hidden="true">${field === 'habitat' && renderCompanionScene(item.id) || environmentIcon(item)}</i><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.note)}</small></span><em aria-hidden="true">${renderCompanionIcon('check')}</em></button>`).join('');
-        const nativeOptions = options.map(item => `<option value="${item.id}" ${selected.id === item.id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('');
-        return `<section class="tf-environment-group is-${field}"><header><div><small>${kicker}</small><b>${label}</b></div><span>${environmentIcon(selected)} ${escapeHtml(selected.name)}</span></header><div class="tf-environment-options" role="listbox" aria-label="${label}">${cards}</div><select class="tf-environment-native" data-companion-environment="${field}" aria-label="${label}" tabindex="-1">${nativeOptions}</select></section>`;
+        const cards = options.map(item => `<button type="button" class="tf-environment-option is-${field}-${item.id} ${isSelected(item) ? 'is-selected' : ''}" data-action="choose-companion-environment" data-environment-field="${field}" data-environment-value="${item.id}" role="option" aria-selected="${isSelected(item)}"><i class="tf-environment-preview" aria-hidden="true">${field === 'habitat' && renderCompanionScene(item.id) || environmentIcon(item)}</i><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.note)}</small></span><em aria-hidden="true">${renderCompanionIcon('check')}</em></button>`).join('');
+        const nativeOptions = (customRoom ? '<option value="" disabled selected>自己装修的小窝</option>' : '') + options.map(item => `<option value="${item.id}" ${isSelected(item) ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('');
+        return `<section class="tf-environment-group is-${field}"><header><div><small>${kicker}</small><b>${label}</b></div><span>${environmentIcon(selected)} ${escapeHtml(customRoom ? '自己装修的小窝' : selected.name)}</span></header><div class="tf-environment-options" role="listbox" aria-label="${label}">${cards}</div><select class="tf-environment-native" data-companion-environment="${field}" aria-label="${label}" tabindex="-1">${nativeOptions}</select></section>`;
     };
     const environmentControls = `<div class="tf-pet-environment-controls"><header class="tf-environment-title"><div><small>ROOM & WEATHER</small><b>小窝环境</b></div><p>背景、天气和时间都会立即反映在掌机屏幕中。</p></header>${renderEnvironmentGroup('habitat', '小窝背景', 'SCENE', COMPANION_HABITATS, companion.habitat || 'meadow')}${renderEnvironmentGroup('weather', '小窝天气', 'WEATHER', COMPANION_WEATHER_OPTIONS, companion.weather || 'auto')}${renderEnvironmentGroup('timeOfDay', '小窝时间', 'TIME', COMPANION_TIME_OPTIONS, companion.timeOfDay || 'auto')}</div>`;
     const lastFood = COMPANION_FOODS.find(item => item.id === companion.lastFood) || COMPANION_FOODS[0];
     const animationLayer = `<span class="tf-pet-animation-layer" aria-hidden="true"><span class="tf-feed-drop" data-food-animation="${escapeHtml(lastFood.id)}"><i class="tf-food-tray"><b></b><em></em></i><i class="tf-food-offering">${renderCompanionFoodArt(lastFood.id)}</i><i class="tf-food-crumb is-one"></i><i class="tf-food-crumb is-two"></i><i class="tf-food-crumb is-three"></i><i class="tf-food-species-fx"></i></span><span class="tf-pet-hearts"><i>♥</i><i>♥</i><i>♥</i><i>♥</i></span><span class="tf-play-ball">◆</span><span class="tf-play-trail"><i></i><i></i><i></i></span><span class="tf-sleep-cloud"><i>Z</i><i>z</i><i>z</i></span><span class="tf-touch-rings"><i></i><i></i><i></i></span><span class="tf-pet-stars"><i>✦</i><i>·</i><i>✦</i><i>·</i></span><span class="tf-care-action-fx"><i></i><i></i><i></i></span><span class="tf-betta-bubbles"><i></i><i></i><i></i><i></i><i></i><i></i></span></span>`;
     const weatherLayer = `<span class="tf-pet-weather" aria-hidden="true"><span class="tf-weather-sun"><i></i></span><span class="tf-weather-moon">☾<i>·</i><i>·</i><i>·</i></span><span class="tf-weather-cloud"><i></i><i></i></span><span class="tf-weather-rain">${'<i></i>'.repeat(8)}</span><span class="tf-weather-snow"><i>✣</i><i>·</i><i>✣</i><i>·</i><i>✣</i><i>·</i></span><span class="tf-weather-wind"><i></i><i></i><i></i><b>◆</b></span></span>`;
-    const habitatLayer = `<span class="tf-pet-habitat-layer" data-habitat="${displayScene.habitat}" aria-hidden="true">${renderCompanionScene(displayScene.habitat) || '<i class="is-backdrop"></i><i class="is-landmark"></i><i class="is-detail-one"></i><i class="is-detail-two"></i><i class="is-foreground"></i>'}</span>`;
+    const habitatArt = displayScene.customized ? renderCompanionRoom(companion.room) : renderCompanionScene(displayScene.habitat);
+    const habitatLayer = `<span class="tf-pet-habitat-layer" data-habitat="${displayScene.habitat}" aria-hidden="true">${habitatArt || '<i class="is-backdrop"></i><i class="is-landmark"></i><i class="is-detail-one"></i><i class="is-detail-two"></i><i class="is-foreground"></i>'}</span>`;
     const tripSchedule = activeTrip ? `<section class="tf-companion-trip-schedule"><header><span>${icon('message')}预生成行程</span><b>${deliveredSignals}/${tripSignals.length} 则来信</b></header><progress max="100" value="${tripProgress}"></progress><footer><span>预计 ${formatTimeUntil(activeTrip.returnAt)} 后返家</span><small>消息按时间在本地释放，不再调用 API</small></footer></section>` : '';
     return `<div class="tf-companion-page tf-companion-v3 is-panel-${panel} is-species-${speciesId} is-device-${skin.id} is-action-${escapeHtml(visualAction)} is-weather-${weather.id}">${renderCompanionNavigation(data, panel)}<section class="tf-card tf-companion-home" ${['home', 'dress'].includes(panel) ? '' : 'hidden'}><div class="tf-pet-console-wrap"><div class="tf-pet-console"><span class="tf-device-ornaments" aria-hidden="true"><i></i><i></i><b></b><em></em></span><div class="tf-pet-console-brand"><span>${escapeHtml(skin.brand)}</span><b>${escapeHtml(skin.name)}</b></div><div class="tf-pet-screen-bezel"><div class="tf-pet-screen"><div class="tf-pet-screen-top"><b>${statusCode}</b><span>${escapeHtml(companion.mood || '好奇')}</span><span class="tf-pet-signal"><i></i><i></i><i></i></span></div><div class="tf-pet-stage">${habitatLayer}${portrait}${animationLayer}${weatherLayer}<span class="tf-pet-cloud is-one"></span><span class="tf-pet-cloud is-two"></span><span class="tf-pet-ground"></span></div><div class="tf-pet-screen-menu">${menuItems.map((item, index) => `<button class="${index === menuIndex ? 'is-selected' : ''}" data-action="companion-care" data-care="${item.id}" title="${item.label}"><span>${item.symbol}</span><b>${item.label}</b></button>`).join('')}</div><div class="tf-pet-screen-bottom"><span>${escapeHtml(companion.species)}</span><span title="${escapeHtml(weather.note)}">${weather.icon} ${escapeHtml(weather.label)}</span><span>♥ ${String(bond).padStart(3, '0')}</span></div></div></div><div class="tf-pet-device-controls"><button type="button" data-action="companion-menu-nav" data-direction="-1" aria-label="上一个功能"><i></i><span>PREV</span></button><button type="button" data-action="companion-menu-confirm" aria-label="确认当前功能"><i></i><span>OK</span></button><button type="button" data-action="companion-menu-nav" data-direction="1" aria-label="下一个功能"><i></i><span>NEXT</span></button></div></div></div>${renderCompanionSummary(data)}</section><section class="tf-pet-section" data-companion-panel="album" ${panel === 'album' ? '' : 'hidden'}><!-- companion-album --></section><section class="tf-pet-section tf-pet-travel-panel" data-companion-panel="travel" ${panel === 'travel' ? '' : 'hidden'}><header class="tf-pet-section-heading"><small>LET'S GO SOMEWHERE</small><h2>${companion.status === 'away' ? escapeHtml(companion.name) + '的旅途' : '准备一次小小的远行'}</h2><p>${companion.status === 'away' ? escapeHtml(statusLabel) : '带上背包里的食物和小物件，等它把沿途的故事带回来。'}</p></header>${companion.message && (companion.status === 'away' || companion.lastAction === 'return') ? `<div class="tf-pet-travel-message" role="status"><b>${companion.status === 'away' ? '旅途来信' : '平安回家啦'}</b><p>${escapeHtml(companion.message)}</p></div>` : ''}${luckyDirection ? `<p class="tf-pet-luck-note">${icon('sparkles')}幸运方向：${escapeHtml(luckyDirection)}</p>` : ''}${tripSchedule}${renderCompanionPacking(data)}${companion.status !== 'away' ? renderCompanionPackingPreview(data) : ''}<footer class="tf-pet-trip-actions"><button class="tf-primary-button tf-pet-main-action" data-action="${companion.status === 'away' ? 'companion-signal-local' : 'companion-depart-ai'}" ${viewState.moduleBusy.has('travel') ? 'disabled' : ''}>${viewState.moduleBusy.has('travel') ? '<span class="tf-spinner"></span>正在整理行囊' : companion.status === 'away' ? '查看行程进度' : '准备这次远行'}</button>${companion.status === 'away' ? '<button class="tf-secondary-button" data-action="companion-return">立即召回</button>' : ''}</footer>${renderCompanionTravelHistory(data)}</section><section class="tf-pet-section tf-pet-dress-panel" data-companion-panel="dress" ${panel === 'dress' ? '' : 'hidden'}><details class="tf-card tf-companion-profile-card" ${viewState.companionProfileOpen ? 'open' : ''}><summary data-action="toggle-companion-profile"><span class="tf-companion-profile-avatar">${renderPixelCompanion(companion.species, 'home', true)}</span><div><small>TRAVELER PROFILE</small><h3>${escapeHtml(companion.name)} · ${escapeHtml(companion.species)}</h3><p>${escapeHtml(skin.name)} · 点击展开更换旅伴或设备</p></div><span class="tf-profile-expand">编辑档案⌄</span></summary><div class="tf-companion-profile-content"><section class="tf-companion-identity-section"><header><div><small>COMPANION</small><h3>旅伴与资料</h3><p>更换形象不会清除亲密度、行囊和旅行记录。</p></div></header><div class="tf-pet-species-grid tf-pet-species-compact">${speciesOptions}<button type="button" class="tf-pet-species-option is-custom ${customSelected ? 'is-selected' : ''}" data-action="choose-companion-custom"><span>＋</span><b>自定义</b></button></div><div class="tf-companion-profile-grid"><label><span>名字</span><input data-companion-field="name" value="${escapeHtml(companion.name)}" maxlength="32"></label>${customSelected ? `<label><span>自定义种类</span><input data-companion-field="species" value="${escapeHtml(companion.species === '自定义旅伴' ? '' : companion.species)}" placeholder="例如：史莱姆、龙、机械犬"></label>` : ''}</div></section>${appearanceControls}${environmentControls}<section class="tf-device-skin-section"><header><div><small>DEVICE COLLECTION</small><h3>设备外观</h3><p>10 款机身均有独立轮廓、材质、屏幕与控制细节，不改变宠物数据。</p></div></header><div class="tf-device-skin-grid">${deviceOptions}</div></section></div></details><!-- companion-decorate --></section></div>`;
 }
@@ -2227,8 +2234,153 @@ function maybeCompanionSelfChangeAccessory(companion, { force = false } = {}) {
     return true;
 }
 
+function getCompanionRoomDraft() {
+    const draft = viewState.companionRoomDraft;
+    if (draft && (!draft.current() || draft.owner !== getForumData())) viewState.companionRoomDraft = null;
+    return viewState.companionRoomDraft;
+}
+
+function ensureCompanionRoomDraft() {
+    if (getCompanionRoomDraft()) return viewState.companionRoomDraft;
+    const owner = getForumData(), saved = normalizeCompanionRoom(owner.world.companion.room);
+    const data = saved.items.length || saved.enabled ? { ...saved, enabled: true } : createCompanionRoomPreset('cozy');
+    return viewState.companionRoomDraft = {
+        owner, current: captureChatScope(), data, dirty: !saved.enabled,
+        type: '', selected: '', color: 'natural', category: 'all', notice: '',
+    };
+}
+
+function paintCompanionRoomEditor({ focusCanvas = false } = {}) {
+    const draft = getCompanionRoomDraft(), editor = getRoot()?.querySelector('.tf-room-editor');
+    if (!draft || !editor) return;
+    const content = editor.closest('.tf-pet-device-content'), scrollTop = content.scrollTop;
+    const expanded = [...editor.querySelectorAll('details[open]')].map(node => node.className);
+    const focused = editor.contains(document.activeElement) ? { ...document.activeElement.dataset } : null;
+    editor.outerHTML = renderCompanionRoomEditor(draft.owner.world.companion.room, draft);
+    const next = content.querySelector('.tf-room-editor');
+    next.querySelectorAll('details').forEach(node => { node.open = expanded.includes(node.className); });
+    content.scrollTop = scrollTop;
+    viewState.companionDeviceCursor = -1;
+    paintCompanionDeviceCursor(getRoot(), viewState);
+    if (focusCanvas) next.querySelector('.tf-room-canvas').focus({ preventScroll: true });
+    else if (focused?.action) {
+        const values = ['roomValue', 'roomType', 'roomItem', 'roomPreset'];
+        const match = [...next.querySelectorAll('[data-action]')].find(node => node.dataset.action === focused.action && values.every(key => node.dataset[key] === focused[key]));
+        match?.focus({ preventScroll: true });
+    }
+}
+
+function placeCompanionRoomItem(event, canvas) {
+    const draft = getCompanionRoomDraft();
+    if (!draft || draft.saving || viewState.companionPanel !== 'room') return;
+    const box = canvas.getBoundingClientRect();
+    const x = Math.round((event.clientX - box.left) / box.width * 320), y = Math.round((event.clientY - box.top) / box.height * 240);
+    if (draft.type) {
+        if (draft.data.items.length >= ROOM_MAX_ITEMS) {
+            draft.notice = `最多摆放 ${ROOM_MAX_ITEMS} 件，先收回一件再布置。`;
+            return paintCompanionRoomEditor({ focusCanvas: true });
+        }
+        const before = new Set(draft.data.items.map(item => item.id));
+        draft.data = addRoomItem(draft.data, draft.type, x, y, draft.color);
+        draft.selected = draft.data.items.find(item => !before.has(item.id))?.id || '';
+        draft.type = '';
+    } else if (draft.selected) {
+        draft.data = updateRoomItem(draft.data, draft.selected, { x, y });
+    } else return;
+    draft.dirty = true; draft.notice = '';
+    paintCompanionRoomEditor({ focusCanvas: true });
+}
+
+async function handleCompanionRoomAction(action, target, event) {
+    const draft = getCompanionRoomDraft();
+    if (!draft || draft.saving || viewState.companionPanel !== 'room') return;
+    const selected = draft.data.items.find(item => item.id === draft.selected);
+    if (action === 'room-save' || action === 'room-use-scene') {
+        const data = draft.owner;
+        assertForumDataCurrent(data);
+        const previous = normalizeCompanionRoom(data.world.companion.room);
+        const next = normalizeCompanionRoom(action === 'room-save' ? { ...draft.data, enabled: true } : { ...previous, enabled: false });
+        draft.saving = true; draft.notice = '正在保存小窝…';
+        paintCompanionRoomEditor();
+        data.world.companion.room = next;
+        try {
+            await saveForumData(data, true);
+        } catch (error) {
+            if (JSON.stringify(data.world.companion.room) === JSON.stringify(next)) data.world.companion.room = previous;
+            draft.saving = false;
+            draft.notice = '保存没有完成，草稿还在，可以重试或取消修改。';
+            if (draft.current() && viewState.companionRoomDraft === draft) paintCompanionRoomEditor();
+            throw error;
+        }
+        if (!draft.current() || viewState.companionRoomDraft !== draft || draft.owner !== getForumData()) return;
+        viewState.companionRoomDraft = null;
+        viewState.companionPanel = 'home'; viewState.companionDeviceCursor = -1;
+        notify('success', action === 'room-save' ? '小窝布置已保存，快陪它住进来吧。' : '已切回场景小窝，保存的装修还在。');
+        return render({ preserveScroll: true });
+    }
+    if (action === 'room-cancel') {
+        viewState.companionRoomDraft = null;
+        viewState.companionPanel = 'home'; viewState.companionDeviceCursor = -1;
+        return render({ preserveScroll: true });
+    }
+    draft.notice = '';
+    if (action === 'room-pick') {
+        const type = ROOM_FURNITURE.find(item => item.id === target.dataset.roomType);
+        if (!type) return;
+        draft.type = type.id; draft.selected = '';
+        draft.notice = `已选${type.name}，点${type.category === 'wall' ? '墙面' : '地板'}放置；放好后可继续选择家具。`;
+    } else if (action === 'room-select') {
+        if (draft.type && target.closest('.tf-room-canvas') && event.detail > 0) return placeCompanionRoomItem(event, target.closest('.tf-room-canvas'));
+        if (!draft.data.items.some(item => item.id === target.dataset.roomItem)) return;
+        draft.selected = target.dataset.roomItem; draft.type = '';
+        draft.color = draft.data.items.find(item => item.id === draft.selected).color;
+    } else if (action === 'room-category') {
+        if (!['all', 'furniture', 'decor', 'wall'].includes(target.dataset.roomValue)) return;
+        draft.category = target.dataset.roomValue;
+    } else if (action === 'room-color') {
+        draft.color = target.dataset.roomValue;
+        if (selected) { draft.data = updateRoomItem(draft.data, selected.id, { color: draft.color }); draft.dirty = true; }
+    } else if (action === 'room-wall' || action === 'room-floor') {
+        draft.data = normalizeCompanionRoom({ ...draft.data, [action === 'room-wall' ? 'wall' : 'floor']: target.dataset.roomValue });
+        draft.dirty = true;
+    } else if (action === 'room-preset') {
+        draft.data = createCompanionRoomPreset(target.dataset.roomPreset);
+        draft.selected = ''; draft.type = ''; draft.dirty = true;
+        draft.notice = '范例已放入草稿，每一件家具都可以重新摆放。';
+    } else if (action === 'room-remove' && selected) {
+        draft.data = removeRoomItem(draft.data, selected.id); draft.selected = ''; draft.dirty = true;
+    } else if (action === 'room-rotate' && selected) {
+        draft.data = updateRoomItem(draft.data, selected.id, { rotation: (selected.rotation + 1) % 4 }); draft.dirty = true;
+    } else if (action === 'room-step' && selected) {
+        const dx = Number(target.dataset.dx || 0), dy = Number(target.dataset.dy || 0);
+        if (![dx, dy].every(value => [-8, 0, 8].includes(value))) return;
+        draft.data = updateRoomItem(draft.data, selected.id, { x: selected.x + dx, y: selected.y + dy }); draft.dirty = true;
+    } else return;
+    paintCompanionRoomEditor({ focusCanvas: ['room-pick', 'room-select', 'room-remove', 'room-rotate', 'room-step'].includes(action) });
+}
+
+function handleCompanionRoomKeyDown(event) {
+    const canvas = event.target.closest('.tf-room-canvas'), draft = getCompanionRoomDraft();
+    if (!canvas || !draft || draft.saving || viewState.companionPanel !== 'room' || event.altKey || event.ctrlKey || event.metaKey) return;
+    const direction = { ArrowLeft: [-8, 0], ArrowRight: [8, 0], ArrowUp: [0, -8], ArrowDown: [0, 8] }[event.key];
+    if (direction && draft.selected) {
+        event.preventDefault();
+        void handleCompanionRoomAction('room-step', { dataset: { dx: direction[0], dy: direction[1] } }, event);
+    } else if (['Delete', 'Backspace'].includes(event.key) && draft.selected) {
+        event.preventDefault(); void handleCompanionRoomAction('room-remove', {}, event);
+    } else if (['Enter', ' '].includes(event.key) && draft.type) {
+        event.preventDefault();
+        const box = canvas.getBoundingClientRect(), wall = ROOM_FURNITURE.find(item => item.id === draft.type)?.category === 'wall';
+        placeCompanionRoomItem({ clientX: box.left + box.width / 2, clientY: box.top + box.height * (wall ? .36 : .8) }, canvas);
+    } else if (event.key === 'Escape') {
+        event.preventDefault(); draft.selected = ''; draft.type = ''; draft.notice = ''; paintCompanionRoomEditor({ focusCanvas: true });
+    }
+}
+
 function showCompanionPanel(panel, { focus = true, preserveCareSource = false } = {}) {
     if (!DEVICE_PAGES.includes(panel)) return;
+    if (viewState.companionPanel === 'room' && getCompanionRoomDraft()?.saving && panel !== 'room') return;
+    if (panel === 'room') ensureCompanionRoomDraft();
     const root = getRoot(), page = root?.querySelector('.tf-companion-device');
     if (!page) return;
     if (panel !== 'home') clearCompanionRitual();
@@ -2253,7 +2405,7 @@ function showCompanionPanel(panel, { focus = true, preserveCareSource = false } 
         page.querySelector('.tf-device-viewport').classList.remove('is-selecting-food');
     }
     if (panel === 'dress') viewState.companionProfileOpen = true;
-    if (closeTransient) {
+    if (closeTransient || panel === 'room') {
         render({ preserveScroll: true });
         if (focus) getRoot()?.querySelector('[data-action="companion-menu-confirm"]')?.focus({ preventScroll: true });
         return;
@@ -2310,6 +2462,8 @@ function openCompanionFoodMenu() {
 }
 
 function renderCompanionAppV4(data) {
+    if (viewState.companionPanel === 'room') ensureCompanionRoomDraft();
+    else getCompanionRoomDraft();
     const companion = data.world.companion;
     const displayScene = getCompanionDisplayedScene(companion);
     const moodClass = Number(companion.energy || 0) < 22 ? 'sleepy' : Number(companion.satiety || 0) < 22 ? 'hungry' : Number(companion.happiness || 0) >= 82 ? 'joyful' : Number(companion.happiness || 0) < 35 ? 'lonely' : 'calm';
@@ -4534,8 +4688,13 @@ async function setRoleModeration(npcId, kind, enabled) {
 
 async function handleRootClick(event) {
     const target = event.target.closest('[data-action]');
-    if (!target) return;
+    if (!target) {
+        const canvas = event.target.closest('.tf-room-canvas');
+        if (canvas && event.detail > 0) placeCompanionRoomItem(event, canvas);
+        return;
+    }
     const action = target.dataset.action;
+    if (action.startsWith('room-')) return handleCompanionRoomAction(action, target, event);
     if (action.startsWith('pet-')) return handlePetLifeAction(action, target);
     if (['toggle-event-hub', 'select-story-event', 'open-story-event', 'track-post-event'].includes(action)) {
         event.preventDefault();
@@ -6299,6 +6458,7 @@ function handleRootChange(event) {
         if (!allowed.includes(target.value)) return;
         companion[field] = target.value;
         if (field === 'habitat') {
+            companion.room = normalizeCompanionRoom({ ...companion.room, enabled: false });
             const habitat = COMPANION_HABITATS.find(item => item.id === target.value);
             companion.lastAction = 'hide';
             companion.message = habitat?.arrival ? `${companion.name}${habitat.arrival}` : `${companion.name}在${habitat?.name || '新小窝'}里四处看了看，挑中了最喜欢的位置。`;
@@ -6811,7 +6971,7 @@ function bindSillyTavernEvents() {
         if (viewState.autoRefreshTimer) window.clearTimeout(viewState.autoRefreshTimer);
         viewState.autoRefreshTimer = 0;
     };
-    if (context.eventTypes?.CHAT_CHANGED) context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => { companionRoamController?.cancel({ reset: true }); clearCompanionRitual(); viewState.companionDeviceCursor = -1; viewState.companionMenuSelection = 'status'; viewState.companionCareReturnPanel = ''; viewState.companionPanel = 'home'; viewState.companionProfileOpen = false; viewState.companionAppearanceDraft = null; companionGamePlayer?.stop(false); viewState.companionGameResultOpen = false; cancelCompanionTouch(); viewState.companionCleaning = false; viewState.companionCleanProgress = 0; viewState.companionFeedback = null; viewState.companionFoodMenuOpen = false; viewState.companionVisualAction = ""; viewState.companionActionToken += 1; clearTimeout(viewState.companionActionTimer); clearTimeout(viewState.companionFeedbackTimer); cancelAutoRefresh(); viewState.generationController?.abort(); viewState.generationStage = ''; viewState.pendingImport = null; viewState.worldCatalog = []; viewState.promptSourceContext = null; viewState.selectedNpcId = ''; viewState.publicNpcId = ''; viewState.selectedPostId = ''; viewState.selectedConversationId = ''; viewState.selectedEventId = ''; viewState.eventHubOpen = false; viewState.deliverySelections.clear(); viewState.deliveryReviews.clear(); viewState.replyTarget = null; viewState.expandedComments.clear(); refresh(); });
+    if (context.eventTypes?.CHAT_CHANGED) context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => { companionRoamController?.cancel({ reset: true }); clearCompanionRitual(); viewState.companionDeviceCursor = -1; viewState.companionMenuSelection = 'status'; viewState.companionCareReturnPanel = ''; viewState.companionPanel = 'home'; viewState.companionProfileOpen = false; viewState.companionAppearanceDraft = null; viewState.companionRoomDraft = null; companionGamePlayer?.stop(false); viewState.companionGameResultOpen = false; cancelCompanionTouch(); viewState.companionCleaning = false; viewState.companionCleanProgress = 0; viewState.companionFeedback = null; viewState.companionFoodMenuOpen = false; viewState.companionVisualAction = ""; viewState.companionActionToken += 1; clearTimeout(viewState.companionActionTimer); clearTimeout(viewState.companionFeedbackTimer); cancelAutoRefresh(); viewState.generationController?.abort(); viewState.generationStage = ''; viewState.pendingImport = null; viewState.worldCatalog = []; viewState.promptSourceContext = null; viewState.selectedNpcId = ''; viewState.publicNpcId = ''; viewState.selectedPostId = ''; viewState.selectedConversationId = ''; viewState.selectedEventId = ''; viewState.eventHubOpen = false; viewState.deliverySelections.clear(); viewState.deliveryReviews.clear(); viewState.replyTarget = null; viewState.expandedComments.clear(); refresh(); });
     if (context.eventTypes?.MESSAGE_RECEIVED) context.eventSource.on(context.eventTypes.MESSAGE_RECEIVED, (_messageId, type) => {
         if (type === 'first_message' || !getSettings().generation.autoRefreshOnMessage || !getSettings().modules.forum.enabled || !hasActiveChat()) return;
         cancelAutoRefresh();
@@ -6845,6 +7005,7 @@ export async function initializeForumUi() {
         root.addEventListener('pointermove', handleRootPointerMove);
         root.addEventListener('pointerup', handleRootPointerUp);
         root.addEventListener('pointercancel', handleRootPointerUp);
+        root.addEventListener('keydown', handleCompanionRoomKeyDown);
         cancelCompanionTouch = bindCompanionTouch(root, {
             captureScope: captureChatScope,
             allowed: target => {
