@@ -32,6 +32,25 @@ test('room layouts survive save/import normalization and companion world updates
     assert.equal(restored.world.companion.name, '豆包');
 });
 
+test('the furniture redraw keeps an existing saved layout exactly where its owner placed it', () => {
+    const oldRoom = {
+        enabled: true, wall: 'cream', floor: 'wood',
+        items: [
+            { id: 'room-item-1', type: 'window', x: 84, y: 66, rotation: 0, color: 'natural' },
+            { id: 'room-item-2', type: 'picture', x: 242, y: 67, rotation: 0, color: 'natural' },
+            { id: 'room-item-3', type: 'bed', x: 62, y: 198, rotation: 0, color: 'natural' },
+            { id: 'room-item-4', type: 'rug', x: 182, y: 212, rotation: 0, color: 'sage' },
+            { id: 'room-item-5', type: 'lamp', x: 275, y: 181, rotation: 0, color: 'natural' },
+            { id: 'room-item-6', type: 'food-bowl', x: 268, y: 223, rotation: 0, color: 'rose' },
+        ],
+    };
+    const saved = normalizeForumDataShape({ world: { companion: { room: structuredClone(oldRoom) } } });
+    assert.deepEqual(saved.world.companion.room, oldRoom);
+    renderCompanionRoom(saved.world.companion.room);
+    assert.deepEqual(saved.world.companion.room, oldRoom);
+    assert.deepEqual(normalizeForumDataShape(JSON.parse(JSON.stringify(saved))).world.companion.room, oldRoom);
+});
+
 test('malformed import cleans unsafe identities and unknown pieces deterministically without mutation', () => {
     const raw = {
         enabled: true, wall: '<script>', floor: 'not-a-floor',
@@ -96,7 +115,7 @@ test('all starter layouts are independent editable rooms with different furnishi
     assert.equal(new Set(presets.map(room => JSON.stringify(room))).size, 3);
     for (const preset of presets) {
         assert.equal(preset.enabled, true);
-        assert.ok(preset.items.length >= 4 && preset.items.length <= 6);
+        assert.ok(preset.items.length >= 4 && preset.items.length <= ROOM_MAX_ITEMS);
         assert.deepEqual(normalizeCompanionRoom(preset), preset);
         assert.equal(removeRoomItem(preset, preset.items[0].id).items.length, preset.items.length - 1);
     }

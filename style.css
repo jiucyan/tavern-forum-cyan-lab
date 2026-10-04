@@ -15742,58 +15742,97 @@ button.tf-avatar {
     #tavern-forum-root .tf-pet-ritual[data-ritual-phase="eat"] .tf-ritual-bowl-food { opacity: .5; transform: scale(.7,.5); }
 }
 
-/* A quiet, touch-friendly workshop for the companion's own little room. */
-/* Furniture keeps its room scale; the resident pet fits between its furnishings. */
-#tavern-forum-root .tf-companion-device.is-habitat-custom-room:not(.is-playing-game) .tf-device-viewport:not(.is-selecting-food) .tf-pet-sprite-control { --pet-sprite-size: clamp(52px, 24cqi, 84px); }
-#tavern-forum-root .tf-companion-device.is-panel-room .tf-device-viewport { height: clamp(260px, 50dvh, 420px); min-height: 260px; max-height: none; aspect-ratio: auto; }
+/* The room workshop uses cream paper, warm wood and quiet sage accents. */
+#tavern-forum-root .tf-companion-device.is-habitat-custom-room:not(.is-playing-game) .tf-device-viewport:not(.is-selecting-food) .tf-pet-sprite-control { --pet-sprite-size: clamp(68px, 33cqi, 110px); }
+#tavern-forum-root .tf-companion-device.is-panel-home.is-habitat-custom-room:not(.is-playing-game) .tf-device-viewport:not(.is-selecting-food) { min-height: 0; max-height: none; aspect-ratio: 4 / 3; }
+#tavern-forum-root .tf-companion-device.is-panel-room .tf-device-viewport { height: clamp(440px, 70dvh, 620px); min-height: 440px; max-height: none; aspect-ratio: auto; }
 #tavern-forum-root .tf-companion-device.is-panel-room .tf-pet-move-guide { display: none !important; }
-#tavern-forum-root .tf-companion-device .tf-pet-device-page[data-companion-panel="room"] .tf-pet-device-content { padding: 8px; }
+#tavern-forum-root .tf-companion-device.is-panel-room :is(.tf-pet-screen,.tf-pet-screen-top) { background: #f4efe4; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-page[data-companion-panel="room"] { color: #605845; background: #f5f0e5; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-page[data-companion-panel="room"] > header { border-color: #d6c9b0; background: #eee5d5; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-page[data-companion-panel="room"] > header { min-height: 44px; height: 44px; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-page[data-companion-panel="room"] > header .tf-device-home { width: auto; min-width: 44px; min-height: 44px; padding-inline: 8px; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-page[data-companion-panel="room"] > header button { color: #6b6552; border-color: #d5cbb6; background: #f8f2e7; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-page[data-companion-panel="room"] .tf-device-page-tabs button { background: transparent; }
+#tavern-forum-root .tf-companion-device .tf-pet-device-page[data-companion-panel="room"] .tf-pet-device-content { padding: 9px; scrollbar-color: #b1b79c transparent; }
 #tavern-forum-root .tf-companion-v4.tf-companion-device .tf-device-icon-menu:has(> button:nth-child(9)) { height: auto; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: minmax(62px, auto); gap: 6px; padding-block: 4px; }
-#tavern-forum-root .tf-companion-device .tf-room-editor { display: grid; min-width: 0; gap: 8px; color: #435438; }
+#tavern-forum-root .tf-companion-device .tf-room-entry { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 44px; gap: 7px; margin-bottom: 10px; padding: 7px; border: 1px solid #b8c6a6; border-radius: 9px; color: #506544; background: #e7eddd; }
+#tavern-forum-root .tf-companion-device .tf-room-editor { --tf-room-ink: #605845; --tf-room-edge: #d9cbb5; --tf-room-sage: #718b61; display: grid; min-width: 0; gap: 5px; color: var(--tf-room-ink); }
 #tavern-forum-root .tf-companion-device .tf-room-editor > * { min-width: 0; max-width: 100%; margin: 0; }
-#tavern-forum-root .tf-companion-device .tf-room-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 5px; min-height: 24px; }
-#tavern-forum-root .tf-companion-device .tf-room-heading b { font-size: 13px; font-weight: 600; }
-#tavern-forum-root .tf-companion-device .tf-room-save-state { padding: 2px 5px; border: 1px solid #b9c6a6; border-radius: 3px; color: #63764e; font-size: 10px; line-height: 1.4; }
-#tavern-forum-root .tf-companion-device .tf-room-editor .tf-room-guide { margin: 0; min-height: 18px; color: #627454; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
-#tavern-forum-root .tf-companion-device .tf-room-canvas { position: relative; width: 100%; min-width: 0; aspect-ratio: 4 / 3; overflow: hidden; border: 1px solid #a7b38f; border-radius: 3px; background: #e8e3cf; isolation: isolate; cursor: crosshair; touch-action: manipulation; }
+#tavern-forum-root .tf-companion-device .tf-room-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+#tavern-forum-root .tf-companion-device .tf-room-heading b { font-size: 14px; font-weight: 600; }
+#tavern-forum-root .tf-companion-device .tf-room-heading > div { min-width: 0; }
+#tavern-forum-root .tf-companion-device .tf-room-heading > div :is(b,span) { display: block; }
+#tavern-forum-root .tf-companion-device .tf-room-heading :is(small,span:not(.tf-room-save-state)) { color: #97846b; font-size: 10px; line-height: 1.4; }
+#tavern-forum-root .tf-companion-device .tf-room-save-state { flex: 0 0 auto; padding: 3px 7px; border: 1px solid #d6c5a8; border-radius: 20px; color: #8b775c; background: #fff9ec; font-size: 10px; line-height: 1.4; }
+#tavern-forum-root .tf-companion-device .tf-room-editor .tf-room-guide { margin: 0; color: #877b63; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+#tavern-forum-root .tf-companion-device .tf-room-preview .tf-room-guide { padding: 4px 3px 1px; font-size: 10px; }
+#tavern-forum-root .tf-companion-device .tf-room-preview { width: 100%; max-width: 230px; margin-inline: auto; padding: 4px; border: 1px solid #cdbb9e; border-radius: 10px; background: #e7d5b9; box-shadow: inset 0 1px #fff9, 0 2px 0 #d6c4a620; }
+#tavern-forum-root .tf-companion-device .tf-room-canvas { position: relative; width: 100%; min-width: 0; aspect-ratio: 4 / 3; overflow: hidden; border: 1px solid #c4b293; border-radius: 6px; background: #efe6d5; isolation: isolate; cursor: crosshair; touch-action: manipulation; }
 #tavern-forum-root .tf-companion-device .tf-room-canvas > .tf-scene-art { position: absolute; inset: 0; display: block; width: 100%; height: 100%; max-width: none; pointer-events: none; image-rendering: pixelated; }
-#tavern-forum-root .tf-companion-device .tf-room-canvas:focus-visible { outline: 2px solid #64794a; outline-offset: 2px; }
+#tavern-forum-root .tf-companion-device .tf-room-canvas:focus-visible { outline: 2px solid #839969; outline-offset: 2px; }
 #tavern-forum-root .tf-companion-device .tf-room-item-controls { position: absolute; inset: 0; pointer-events: none; }
-#tavern-forum-root .tf-companion-device .tf-room-canvas .tf-room-item { position: absolute; display: block; min-width: 36px; min-height: 36px; margin: 0; padding: 0; border: 2px solid transparent; border-radius: 2px; color: inherit; background: transparent; box-shadow: none; transform: translate(-50%, -50%); pointer-events: auto; cursor: pointer; touch-action: manipulation; }
-#tavern-forum-root .tf-companion-device .tf-room-canvas .tf-room-item:is(:hover,.is-selected) { border-color: #687d4f; background: transparent; box-shadow: 0 0 0 1px #f2f4dfb3; }
-#tavern-forum-root .tf-companion-device .tf-room-canvas .tf-room-item.is-selected { border-style: dashed; }
-#tavern-forum-root .tf-companion-device .tf-room-canvas .tf-room-item:active { cursor: pointer; }
-#tavern-forum-root .tf-companion-device .tf-room-canvas .tf-room-item:focus-visible { outline: 2px solid #435438; outline-offset: 2px; }
-#tavern-forum-root .tf-companion-device .tf-room-editor button:not(.tf-room-item) { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 5px 7px; border: 1px solid #b8c5a3; border-radius: 5px; color: #435438; background: #e2e8d0; box-shadow: 0 1px 0 #fff8; font: 11px/1.4 sans-serif; white-space: normal; overflow-wrap: anywhere; cursor: pointer; touch-action: manipulation; }
-#tavern-forum-root .tf-companion-device .tf-room-editor button:not(.tf-room-item):hover { border-color: #93a678; background: #d7e1c3; }
-#tavern-forum-root .tf-companion-device .tf-room-editor button:not(.tf-room-item):is(.is-selected,[aria-pressed="true"]) { border-color: #6f8355; color: #34482b; background: #cfdcba; box-shadow: inset 0 -2px #81976b; }
+#tavern-forum-root .tf-companion-device .tf-room-canvas .tf-room-item { position: absolute; display: block; min-width: 36px; min-height: 36px; margin: 0; padding: 0; border: 2px solid transparent; border-radius: 3px; color: inherit; background: transparent; box-shadow: none; transform: translate(-50%, -50%); pointer-events: auto; cursor: pointer; touch-action: manipulation; }
+#tavern-forum-root .tf-companion-device .tf-room-canvas .tf-room-item:is(:hover,.is-selected) { border-color: #779364; background: transparent; box-shadow: 0 0 0 1px #fff9e8bd; }
+#tavern-forum-root .tf-companion-device .tf-room-canvas .tf-room-item:focus-visible { outline: 2px solid #668051; outline-offset: 2px; }
+#tavern-forum-root .tf-companion-device .tf-room-editor button:not(.tf-room-item) { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 44px; min-height: 44px; padding: 5px 7px; border: 1px solid var(--tf-room-edge); border-radius: 8px; color: #6f624e; background: #fffbf3; box-shadow: 0 1px 0 #cfbaa42b; font: 11px/1.35 sans-serif; white-space: normal; overflow-wrap: anywhere; cursor: pointer; touch-action: manipulation; }
+#tavern-forum-root .tf-companion-device .tf-room-editor button:not(.tf-room-item):hover { border-color: #bbc6a5; background: #f0f2e5; }
+#tavern-forum-root .tf-companion-device .tf-room-editor button:not(.tf-room-item):is(.is-selected,[aria-pressed="true"]) { border-color: #8da575; color: #526940; background: #e5ecd9; box-shadow: inset 0 0 0 1px #adbb9166; }
 #tavern-forum-root .tf-companion-device .tf-room-editor button:disabled { opacity: .45; cursor: default; }
-#tavern-forum-root .tf-companion-device .tf-room-editor button:not(.tf-room-item):focus-visible { outline: 2px solid #64794a; outline-offset: -2px; }
-#tavern-forum-root .tf-companion-device :is(.tf-room-tools,.tf-room-tabs,.tf-room-swatches,.tf-room-placed-list) { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-width: 0; }
-#tavern-forum-root .tf-companion-device .tf-room-tools { padding-bottom: 8px; border-bottom: 1px dotted #b9c6a6; }
-#tavern-forum-root .tf-companion-device .tf-room-tools button { flex: 1 0 44px; }
-#tavern-forum-root .tf-companion-device .tf-room-tools button[data-action="room-step"] { flex: 0 0 44px; padding: 0; font-size: 17px; }
-#tavern-forum-root .tf-companion-device .tf-room-tabs button { flex: 1 1 44px; }
-#tavern-forum-root .tf-companion-device .tf-room-catalog { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
-#tavern-forum-root .tf-companion-device .tf-room-editor .tf-room-catalog-item { flex-direction: column; gap: 3px; min-width: 0; min-height: 70px; padding: 5px 2px; }
-#tavern-forum-root .tf-companion-device .tf-room-catalog-item i { display: grid; place-items: center; width: 100%; height: 37px; font-style: normal; pointer-events: none; }
-#tavern-forum-root .tf-companion-device .tf-room-catalog-item i svg { display: block; width: 46px; max-width: 100%; height: 37px; pointer-events: none; image-rendering: pixelated; }
-#tavern-forum-root .tf-companion-device .tf-room-catalog-item span { max-width: 100%; font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; pointer-events: none; }
-#tavern-forum-root .tf-companion-device :is(.tf-room-surfaces,.tf-room-presets,.tf-room-placed) { padding: 0; border: 1px solid #bdc9ac; border-radius: 5px; background: #e6ebd8; }
-#tavern-forum-root .tf-companion-device :is(.tf-room-surfaces,.tf-room-presets,.tf-room-placed) > summary { min-height: 44px; padding: 12px 7px; font-size: 11px; line-height: 18px; font-weight: 500; cursor: pointer; touch-action: manipulation; }
-#tavern-forum-root .tf-companion-device :is(.tf-room-surfaces,.tf-room-presets,.tf-room-placed) > summary:focus-visible { outline: 2px solid #64794a; outline-offset: -2px; }
-#tavern-forum-root .tf-companion-device :is(.tf-room-surfaces,.tf-room-presets,.tf-room-placed) > :not(summary) { margin: 0 7px 7px; }
-#tavern-forum-root .tf-companion-device .tf-room-swatches button { flex: 1 1 44px; gap: 4px; }
-#tavern-forum-root .tf-companion-device .tf-room-swatches button > :is(i,span[style]) { display: inline-block; flex: 0 0 auto; width: 14px; height: 14px; border: 1px solid #65745157; border-radius: 2px; }
-#tavern-forum-root .tf-companion-device .tf-room-swatches > :is(b,label) { flex: 0 0 100%; min-width: 0; margin-top: 3px; font-size: 11px; line-height: 1.5; }
-#tavern-forum-root .tf-companion-device .tf-room-presets[open] { padding-bottom: 2px; }
-#tavern-forum-root .tf-companion-device .tf-room-presets button { max-width: calc(100% - 14px); }
+#tavern-forum-root .tf-companion-device .tf-room-editor button:not(.tf-room-item):focus-visible { outline: 2px solid #829965; outline-offset: -2px; }
+#tavern-forum-root .tf-companion-device .tf-room-selection { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px; padding: 4px; border: 1px solid #e0d4c2; border-radius: 9px; background: #fff9ed; }
+#tavern-forum-root .tf-companion-device .tf-room-selection > header { display: flex; align-items: center; gap: 6px; min-width: 0; }
+#tavern-forum-root .tf-companion-device .tf-room-selection > header > :is(i,.tf-room-selection-art) { display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 40px; border: 1px solid #e4d8c3; border-radius: 7px; background: #f1e7d5; font-style: normal; }
+#tavern-forum-root .tf-companion-device .tf-room-selection > header svg { display: block; width: 30px; height: 34px; pointer-events: none; image-rendering: pixelated; }
+#tavern-forum-root .tf-companion-device .tf-room-selection > header > div { min-width: 0; }
+#tavern-forum-root .tf-companion-device .tf-room-selection header :is(b,span,small) { display: block; overflow-wrap: anywhere; }
+#tavern-forum-root .tf-companion-device .tf-room-selection header b { color: #6d604c; font-size: 11px; line-height: 1.4; }
+#tavern-forum-root .tf-companion-device .tf-room-selection header :is(span,small) { color: #99866b; font-size: 10px; line-height: 1.4; }
+#tavern-forum-root .tf-companion-device .tf-room-selection > header > small { flex: 0 0 auto; font-size: 9px; }
+#tavern-forum-root .tf-companion-device .tf-room-selection > header span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tavern-forum-root .tf-companion-device .tf-room-tools { display: contents; }
+#tavern-forum-root .tf-companion-device .tf-room-tool-actions { display: grid; grid-template-columns: repeat(2, 44px); gap: 5px; }
+#tavern-forum-root .tf-companion-device .tf-room-editor .tf-room-tool-actions button { padding: 3px; }
+#tavern-forum-root .tf-companion-device .tf-room-nudge { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(44px, 1fr)); gap: 4px; }
+#tavern-forum-root .tf-companion-device .tf-room-editor .tf-room-nudge button { padding: 0; font-size: 17px; }
+#tavern-forum-root .tf-companion-device .tf-room-tray { display: grid; min-width: 0; gap: 4px; padding: 6px; border: 1px solid #dfd3bd; border-radius: 9px; background: #efe7d9; }
+#tavern-forum-root .tf-companion-device .tf-room-tray-heading { display: flex; align-items: center; justify-content: space-between; min-width: 0; gap: 5px; }
+#tavern-forum-root .tf-companion-device .tf-room-tray-heading b { color: #78664e; font-size: 11px; }
+#tavern-forum-root .tf-companion-device .tf-room-tray-heading :is(small,span) { color: #a08e73; font-size: 10px; line-height: 1.4; }
+#tavern-forum-root .tf-companion-device .tf-room-tabs { display: grid; grid-template-columns: repeat(4, minmax(44px, 1fr)); gap: 3px; }
+#tavern-forum-root .tf-companion-device .tf-room-editor .tf-room-tabs button { padding: 3px; border-radius: 6px; font-size: 10px; }
+#tavern-forum-root .tf-companion-device .tf-room-catalog { display: flex; min-width: 0; gap: 7px; padding: 3px 1px 5px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: thin; scrollbar-color: #c2ad8c transparent; touch-action: pan-x pan-y; }
+#tavern-forum-root .tf-companion-device .tf-room-editor button.tf-room-catalog-item { flex: 0 0 65px; flex-direction: column; gap: 4px; min-height: 68px; padding: 5px 3px; border-radius: 8px; scroll-snap-align: start; }
+#tavern-forum-root .tf-companion-device .tf-room-catalog-item i { display: grid; place-items: center; width: 100%; height: 39px; font-style: normal; pointer-events: none; }
+#tavern-forum-root .tf-companion-device .tf-room-catalog-item i svg { display: block; width: 51px; max-width: 100%; height: 39px; pointer-events: none; image-rendering: pixelated; }
+#tavern-forum-root .tf-companion-device .tf-room-catalog-item span { max-width: 100%; font-size: 10px; line-height: 1.3; overflow-wrap: anywhere; pointer-events: none; }
+#tavern-forum-root .tf-companion-device .tf-room-options { display: grid; gap: 6px; }
+#tavern-forum-root .tf-companion-device :is(.tf-room-surfaces,.tf-room-presets,.tf-room-placed) { padding: 0; border: 1px solid #dfd3bd; border-radius: 8px; background: #fbf6ec; }
+#tavern-forum-root .tf-companion-device :is(.tf-room-surfaces,.tf-room-presets,.tf-room-placed) > summary { min-height: 44px; padding: 12px 9px; color: #786951; font-size: 11px; line-height: 18px; font-weight: 500; cursor: pointer; touch-action: manipulation; }
+#tavern-forum-root .tf-companion-device :is(.tf-room-surfaces,.tf-room-presets,.tf-room-placed) > summary:focus-visible { outline: 2px solid #829965; outline-offset: -2px; }
+#tavern-forum-root .tf-companion-device :is(.tf-room-surfaces,.tf-room-presets,.tf-room-placed) > :not(summary) { margin: 0 8px 8px; }
+#tavern-forum-root .tf-companion-device :is(.tf-room-swatches,.tf-room-placed-list) { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+#tavern-forum-root .tf-companion-device .tf-room-swatches button { flex: 1 1 68px; gap: 4px; }
+#tavern-forum-root .tf-companion-device .tf-room-swatches button > :is(i,span[style]) { display: inline-block; flex: 0 0 auto; width: 15px; height: 15px; border: 1px solid #a79276; border-radius: 4px; }
+#tavern-forum-root .tf-companion-device .tf-room-swatches > :is(b,label) { flex: 0 0 100%; min-width: 0; font-size: 11px; line-height: 1.5; }
+#tavern-forum-root .tf-companion-device .tf-room-presets button { margin: 0 3px 5px 0; }
+#tavern-forum-root .tf-companion-device .tf-room-preset-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+#tavern-forum-root .tf-companion-device .tf-room-editor .tf-room-preset-cards button { flex-direction: column; min-width: 0; margin: 0; padding: 4px; }
+#tavern-forum-root .tf-companion-device .tf-room-preset-cards i { display: block; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 4px; font-style: normal; pointer-events: none; }
+#tavern-forum-root .tf-companion-device .tf-room-preset-cards i svg { display: block; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
+#tavern-forum-root .tf-companion-device .tf-room-preset-cards span { font-size: 10px; }
+#tavern-forum-root .tf-companion-device .tf-room-placed-list button { flex: 1 1 70px; }
 #tavern-forum-root .tf-companion-device .tf-room-placed-list:empty { display: none; }
-#tavern-forum-root .tf-companion-device .tf-room-placed-list button { flex: 1 1 70px; min-width: 0; }
-#tavern-forum-root .tf-companion-device .tf-room-footer { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding-top: 8px; border-top: 1px dotted #b9c6a6; }
-#tavern-forum-root .tf-companion-device .tf-room-footer button[data-action="room-save"] { grid-column: 1 / -1; color: #f2f5e6; border-color: #637a4b; background: #637a4b; }
-#tavern-forum-root .tf-companion-device .tf-room-footer button[data-action="room-save"]:hover { background: #536941; }
-#tavern-forum-root .tf-companion-device .tf-room-footer button[data-action="room-use-scene"] { color: #68785a; background: transparent; box-shadow: none; }
+#tavern-forum-root .tf-companion-device .tf-room-footer { position: sticky; bottom: -9px; z-index: 5; display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(44px, .8fr) minmax(0, 1fr); gap: 5px; padding: 4px 0 7px; border-top: 1px solid #deccb0; background: #f5f0e5f5; box-shadow: 0 -5px 10px #f5f0e58c; }
+#tavern-forum-root .tf-companion-device .tf-room-editor .tf-room-footer button { min-width: 44px; padding: 4px; font-size: 10px; }
+#tavern-forum-root .tf-companion-device .tf-room-footer button[data-action="room-save"] { color: #fffdf5; border-color: #748c62; background: #748c62; box-shadow: inset 0 1px #ffffff24, 0 1px 0 #5c704b; }
+#tavern-forum-root .tf-companion-device .tf-room-footer button[data-action="room-save"]:hover { background: #647b54; }
+#tavern-forum-root .tf-companion-device .tf-room-footer button[data-action="room-use-scene"] { color: #968268; background: #f7f0e2; }
+#tavern-forum-root .tf-companion-device .tf-room-footer button > span { min-width: 0; }
+#tavern-forum-root .tf-companion-device .tf-room-footer .tf-pet-icon { width: 14px; height: 14px; }
+@media (max-height: 760px) {
+    #tavern-forum-root .tf-companion-device.is-panel-room .tf-device-viewport { height: 440px; min-height: 440px; }
+}
 @media (max-height: 620px) {
-    #tavern-forum-root .tf-companion-device.is-panel-room .tf-device-viewport { height: 260px; }
+    #tavern-forum-root .tf-companion-device.is-panel-room .tf-device-viewport { height: 360px; min-height: 360px; }
 }

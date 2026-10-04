@@ -108,6 +108,9 @@ export function createCompanionRoamController({
         const left = pet.offsetLeft, top = pet.offsetTop, petWidth = pet.offsetWidth, petHeight = pet.offsetHeight;
         if (![width, height, left, top, petWidth, petHeight].every(Number.isFinite) || width <= 0 || height <= 0 || petWidth <= 0 || petHeight <= 0) return null;
         const area = { minX: 8 - left, maxX: width - 8 - left - petWidth, minY: 8 - top, maxY: height - 8 - top - petHeight };
+        // The resident's feet stay on the floor of the 320 × 240 custom room.
+        // Keep the complete touch target in bounds while allowing the body above the skirting.
+        if (observed.habitat === 'custom-room') area.minY = Math.max(area.minY, height * (142 / 240) + 4 - top - foot().y);
         return area.maxX >= area.minX && area.maxY >= area.minY ? area : null;
     }
     function constrain(area) {

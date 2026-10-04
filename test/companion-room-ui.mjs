@@ -38,8 +38,8 @@ const readSelected = page => page.evaluate(() => petTest.viewState.companionRoom
 const act = (page, action, suffix = '') => page.locator(`${editor} [data-action="room-${action}"]${suffix}`);
 const method = page => page.viewportSize().width <= 390 ? 'tap' : 'click';
 
-async function open(width) {
-    const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: width <= 390 });
+async function open(width, height = 900) {
+    const page = await browser.newPage({ viewport: { width, height }, hasTouch: width <= 390 });
     page.setDefaultTimeout(10000);
     page.on('pageerror', error => errors.push(error.message));
     await page.clock.install({ time: new Date('2026-10-04T12:00:00+08:00') });
@@ -177,11 +177,13 @@ async function moveAtRoomScale(page) {
     assert.equal((await liveBounds(page)).mode, 'manual', 'scaled pet accepts an actual floor click through its furnishings');
     const marker = await page.locator('.tf-pet-move-target').boundingBox();
     assert.ok(marker, 'scaled-room movement shows a destination');
+    assert.ok(marker.y + marker.height / 2 >= bounds.stage.y + bounds.stage.height * 142 / 240, 'wall clicks are clamped to a floor destination');
     for (let elapsed = 0; (await liveBounds(page)).state !== 'resting' && elapsed < 14000; elapsed += 250) await page.clock.runFor(250);
     const final = await liveBounds(page);
     assert.equal(final.state, 'resting', 'scaled-room movement reaches its destination');
     assert.ok(Math.abs(final.shadow.x + final.shadow.width / 2 - marker.x - marker.width / 2) < 1.6, 'scaled pet foot arrives at horizontal target');
     assert.ok(Math.abs(final.shadow.y + final.shadow.height / 2 - marker.y - marker.height / 2) < 1.6, 'scaled pet foot arrives at vertical target');
+    assert.ok(final.shadow.y + final.shadow.height / 2 >= final.stage.y + final.stage.height * 142 / 240, 'scaled pet stays on the room floor');
     assert.deepEqual(await readPet(page), before, 'scaled movement does not reward or persist');
     await assertHome(page);
     await page.locator(petSelector)[method(page)]();
@@ -217,12 +219,59 @@ async function noSideEffects(page, before) {
     assert.equal(await page.evaluate(() => roomCalls), 0, 'draft edits never call generation');
 }
 
+async function controls(page, firstScreen = false) {
+    const buttons = page.locator(`${editor} .tf-room-nudge button`);
+    const boxes = await buttons.evaluateAll(nodes => nodes.map(node => { const b = node.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height }; }));
+    assert.equal(boxes.length, 4);
+    assert.ok(Math.max(...boxes.map(box => box.y)) - Math.min(...boxes.map(box => box.y)) < 1, 'all four direction buttons stay in one row');
+    assert.ok(boxes.every(box => box.width >= 43 && box.height >= 43), 'direction controls retain 44px touch targets');
+    if (firstScreen) {
+        const visible = await page.locator(`${editor} .tf-room-catalog`).evaluate(node => {
+            const c = node.getBoundingClientRect(), page = node.closest('.tf-pet-device-content').getBoundingClientRect(), footer = node.closest('.tf-room-editor').querySelector('.tf-room-footer').getBoundingClientRect();
+            return { top: c.top, bottom: c.bottom, pageTop: page.top, cutoff: Math.min(page.bottom, footer.top) };
+        });
+        assert.ok(visible.top >= visible.pageTop - 1 && visible.bottom <= visible.cutoff + 2, `first screen shows the furniture card row without footer overlap: ${JSON.stringify(visible)}`);
+    }
+    for (const button of await page.locator(`${editor} .tf-room-footer button`).all()) {
+        await button.scrollIntoViewIfNeeded();
+        assert.ok(await button.evaluate(node => { const b = node.getBoundingClientRect(); return document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)?.closest('button') === node; }), 'sticky footer actions remain visible and unobstructed');
+    }
+}
+
+async function swipeTray(page) {
+    const tray = page.locator(`${editor} .tf-room-catalog`);
+    await tray.scrollIntoViewIfNeeded();
+    const box = await tray.boundingBox(), before = await readDraft(page), selected = await readSelected(page);
+    const x = box.x + box.width * .85, y = box.y + box.height * .5;
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] });
+    for (let step = 1; step <= 8; step++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x - box.width * .65 * step / 8, y, id: 1 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(450);
+    assert.deepEqual(await readDraft(page), before, 'horizontal tray swipe never places or moves furniture');
+    assert.equal(await readSelected(page), selected, 'tray swipe is not a furniture-pick tap');
+    const scrolled = await tray.evaluate(node => node.scrollLeft);
+    assert.ok(scrolled > 10, 'actual touch swipe scrolls the furniture tray');
+    const target = await tray.evaluate(node => {
+        const b = node.getBoundingClientRect();
+        const candidates = [...node.querySelectorAll('button')].map(button => ({ button, b: button.getBoundingClientRect() })).filter(value => value.b.left >= b.left + 1 && value.b.right <= b.right - 1);
+        const value = candidates[0]; return { x: value.b.x + value.b.width / 2, y: value.b.y + value.b.height / 2, type: value.button.dataset.roomType };
+    });
+    await page.touchscreen.tap(target.x, target.y);
+    assert.equal(await page.evaluate(() => petTest.viewState.companionRoomDraft.type), target.type, 'tap after scrolling picks the visible furniture');
+    assert.ok(Math.abs(await tray.evaluate(node => node.scrollLeft) - scrolled) < 3, 'picking from the tray preserves its horizontal scroll position');
+    await page.locator(canvas).press('Escape');
+    await cdp.detach();
+}
+
 try {
     for (const width of [1280, 390, 320]) {
         const page = await open(width);
         await fixture(page);
         const before = await readPet(page);
         await enter(page);
+        await controls(page);
+        if (width <= 390) await swipeTray(page);
         const bed = await pick(page, 'bed', 76, 190);
         const plant = await pick(page, 'plant', 245, 202);
         if (width <= 390) await swipeFurniture(page, bed.id);
@@ -269,6 +318,8 @@ try {
         await surface(page, 'color', 'rose');
         await page.locator(`${editor} .tf-pet-device-content`).evaluate(node => { node.scrollTop = 0; });
         await page.locator(canvas).scrollIntoViewIfNeeded();
+        await controls(page, true);
+        await page.locator(`${editor} .tf-pet-device-content`).evaluate(node => { node.scrollTop = 0; });
         await capture(page, `装修编辑-${width}`, '.tf-device-viewport');
         const draft = await readDraft(page);
         await click(page, act(page, 'save')); await assertHome(page);
@@ -299,6 +350,37 @@ try {
         await page.close();
     }
     console.log('PASS desktop/390/320: catalog/canvas placement, selection, move/turn/collect, surfaces/colors, templates, keyboard, save/cancel/reopen, scene toggle, metadata reload, touch targets and no edit rewards/API calls');
+
+    for (const [width, height] of [[390, 844], [320, 568], [1280, 720]]) {
+        const short = await open(width, height);
+        await fixture(short, { preset: 'garden' });
+        await enter(short);
+        await select(short, (await readDraft(short)).items.find(item => item.type === 'sofa').id);
+        await controls(short);
+        await noOverflow(short);
+        await details(short, 'tf-room-surfaces');
+        await click(short, act(short, 'wall', '[data-room-value="rose"]'));
+        await short.locator(canvas).focus();
+        await short.locator(`${editor} .tf-room-catalog`).evaluate(node => { node.scrollLeft = node.scrollWidth - node.clientWidth; });
+        const scrollBefore = await short.locator(`${editor} .tf-room-catalog`).evaluate(node => node.scrollLeft);
+        const draftBefore = await readDraft(short), storedRoom = (await readPet(short)).room;
+        await short.evaluate(() => petTest.render({ preserveScroll: true }));
+        assert.ok(Math.abs(await short.locator(`${editor} .tf-room-catalog`).evaluate(node => node.scrollLeft) - scrollBefore) < 2, 'full render preserves horizontal tray position');
+        assert.equal(await short.locator(`${editor} .tf-room-surfaces`).evaluate(node => node.open), true, 'full render preserves expanded surface options');
+        assert.equal(await short.locator(canvas).evaluate(node => document.activeElement === node), true, 'full render preserves editor keyboard focus');
+        await short.clock.runFor(31000);
+        assert.ok(Math.abs(await short.locator(`${editor} .tf-room-catalog`).evaluate(node => node.scrollLeft) - scrollBefore) < 2, 'actual 30-second living clock preserves horizontal tray position');
+        assert.equal(await short.locator(`${editor} .tf-room-surfaces`).evaluate(node => node.open), true, 'living clock preserves expanded editor options');
+        assert.equal(await short.locator(canvas).evaluate(node => document.activeElement === node), true, 'living clock preserves editor keyboard focus');
+        assert.deepEqual(await readDraft(short), draftBefore, 'living clock does not replace pending decoration');
+        assert.deepEqual((await readPet(short)).room, storedRoom, 'living clock does not adopt the pending decoration');
+        await capture(short, `短屏装修-${width}-${height}`, '.tf-device-viewport');
+        await click(short, act(short, 'cancel')); await assertHome(short);
+        const bounds = await liveBounds(short);
+        assert.ok(Math.abs(bounds.stage.width / bounds.stage.height - 4 / 3) < .02, 'custom home preserves the room artwork aspect ratio');
+        await short.close();
+    }
+    console.log('PASS 390×844/320×568/desktop720: four arrows on one row, touch/footer access, native scroll, 4:3 home and real 30-second render preserves tray/details/focus');
 
     const page = await open(390);
     await fixture(page, { room: { enabled: true, wall: 'cream', floor: 'wood', items: Array.from({ length: ROOM_MAX_ITEMS - 1 }, (_, i) => ({ id: `existing-${i}`, type: 'toy', x: 60 + i % 5 * 40, y: 180 + i % 3 * 13, rotation: 0, color: 'natural' })) } });
@@ -393,6 +475,9 @@ try {
     await fixture(page, { preset: 'cozy' });
     await enter(page); await preset(page, 'garden');
     const beforeOwnerReplace = (await readPet(page)).room;
+    await details(page, 'tf-room-surfaces');
+    await page.locator(`${editor} .tf-room-catalog`).evaluate(node => { node.scrollLeft = node.scrollWidth - node.clientWidth; });
+    await page.locator(canvas).focus();
     await page.evaluate(async () => {
         const { CHAT_DATA_KEY } = await import('/src/constants.js');
         const context = SillyTavern.getContext(); globalThis.roomRetiredForum = context.chatMetadata[CHAT_DATA_KEY];
@@ -401,6 +486,8 @@ try {
     });
     assert.equal(await page.locator('.tf-companion-device').getAttribute('data-device-page'), 'room', 'same-chat metadata import can retain the editor');
     assert.deepEqual(await readDraft(page), beforeOwnerReplace, 'replacement forum owner starts from its saved room, not stale draft');
+    assert.ok(await page.locator(`${editor} .tf-room-catalog`).evaluate(node => node.scrollLeft < 3), 'new owner does not inherit retired tray scroll position');
+    assert.equal(await page.locator(`${editor} .tf-room-surfaces`).evaluate(node => node.open), false, 'new owner does not inherit retired expanded options');
     await pick(page, 'toy', 168, 178);
     await click(page, act(page, 'save')); await assertHome(page);
     assert.equal((await readPet(page)).room.items.length, beforeOwnerReplace.items.length + 1, 'editor remains responsive after forum-owner replacement');
@@ -473,6 +560,17 @@ try {
     assert.deepEqual((await readPet(page)).room, savedHome);
     assert.equal(await page.evaluate(() => roomCalls), 0);
     console.log('PASS live custom home click movement/petting and temporary kitchen/bathroom/bedroom flows restore the saved custom room');
+
+    await fixture(page, { preset: 'cozy', pet: { timeOfDay: 'day' } });
+    const lightOpacity = async () => page.locator(liveScene).evaluate(node => ({ daylight: [...node.querySelectorAll('.tf-scene-daylight')].map(value => Number(getComputedStyle(value).opacity)), lamps: [...node.querySelectorAll('.tf-scene-lamplight')].map(value => Number(getComputedStyle(value).opacity)) }));
+    const dayLight = await lightOpacity();
+    await capture(page, '暖暖卧室-白天');
+    await fixture(page, { preset: 'cozy', pet: { timeOfDay: 'night' } });
+    const nightLight = await lightOpacity();
+    assert.ok(dayLight.daylight.length && nightLight.daylight.every(value => value === 0), 'night turns off window sun and daylight beams');
+    assert.ok(dayLight.lamps.length && nightLight.lamps.some((value, index) => value > dayLight.lamps[index]), 'night switches on the room lamp glow');
+    await capture(page, '暖暖卧室-夜晚');
+    console.log('PASS custom-room day/night window rays and warm lamp lighting');
 
     await page.close();
     const overview = await browser.newPage({ viewport: { width: 900, height: 900 } });

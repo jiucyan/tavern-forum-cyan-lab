@@ -2254,11 +2254,13 @@ function paintCompanionRoomEditor({ focusCanvas = false } = {}) {
     const draft = getCompanionRoomDraft(), editor = getRoot()?.querySelector('.tf-room-editor');
     if (!draft || !editor) return;
     const content = editor.closest('.tf-pet-device-content'), scrollTop = content.scrollTop;
+    const catalogScrollLeft = editor.querySelector('.tf-room-catalog')?.scrollLeft || 0;
     const expanded = [...editor.querySelectorAll('details[open]')].map(node => node.className);
     const focused = editor.contains(document.activeElement) ? { ...document.activeElement.dataset } : null;
     editor.outerHTML = renderCompanionRoomEditor(draft.owner.world.companion.room, draft);
     const next = content.querySelector('.tf-room-editor');
     next.querySelectorAll('details').forEach(node => { node.open = expanded.includes(node.className); });
+    next.querySelector('.tf-room-catalog').scrollLeft = catalogScrollLeft;
     content.scrollTop = scrollTop;
     viewState.companionDeviceCursor = -1;
     paintCompanionDeviceCursor(getRoot(), viewState);
@@ -3253,6 +3255,16 @@ function render({ preserveScroll = false } = {}) {
     const previousHabitat = root.querySelector('.tf-pet-habitat-layer')?.dataset.habitat;
     const petScroll = new Map([...root.querySelectorAll('.tf-pet-device-page')].map(node => [node.dataset.companionPanel, node.querySelector('.tf-pet-device-content').scrollTop]));
     const petPanels = [...root.querySelectorAll('.tf-pet-life-details')].map(node => node.open);
+    const roomDraft = viewState.companionPanel === 'room' ? getCompanionRoomDraft() : null;
+    const roomEditor = root.querySelector('.tf-room-editor');
+    const roomViewport = roomDraft && roomEditor ? {
+        catalogLeft: roomEditor.querySelector('.tf-room-catalog')?.scrollLeft || 0,
+        expanded: [...roomEditor.querySelectorAll('details[open]')].map(node => node.className),
+        focus: roomEditor.contains(document.activeElement) ? {
+            tag: document.activeElement.tagName, className: document.activeElement.className,
+            details: document.activeElement.closest('details')?.className, data: { ...document.activeElement.dataset },
+        } : null,
+    } : null;
     const previousView = root.querySelector('.tf-view');
     const previousScrollTop = Number(previousView?.scrollTop || 0);
     const previousScrollLeft = Number(previousView?.scrollLeft || 0);
@@ -3270,6 +3282,18 @@ function render({ preserveScroll = false } = {}) {
     const nextHabitat = root.querySelector('.tf-pet-habitat-layer');
     if (previousHabitat && nextHabitat && previousHabitat !== nextHabitat.dataset.habitat) nextHabitat.classList.add('is-scene-entering');
     root.querySelectorAll('.tf-pet-life-details').forEach((node, index) => { if (index < petPanels.length) node.open = petPanels[index]; });
+    const nextEditor = root.querySelector('.tf-room-editor');
+    if (roomViewport && nextEditor && roomDraft === getCompanionRoomDraft()) {
+        nextEditor.querySelectorAll('details').forEach(node => { node.open = roomViewport.expanded.includes(node.className); });
+        nextEditor.querySelector('.tf-room-catalog').scrollLeft = roomViewport.catalogLeft;
+        if (roomViewport.focus) {
+            const old = roomViewport.focus;
+            const nextFocus = [...nextEditor.querySelectorAll('button, summary, [tabindex]')].find(node => node.tagName === old.tag
+                && node.className === old.className && node.closest('details')?.className === old.details
+                && ['action', 'roomValue', 'roomType', 'roomItem', 'roomPreset'].every(key => node.dataset[key] === old.data[key]));
+            nextFocus?.focus({ preventScroll: true });
+        }
+    }
     root.querySelectorAll('.tf-pet-device-page').forEach(node => { node.querySelector('.tf-pet-device-content').scrollTop = petScroll.get(node.dataset.companionPanel) || 0; });
     viewState.renderedScrollKey = nextScrollKey;
     if (!getSettings().moderation.systemAdminEnabled) root.querySelectorAll('[data-action="ai-review-report"]').forEach(button => { button.disabled = true; button.title = '请先开启系统 AI 管理员'; });

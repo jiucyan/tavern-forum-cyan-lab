@@ -40,8 +40,9 @@ export function renderCompanionDevice(html, data, state, extraActions) {
         node.className = 'tf-pet-device-page tf-pet-life'; node.dataset.companionPanel = id;
         node.hidden = current !== id;
         node.setAttribute('aria-label', title);
-        const tabs = id === 'menu' ? `<b>${title}</b>` : `<nav class="tf-device-page-tabs" aria-label="切换旅伴功能">${pageTabs.map(([panel, label]) => `<button type="button" data-action="companion-device-open" data-panel="${panel}" aria-current="${panel === id ? 'page' : 'false'}">${renderCompanionIcon(panel)}<span>${label}</span></button>`).join('')}</nav>`;
-        node.innerHTML = `<header class="${id === 'menu' ? '' : 'has-page-tabs'}">${tabs}<button type="button" class="tf-device-home" data-action="companion-panel" data-panel="home" aria-label="回到小窝">${renderCompanionIcon('home')}<span>回小窝</span></button></header><div class="tf-pet-device-content"></div>`;
+        const simpleHeader = id === 'menu' || id === 'room';
+        const tabs = simpleHeader ? `<b>${title}</b>` : `<nav class="tf-device-page-tabs" aria-label="切换旅伴功能">${pageTabs.map(([panel, label]) => `<button type="button" data-action="companion-device-open" data-panel="${panel}" aria-current="${panel === id ? 'page' : 'false'}">${renderCompanionIcon(panel)}<span>${label}</span></button>`).join('')}</nav>`;
+        node.innerHTML = `<header class="${simpleHeader ? '' : 'has-page-tabs'}">${tabs}<button type="button" class="tf-device-home" data-action="companion-panel" data-panel="home" aria-label="回到小窝">${renderCompanionIcon('home')}<span>回小窝</span></button></header><div class="tf-pet-device-content"></div>`;
         return node;
     };
     const mainMenu = pane('menu', '今天做什么');

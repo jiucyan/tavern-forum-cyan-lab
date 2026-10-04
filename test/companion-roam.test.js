@@ -292,6 +292,27 @@ test('a floor tap immediately walks to the shadow anchor and arrival permits sha
     assert.deepEqual(f.state, saved, 'commands and autonomous movement do not mutate saved state');
 });
 
+test('custom-room wall taps and resizing keep the resident feet on the floor', t => {
+    const f = setup(t, () => 0);
+    f.state.habitat = 'custom-room';
+    f.controller.sync();
+    const saved = structuredClone(f.state);
+    assert.equal(f.controller.moveTo({ clientX: 210, clientY: 15 }), true);
+    const targetY = Number.parseFloat(f.stage.style.getPropertyValue('--tf-roam-target-y'));
+    assert.ok(targetY >= f.stage.clientHeight * .59, 'a wall tap resolves to the floor instead of climbing the wall');
+    for (let frame = 0; frame < 100; frame++) {
+        f.advance(100);
+        const shadow = f.root.pet.querySelector('.tf-pet-character-shadow');
+        const footY = f.root.pet.offsetTop + shadow.offsetTop + shadow.offsetHeight / 2 + f.position()[1];
+        assert.ok(footY >= f.stage.clientHeight * .59, 'manual and idle movement remain on the floor');
+    }
+    f.stage.clientHeight = 260;
+    f.window.emit('resize');
+    const shadow = f.root.pet.querySelector('.tf-pet-character-shadow');
+    assert.ok(f.root.pet.offsetTop + shadow.offsetTop + shadow.offsetHeight / 2 + f.position()[1] >= 260 * .59);
+    assert.deepEqual(f.state, saved, 'floor constraints do not alter the saved companion');
+});
+
 test('consecutive taps retarget immediately and use the complete safe button footprint', t => {
     const f = setup(t, () => 0); f.controller.sync();
     roomGesture(f, [400, 5]).up(); f.advance(100);
