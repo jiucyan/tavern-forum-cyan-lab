@@ -11,6 +11,9 @@ export const COMPANION_SPRITE_RIGS = Object.freeze({
         part('tail', 'cat-tail', [45, 50], 'M43 48L48 44L48 41L46 37L47 34L50 32H64V61H43Z', 'M46 48L48 44L48 41L46 37L47 34L50 32H64V61H46Z'),
         part('ear-left', 'cat-ear-left', [15, 17], 'M3 0H20L25 17L16 20L6 25Z', 'M3 0H20L23 14L16 17L6 22Z'),
         part('ear-right', 'cat-ear-right', [43, 17], 'M34 14L42 1H53V26L43 21Z', 'M37 13L42 1H53V22L45 18Z'),
+        // Only the lower paws leave the core; the upper overlap stays under the torso.
+        part('foot-left', 'cat-foot-left', [22, 49], 'M17 47H27V61H17Z', 'M17.5 52H27V61H17.5Z'),
+        part('foot-right', 'cat-foot-right', [35, 49], 'M30 47H40V61H30Z', 'M30 52H40V61H30Z'),
     ] },
     rabbit: { muzzle: muzzle([32, 35.8], 'M24 29H40V44H24Z', 'M28.1 33.8H35.9V38.8H28.1Z'), parts: [
         part('ear-left', 'rabbit-ear-left', [17, 22], 'M0 16L18 15L22 21L18 27L16.4 32V37L17.2 39L16.2 40L15.5 43L13 46V51H0Z', 'M0 22L17 21L17.3 27L15.8 32V37L16.6 39L16.2 40L15.5 43L13 46V51H0Z'),
@@ -20,15 +23,21 @@ export const COMPANION_SPRITE_RIGS = Object.freeze({
         part('tail', 'fox-tail', [44, 48], 'M40 43L44 29H64V62H40Z', 'M44 44L46 29H64V62H44Z'),
         part('ear-left', 'fox-ear-left', [15, 17], 'M4 0H24L25 15L17 20L6 26Z', 'M4 0H24L22 12L16 17L7 23Z'),
         part('ear-right', 'fox-ear-right', [42, 17], 'M32 14L39 0H51V26L41 22Z', 'M36 13L39 0H51V22L43 18Z'),
+        part('foot-left', 'fox-foot-left', [22, 49], 'M17 47H27V61H17Z', 'M18 52H27V61H18Z'),
+        part('foot-right', 'fox-foot-right', [32, 49], 'M28 47H37V61H28Z', 'M28 52H36V61H28Z'),
     ] },
     penguin: { muzzle: muzzle([32, 30.6], 'M25 24H39V38H25Z', 'M28.5 28.7H35.5V33.6H28.5Z'), parts: [
         part('wing-left', 'penguin-wing-left', [17, 36], 'M5 33L18 34L22 37L20.5 39L18.5 41L17.2 43L15.5 45V48.5H5Z', 'M5 36L17 36L19.5 38L18 40L16.5 42L15.2 44L15 46.5V48.5H5Z'),
         part('wing-right', 'penguin-wing-right', [47, 36], 'M59 33L46 34L42 37L43.5 39L45.5 41L46.8 43L48.5 45V48.5H59Z', 'M59 36L47 36L44.5 38L46 40L47.5 42L48.8 44L49 46.5V48.5H59Z'),
+        part('foot-left', 'penguin-foot-left', [22, 51], 'M16 49H28V61H16Z', 'M16 52H28V61H16Z'),
+        part('foot-right', 'penguin-foot-right', [42, 51], 'M36 49H49V61H36Z', 'M36 52H49V61H36Z'),
     ] },
     'robo-bird': { muzzle: muzzle([32, 33.7], 'M25 27H39V40H25Z', 'M29.1 32.3H34.9V36.3H29.1Z'), parts: [
         part('wing-left', 'robo-wing-left', [19, 35], 'M4 29L19 30L22 37L20 45L22 53H4Z', 'M4 32L17 33L20 37L18 45L20 53H4Z'),
         part('wing-right', 'robo-wing-right', [45, 35], 'M60 29L45 30L42 37L44 45L42 53H60Z', 'M60 32L47 33L44 37L46 45L44 53H60Z'),
         part('antenna', 'robo-antenna', [38, 15], 'M34 0H48V19L35 17Z', 'M35 0H48V14L37 15Z'),
+        part('foot-left', 'robo-foot-left', [21, 50], 'M14 48H28V61H14Z', 'M15 52H28V61H15Z'),
+        part('foot-right', 'robo-foot-right', [43, 50], 'M36 48H50V61H36Z', 'M36 52H50V61H36Z'),
     ] },
     octopus: { muzzle: muzzle([32, 33.9], 'M25 27H39V41H25Z', 'M28.8 31.8H35.2V36.6H28.8Z'), parts: [
         part('arm-left', 'octopus-arm-left', [20, 43], 'M0 33L13 33L18 38L25 41L22 50L20 61H0Z', 'M0 35L13 35L16 39L22 43L20 50L19 61H0Z'),

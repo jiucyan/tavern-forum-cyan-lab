@@ -1,5 +1,6 @@
 import { ROOM_FLOOR_Y, getRoomItemFootprint, getRoomItemDepth, getRoomInteraction } from './companion-room.js';
 import { planRoomPath, nearestRoomPoint } from './companion-room-path.js';
+import { isAquaticPoint } from './companion-aquatic.js';
 
 // Room movement is temporary presentation state. It does not consume care,
 // write saves or call a model, and it uses translate independently of care FX.
@@ -18,6 +19,9 @@ export function createCompanionRoamController({
     let focused = false, resizeObserver = null, resizeStage = null, tap = null;
     let route = [], interaction = null, interactionTimer = null, furnitureHeld = null, holdStamp = null, geometry = '', needsSpawn = false;
     let routeGoal = null, routeOptions = null;
+    let lastPaintedPoint = null, lockedAnchor = null;
+    let pointArrival = null;
+    let pointCancel = null, routeStarted = 0, turnUntil = 0;
     const pointers = new Set();
     const unitRandom = () => clamp(Number(random()) || 0, 0, .999999);
     const settleDelay = () => 8000 + unitRandom() * 4000;
@@ -30,7 +34,7 @@ export function createCompanionRoamController({
         return { ...snapshot, roomKey, root, stage: root?.querySelector('.tf-pet-stage') || null, pet: root?.querySelector('.tf-pet-sprite-control') || null };
     }
     function sameRoom(a, b) {
-        return Boolean(a && b && a.identity === b.identity && a.owner === b.owner && a.species === b.species && a.habitat === b.habitat && a.roomKey === b.roomKey);
+        return Boolean(a && b && a.identity === b.identity && a.owner === b.owner && a.species === b.species && a.growthStage === b.growthStage && Boolean(a.aquatic) === Boolean(b.aquatic) && a.habitat === b.habitat && a.roomKey === b.roomKey && a.sceneKey === b.sceneKey);
     }
     function available(state) {
         return Boolean(state.enabled && state.root?.isConnected && state.pet?.isConnected && state.stage?.isConnected
@@ -55,6 +59,7 @@ export function createCompanionRoamController({
         pet?.removeAttribute('data-roam-state');
         pet?.removeAttribute('data-roam-direction');
         pet?.removeAttribute('data-roam-mode');
+        pet?.removeAttribute('data-roam-phase');
         pet?.removeAttribute('data-room-interacting');
         pet?.removeAttribute('data-room-item-id');
         pet?.removeAttribute('data-room-pose');
@@ -74,6 +79,7 @@ export function createCompanionRoamController({
     }
     function foot() {
         const pet = observed?.pet, shadow = pet?.querySelector?.('.tf-pet-character-shadow');
+        if (observed?.aquatic) return { x: pet.offsetWidth / 2, y: pet.offsetHeight / 2 };
         return shadow ? { x: shadow.offsetLeft + shadow.offsetWidth / 2, y: shadow.offsetTop + shadow.offsetHeight / 2 }
             : { x: pet.offsetWidth / 2, y: pet.offsetHeight * .88 - 4 };
     }
@@ -87,10 +93,13 @@ export function createCompanionRoamController({
     function paint() {
         const pet = observed?.pet;
         if (!pet) return;
+        const point = scenePoint({ x, y });
+        if (Number.isFinite(point.x) && Number.isFinite(point.y)) lastPaintedPoint = point;
         pet.style.setProperty('--tf-roam-x', `${x.toFixed(3)}px`);
         pet.style.setProperty('--tf-roam-y', `${y.toFixed(3)}px`);
         pet.setAttribute('data-roam-active', 'true');
         pet.setAttribute('data-roam-state', walking ? 'walking' : 'resting');
+        if (!walking) pet.removeAttribute('data-roam-phase');
         if (mode === 'manual' || mode === 'furniture') pet.setAttribute('data-roam-mode', mode);
         else pet.removeAttribute('data-roam-mode');
         if (direction) pet.setAttribute('data-roam-direction', direction);
@@ -123,6 +132,9 @@ export function createCompanionRoamController({
         onMotionChange(value);
     }
     function stop(reset = false) {
+        const cancelledPoint = pointCancel;
+        pointArrival = null;
+        pointCancel = null;
         const active = observed?.pet?.hasAttribute('data-roam-active');
         const cancelled = interaction;
         if (mode === 'manual' && !reset) wanderY = y;
@@ -133,9 +145,11 @@ export function createCompanionRoamController({
         setWalking(false);
         if (reset) {
             x = 0; y = 0; wanderY = 0; direction = ''; mode = ''; furnitureHeld = null; needsSpawn = true;
+            lastPaintedPoint = null; lockedAnchor = null;
             clearPet(observed?.pet);
         } else if (active) paint();
         if (cancelled) onFurnitureInteraction({ itemId: cancelled.itemId, kind: cancelled.kind, phase: 'cancelled', automatic: cancelled.automatic });
+        cancelledPoint?.();
     }
     function bounds({ allowFurniture = false } = {}) {
         const { stage, pet } = observed || {};
@@ -143,10 +157,16 @@ export function createCompanionRoamController({
         const width = stage.clientWidth, height = stage.clientHeight;
         const left = pet.offsetLeft, top = pet.offsetTop, petWidth = pet.offsetWidth, petHeight = pet.offsetHeight;
         if (![width, height, left, top, petWidth, petHeight].every(Number.isFinite) || width <= 0 || height <= 0 || petWidth <= 0 || petHeight <= 0) return null;
+        if (observed.aquatic) {
+            const [minX, maxX, minY, maxY] = observed.aquatic.bounds;
+            const min = offsetPoint({ x: minX, y: minY }), max = offsetPoint({ x: maxX, y: maxY });
+            return { minX: min.x, maxX: max.x, minY: min.y, maxY: max.y };
+        }
         const area = { minX: 8 - left, maxX: width - 8 - left - petWidth, minY: 8 - top, maxY: height - 8 - top - petHeight };
         // The resident's feet stay on the floor of the 320 × 240 custom room.
         // Keep the complete touch target in bounds while allowing the body above the skirting.
         if (observed.habitat === 'custom-room' && !allowFurniture) area.minY = Math.max(area.minY, height * (ROOM_FLOOR_Y / 240) + 4 - top - foot().y);
+        if (Number.isFinite(observed.floorY)) area.minY = Math.max(area.minY, height * (observed.floorY / 240) - top - foot().y);
         return area.maxX >= area.minX && area.maxY >= area.minY ? area : null;
     }
     function constrain(area) {
@@ -174,7 +194,7 @@ export function createCompanionRoamController({
         return (observed.room?.items || []).filter(item => item.id !== ignoreItem).map(getRoomItemFootprint).filter(Boolean);
     }
     function planTo(target, area, { ignoreItem = '', exact = false } = {}) {
-        if (observed.habitat !== 'custom-room') return [target];
+        if (observed.aquatic || observed.habitat !== 'custom-room') return [target];
         const path = planRoomPath(scenePoint({ x, y }), scenePoint(target), sceneBounds(area), footprints(ignoreItem), { clearance: 4, exact });
         return path?.points.map(offsetPoint) || null;
     }
@@ -185,7 +205,10 @@ export function createCompanionRoamController({
         route = points; destination = route.at(-1);
         routeGoal = scenePoint(destination); routeOptions = { ignoreItem, exact, fast, allowFurniture: Boolean(interaction && interaction.phase !== 'approach') };
         speed = (speciesSpeed[observed.species] || 20) * (fast ? 2 : 1);
-        if (route[0].x !== x) direction = route[0].x < x ? 'left' : 'right';
+        const nextDirection = route[0].x === x ? direction : route[0].x < x ? 'left' : 'right';
+        turnUntil = direction && nextDirection !== direction ? now() + 120 : 0;
+        direction = nextDirection;
+        routeStarted = now() + (turnUntil ? 120 : 0);
         due = null; clearTimer(); clearFrame(); lastFrame = now();
         if (!canAnimate()) { x = destination.x; y = destination.y; route = []; destination = null; paint(); reached(); }
         else { setWalking(true); paintTarget(); frame = requestFrame(advance); }
@@ -199,7 +222,7 @@ export function createCompanionRoamController({
     function interactWith(itemId, { onArrive, automatic = false } = {}) {
         if (destroyed || pointers.size) return false;
         sync();
-        if (!available(observed) || furnitureHeld || observed.furnitureHold || observed.habitat !== 'custom-room') return false;
+        if (!available(observed) || observed.aquatic || observed.locked || furnitureHeld || observed.furnitureHold || observed.habitat !== 'custom-room') return false;
         const item = observed.room?.items?.find(value => value.id === itemId), spec = getRoomInteraction(item);
         if (!spec) return rejectFurniture(itemId, '', automatic);
         stop();
@@ -215,8 +238,14 @@ export function createCompanionRoamController({
     }
     function reached() {
         if (!interaction) {
+            const callback = pointArrival;
+            const cancelled = pointCancel;
+            pointArrival = null;
+            pointCancel = null;
             if (mode === 'manual') wanderY = y;
             clearTarget(); setWalking(false); paint(); waitUntil(now() + 5500 + unitRandom() * 2500);
+            if (available(read()) && sameRoom(read(), observed)) callback?.();
+            else cancelled?.();
             return;
         }
         const current = interaction;
@@ -263,7 +292,7 @@ export function createCompanionRoamController({
         const area = bounds();
         if (!area) { stop(true); return; }
         constrain(area);
-        if (observed.habitat === 'custom-room' && observed.room?.items?.length && unitRandom() < .22) {
+        if (!observed.aquatic && observed.habitat === 'custom-room' && observed.room?.items?.length && unitRandom() < .22) {
             const choices = observed.room.items.filter(item => ['sofa', 'cushion', 'window', 'toy'].includes(item.type));
             if (choices.length && interactWith(choices[Math.floor(unitRandom() * choices.length)].id, { automatic: true })) return;
         }
@@ -287,7 +316,30 @@ export function createCompanionRoamController({
         lastFrame = now();
         const next = route[0] || destination;
         if (!next) { stop(); sync(); return; }
-        const dx = next.x - x, dy = next.y - y, remaining = Math.hypot(dx, dy), step = speed * elapsed;
+        const dx = next.x - x, dy = next.y - y, remaining = Math.hypot(dx, dy);
+        if (turnUntil > now()) {
+            observed.pet.setAttribute('data-roam-phase', 'turn');
+            frame = requestFrame(advance); return;
+        }
+        const acceleration = clamp((now() - routeStarted) / 180, .22, 1);
+        const deceleration = clamp(remaining / 13, .24, 1);
+        observed.pet.setAttribute('data-roam-phase', acceleration < 1 ? 'start' : deceleration < 1 ? 'arrive' : 'cruise');
+        // Integrate the starting ramp instead of sampling its end-of-frame
+        // speed. The same elapsed time must move equally far at every FPS.
+        const rampTime = seconds => seconds <= 0 ? 0 : seconds < .0396 ? seconds * .22
+            : seconds < .18 ? seconds * seconds / .36 + .004356 : seconds - .085644;
+        const routeAge = (now() - routeStarted) / 1000;
+        let travel = speed * (rampTime(routeAge) - rampTime(routeAge - elapsed));
+        let distance = remaining;
+        if (distance > 13) {
+            const cruise = Math.min(travel, distance - 13);
+            distance -= cruise; travel -= cruise;
+        }
+        if (distance > 3.12 && travel > 0) {
+            const easing = Math.min(travel, 13 * Math.log(distance / 3.12));
+            distance *= Math.exp(-easing / 13); travel -= easing;
+        }
+        const step = remaining - Math.max(0, distance - travel * .24);
         if (remaining <= Math.max(step, .01)) {
             x = next.x; y = next.y; route.shift();
             if (route.length) {
@@ -302,7 +354,7 @@ export function createCompanionRoamController({
     }
     function emptyRoomPoint(state, event) {
         const target = event.target;
-        if (!state?.stage?.contains?.(target) || target?.closest?.('button, a, input, textarea, select, summary, label, [data-action], [role="button"], [role="link"], [contenteditable]:not([contenteditable="false"]), [draggable="true"]')) return false;
+        if (state?.locked || !state?.stage?.contains?.(target) || target?.closest?.('button, a, input, textarea, select, summary, label, [data-action], [role="button"], [role="link"], [contenteditable]:not([contenteditable="false"]), [draggable="true"]')) return false;
         const rect = state.stage.getBoundingClientRect?.();
         return Boolean(rect && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
             && event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom);
@@ -346,12 +398,30 @@ export function createCompanionRoamController({
         if (!sameRoom(candidate.room, current) || candidate.room.stage !== current.stage || !available(current) || !emptyRoomPoint(current, event)) return;
         moveTo({ clientX: event.clientX, clientY: event.clientY });
     }
+    function walkToPoint(point, { onArrive, onCancel } = {}) {
+        if (destroyed || pointers.size || !Number.isFinite(point?.x) || !Number.isFinite(point?.y)) return false;
+        sync();
+        if (!available(observed) || observed.locked || furnitureHeld || observed.furnitureHold) return false;
+        if (observed.aquatic && !isAquaticPoint(point, observed.aquatic)) return false;
+        if (focused) { observed.pet.blur?.(); focused = false; }
+        stop();
+        const area = bounds();
+        if (!area) return false;
+        const requested = offsetPoint(point);
+        const target = { x: clamp(requested.x, area.minX, area.maxX), y: clamp(requested.y, area.minY, area.maxY) };
+        pointArrival = typeof onArrive === 'function' ? onArrive : null;
+        pointCancel = typeof onCancel === 'function' ? onCancel : null;
+        mode = 'manual'; blockedUntil = 0;
+        if (!beginRoute(target, { area, fast: true })) { pointArrival = null; pointCancel = null; return false; }
+        return true;
+    }
     function moveTo({ clientX, clientY }) {
         if (destroyed || pointers.size || !Number.isFinite(clientX) || !Number.isFinite(clientY)) return false;
         sync();
-        if (!available(observed) || furnitureHeld || observed.furnitureHold) return false;
+        if (!available(observed) || observed.locked || furnitureHeld || observed.furnitureHold) return false;
         const area = bounds(), rect = observed.stage.getBoundingClientRect?.();
         if (!area || !rect?.width || !rect?.height) return false;
+        if (observed.aquatic && !isAquaticPoint({ x: (clientX - rect.left) * 320 / rect.width, y: (clientY - rect.top) * 240 / rect.height }, observed.aquatic)) return false;
         // Empty floor clicks deliberately release keyboard focus on the pet.
         if (focused) {
             observed.pet.blur?.();
@@ -435,6 +505,20 @@ export function createCompanionRoamController({
         }
         observed = current;
         if (!available(current)) { tap = null; clearStage(current.stage); stop(!pointers.size); return false; }
+        if (current.locked) {
+            // Keep the last rendered scene position, before resized DOM geometry
+            // can reinterpret old pixel offsets. A temporary clamp must not replace it.
+            lockedAnchor ||= lastPaintedPoint;
+            tap = null; stop(); current.stage.removeAttribute('data-roam-interactive');
+            const area = bounds();
+            if (area) {
+                if (lockedAnchor) ({ x, y } = offsetPoint(lockedAnchor));
+                constrain(area);
+                lockedAnchor ||= lastPaintedPoint;
+            }
+            return true;
+        }
+        lockedAnchor = null;
         if (!current.furnitureHold) { furnitureHeld = null; holdStamp = null; }
         else {
             const holdKey = `${current.furnitureHold.itemId}:${current.furnitureHold.kind}`;
@@ -454,7 +538,9 @@ export function createCompanionRoamController({
         }
         const area = bounds({ allowFurniture: Boolean(interaction && interaction.phase !== 'approach') });
         if (!area) { tap = null; clearStage(current.stage); stop(true); return false; }
-        if ((changed || needsSpawn) && current.habitat === 'custom-room') {
+        if ((changed || needsSpawn) && current.aquatic) {
+            ({ x, y } = offsetPoint({ x: current.aquatic.spawn[0], y: current.aquatic.spawn[1] })); wanderY = y;
+        } else if ((changed || needsSpawn) && current.habitat === 'custom-room') {
             const spawn = nearestRoomPoint(scenePoint({ x, y }), sceneBounds(area), footprints(), 4);
             if (!spawn) { clearStage(current.stage); stop(true); return false; }
             ({ x, y } = offsetPoint(spawn)); wanderY = y;
@@ -467,6 +553,7 @@ export function createCompanionRoamController({
                 x = point.x; y = point.y; constrain(area);
             }
             else if (mode === 'manual' && !walking) { stop(); constrain(area); }
+            else if (current.aquatic) { stop(); constrain(area); }
             else stop(true);
             return true;
         }
@@ -495,12 +582,12 @@ export function createCompanionRoamController({
     function cancel({ reset = false } = {}) {
         if (destroyed) return;
         tap = null;
-        stop(reset); blockedUntil = now() + settleDelay();
+        stop(reset); lastPaintedPoint = null; lockedAnchor = null; blockedUntil = now() + settleDelay();
         sync();
     }
     function destroy() {
         if (destroyed) return;
         destroyed = true; tap = null; stop(true); clearStage(observed?.stage); bind(null); observed = null;
     }
-    return { sync, cancel, destroy, moveTo, interactWith };
+    return { sync, cancel, destroy, moveTo, interactWith, walkToPoint };
 }

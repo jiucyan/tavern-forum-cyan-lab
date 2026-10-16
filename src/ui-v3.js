@@ -11,10 +11,19 @@ import { renderCompanionRoomLive } from './companion-room-live-ui.js';
 import { renderCompanionRoomEditor } from './companion-room-ui.js';
 import { createCompanionIdleController } from './companion-idle.js';
 import { createCompanionRoamController } from './companion-roam.js';
+import { isAquaticCompanion, getAquaticHabitat } from './companion-aquatic.js';
+import { ensureHomesteadStarter, changeHomesteadLocation, performHomesteadAction, HOMESTEAD_LOCATIONS, RESOURCE_NODES, getCropView, RECIPES, ensureFishingKit, castHomesteadLine, reelHomesteadFish, cancelHomesteadFishing, getFishingView } from './companion-homestead.js';
+import { renderFishingOverlay } from './companion-kitchen-fishing-ui.js';
+import { renderHomesteadItemIcon, getHomeStationGeometry } from './companion-homestead-ui.js';
+import { createHomesteadMotionController } from './companion-homestead-motion.js';
+import { createWorkPosePlayer } from './companion-work-pose.js';
 
 let cancelCompanionTouch = () => {};
 let companionIdleController = null;
 let companionRoamController = null;
+let companionHomesteadMotionController = null;
+let companionWorkPosePlayer = null;
+let companionFishingTimer = null;
 let companionAmbientSession = null;
 import { buildTaskDeliveryPlan, commitTaskDelivery, grantTaskRewards, getTaskRewards } from './task-delivery.js';
 import { normalizeMemoryContinuity, refreshMemorySummary, applyRelationshipTransition } from './memory.js';
@@ -122,6 +131,7 @@ import {
     getCompanionPackingRole,
     isInventoryItemTraveling,
     prepareCompanionJourney,
+    startHomesteadJourney,
     advanceCompanionJourney,
     resolveCompanionTravelTiming,
     roleCan,
@@ -159,16 +169,16 @@ const COMPANION_PALETTES = Object.freeze({
     mystery: { body: '#74658b', accent: '#d1a7bd' },
 });
 const COMPANION_DEVICE_SKINS = Object.freeze([
-    { id: 'classic', name: '经典蛋机', note: '柔雾蓝机身 · 奶油按键', brand: 'POCKET TRAVELER' },
-    { id: 'pocket', name: '口袋掌机', note: '雾蓝机身 · 奶白方键', brand: 'GAMEFIELD JR.' },
-    { id: 'crystal', name: '透明糖果机', note: '冰青透壳 · 细线电路', brand: 'CLEARLINK 02' },
-    { id: 'arcane', name: '魔法通讯器', note: '鎏金符印 · 紫晶机身', brand: 'FAMILIAR LINK' },
-    { id: 'terminal', name: '机械终端', note: '方角装甲 · 琥珀条键', brand: 'FIELD UNIT 07' },
-    { id: 'camp', name: '露营电台', note: '木纹护角 · 苔绿电台', brand: 'TRAIL RADIO' },
-    { id: 'marine', name: '深海观察窗', note: '黄铜镶边 · 海青舷窗', brand: 'ABYSS WATCH' },
-    { id: 'arcade', name: '迷你街机', note: '霓虹边灯 · 双色街机键', brand: 'STAR ARCADE' },
-    { id: 'lunar', name: '月相怀表', note: '月白表壳 · 星轨冠钮', brand: 'LUNAR PHASE' },
-    { id: 'berry', name: '莓果翻盖机', note: '双色机身 · 屏下铰链', brand: 'BERRY FLIP' },
+    { id: 'classic', name: '经典蛋机', note: '杏桃奶油 · 小爪印记', brand: 'POCKET TRAVELER' },
+    { id: 'pocket', name: '口袋掌机', note: '奶油掌机 · 鼠尾草按键', brand: 'GAMEFIELD JR.' },
+    { id: 'crystal', name: '透明糖果机', note: '薄荷树脂 · 糖果双握把', brand: 'CLEARLINK 02' },
+    { id: 'arcane', name: '魔法通讯器', note: '圆润护符 · 奶紫珐琅', brand: 'FAMILIAR LINK' },
+    { id: 'terminal', name: '机械终端', note: '奶油终端 · 侧边条形键', brand: 'FIELD UNIT 07' },
+    { id: 'camp', name: '露营电台', note: '蜂蜜木边 · 燕麦织物', brand: 'TRAIL RADIO' },
+    { id: 'marine', name: '深海观察窗', note: '海盐浅蓝 · 沙色舷窗', brand: 'ABYSS WATCH' },
+    { id: 'arcade', name: '迷你街机', note: '珊瑚木柜 · 奶油操纵台', brand: 'STAR ARCADE' },
+    { id: 'lunar', name: '月相怀表', note: '蜜色表壳 · 月牙印记', brand: 'LUNAR PHASE' },
+    { id: 'berry', name: '莓果翻盖机', note: '草莓奶油 · 双壳翻盖', brand: 'BERRY FLIP' },
 ]);
 const COMPANION_FOODS = Object.freeze([
     { id: 'bug-cookie', symbol: '✹', name: '虫虫饼', satiety: 22, energy: 4, happiness: 7 },
@@ -589,6 +599,14 @@ const viewState = {
     companionRoomCare: null,
     companionRoomFoodTarget: null,
     companionRoomCommand: null,
+    companionHomesteadCommand: null,
+    companionHomesteadPanel: '',
+    companionHomesteadNotice: '',
+    companionHomesteadBusy: false,
+    companionHomesteadJob: null,
+    companionHomesteadMotion: null,
+    companionHomesteadApproaching: false,
+    companionFishing: null,
     companionVisualAction: '',
     companionActionTimer: 0,
     companionActionToken: 0,
@@ -1974,6 +1992,7 @@ function prepareCompanionGreeting(data) {
     if (!viewState.open || getSettings().ui.activeTab !== 'services' || viewState.worldPage !== 'travel'
         || viewState.companionPanel !== 'home' || document.visibilityState === 'hidden'
         || viewState.companionRitual || viewState.companionCleaning || viewState.companionFoodMenuOpen
+        || viewState.companionHomesteadBusy || viewState.companionHomesteadCommand || viewState.companionHomesteadPanel || viewState.companionFishing
         || viewState.companionGameResultOpen || viewState.moduleBusy.has('travel')
         || viewState.companionVisualAction || viewState.companionFeedback?.until > Date.now()) return false;
     const greeting = claimCompanionGreeting(data.world.companion);
@@ -1993,6 +2012,7 @@ function validCompanionRoomTarget(target, { home = true } = {}) {
     try { assertForumDataCurrent(target.forumOwner); } catch { return false; }
     const data = getForumData(), companion = data.world.companion, life = getCompanionLifeView(companion);
     return data === target.forumOwner && companion === target.owner && companion.room?.enabled
+        && (!companion.homestead || companion.homestead.location === 'home')
         && companion.status !== 'away' && life.life.mode === 'active' && !life.life.game
         && !viewState.moduleBusy.has('travel') && (!home || viewState.companionPanel === 'home')
         && JSON.stringify(normalizeCompanionRoom(companion.room)) === target.layout
@@ -2000,6 +2020,7 @@ function validCompanionRoomTarget(target, { home = true } = {}) {
 }
 
 function getCompanionRoomCare(companion) {
+    if (companionLivesInWater(companion)) { viewState.companionRoomCare = null; return null; }
     const care = viewState.companionRoomCare;
     const valid = care && companion === care.owner && validCompanionRoomTarget(care, { home: false })
         && (care.kind === 'rest' ? getCompanionLifeView(companion).sleeping : care.until > performance.now());
@@ -2063,6 +2084,11 @@ function interactWithCompanionRoom(itemId) {
     if (!spec) return;
     const blocked = canCareForCompanion(target.owner, spec.kind === 'rest' ? 'rest' : spec.kind === 'feed' ? 'feed' : 'pet');
     if (blocked) return notify('info', blocked);
+    if (companionLivesInWater(target.owner)) {
+        if (spec.kind === 'feed') return openCompanionFoodMenu();
+        if (spec.kind === 'rest') return careForCompanion('rest');
+        return;
+    }
     if (getCompanionRoomCare(target.owner)) return;
     if (spec.kind === 'feed') return openCompanionFoodMenu(target);
     return walkToCompanionRoom(target, spec.kind, spec.kind === 'rest' ? () => careForCompanion('rest', null, target) : null);
@@ -2073,7 +2099,7 @@ function chooseCompanionRoomFood(foodId) {
     if (!food || !viewState.companionFoodMenuOpen || viewState.companionRoomCommand) return;
     const target = viewState.companionRoomFoodTarget;
     viewState.companionRoomFoodTarget = null;
-    if (!target) return feedCompanionFood(food);
+    if (!target || companionLivesInWater(target.owner)) return feedCompanionFood(food);
     if (!validCompanionRoomTarget(target)) return returnCompanionPanel();
     viewState.companionFoodMenuOpen = false;
     finishCompanionCare();
@@ -2082,7 +2108,16 @@ function chooseCompanionRoomFood(foodId) {
     return walkToCompanionRoom(target, 'feed', () => feedCompanionFood(food, target));
 }
 
+function companionLivesInWater(companion) {
+    return isAquaticCompanion(getCompanionSpecies(companion.species)?.id, companion.life?.stage, companion.avatarUrl);
+}
+
 function getCompanionDisplayedScene(companion) {
+    if (companionLivesInWater(companion) && companion.status !== 'away' && !companion.life?.game) {
+        const place = HOMESTEAD_LOCATIONS.find(item => item.id === companion.homestead?.location);
+        return place && place.id !== 'home' ? { habitat: place.habitat, customized: false, outdoors: place.id !== 'kitchen' }
+            : { habitat: companion.room?.enabled ? 'custom-room' : companion.habitat, customized: Boolean(companion.room?.enabled) };
+    }
     if (getCompanionRoomCare(companion)) return { habitat: 'custom-room', customized: true, reason: 'room-care' };
     const scene = resolveCompanionScene(companion, {
         action: getCompanionVisualAction(companion),
@@ -2092,6 +2127,8 @@ function getCompanionDisplayedScene(companion) {
         sleeping: getCompanionLifeView(companion).sleeping,
         feedbackKind: viewState.companionFeedback?.until > Date.now() ? viewState.companionFeedback.kind : '',
     });
+    const place = HOMESTEAD_LOCATIONS.find(item => item.id === companion.homestead?.location);
+    if (place && place.id !== 'home' && companion.status !== 'away' && !scene.reason) return { habitat: place.habitat, customized: false, outdoors: place.id !== 'kitchen' };
     return companion.room?.enabled && !scene.reason ? { ...scene, habitat: 'custom-room', customized: true } : scene;
 }
 
@@ -2108,7 +2145,12 @@ function getCompanionAmbientSnapshot() {
         room: companion.room,
         furnitureHold: roomCare ? { itemId: roomCare.itemId, kind: roomCare.kind } : null,
         species: getCompanionSpecies(companion.species)?.id || 'mystery',
+        growthStage: companion.life?.stage || 'adult',
+        aquatic: companionLivesInWater(companion) ? getAquaticHabitat(companion.homestead?.location) : null,
         habitat: getCompanionDisplayedScene(companion).habitat,
+        sceneKey: companion.homestead?.location || 'home',
+        floorY: companion.homestead?.location === 'kitchen' ? 142 : getCompanionDisplayedScene(companion).outdoors ? (companion.homestead?.location === 'river' ? 149 : 86) : undefined,
+        locked: Boolean(viewState.companionFishing || viewState.companionHomesteadPanel || (viewState.companionHomesteadBusy && !viewState.companionHomesteadApproaching) || viewState.companionHomesteadMotion),
         activity: roomCare ? 'room-care' : viewState.companionRoomCommand?.owner === companion ? 'room-command' : life.activity,
         enabled: Boolean(viewState.open && session.settings.ui.activeTab === 'services'
             && viewState.worldPage === 'travel' && viewState.companionPanel === 'home'
@@ -2130,7 +2172,7 @@ function syncCompanionIdle() {
         getSnapshot: () => {
             const snapshot = getCompanionAmbientSnapshot();
             const pet = getRoot()?.querySelector('.tf-pet-sprite-control');
-            snapshot.enabled &&= pet?.dataset.roamState !== 'walking' && !pet?.dataset.roomInteracting && !snapshot.furnitureHold;
+            snapshot.enabled &&= !snapshot.locked && pet?.dataset.roamState !== 'walking' && !pet?.dataset.roomInteracting && !snapshot.furnitureHold;
             return snapshot;
         },
     });
@@ -2145,6 +2187,398 @@ function syncCompanionIdle() {
     });
     companionRoamController.sync();
     companionIdleController.sync();
+}
+
+function cancelHomesteadCommand() {
+    if (viewState.companionHomesteadCommand) companionRoamController?.cancel();
+    viewState.companionHomesteadCommand = null;
+}
+
+function homesteadNotice(message) {
+    viewState.companionHomesteadNotice = message;
+    render({ preserveScroll: true });
+}
+
+function cancelHomesteadMotion() {
+    companionWorkPosePlayer?.stop();
+    stopFishingDisplay();
+    viewState.companionHomesteadJob?.cancelWalk?.();
+    viewState.companionHomesteadJob?.cancelCast?.();
+    companionHomesteadMotionController?.cancel();
+    viewState.companionHomesteadJob = null;
+    viewState.companionHomesteadMotion = null;
+    viewState.companionHomesteadBusy = false;
+    viewState.companionHomesteadApproaching = false;
+}
+
+function cancelSavedFishing(data, current, castId) {
+    if (!current()) return;
+    try {
+        assertForumDataCurrent(data);
+        if (cancelHomesteadFishing(data, castId).changed) void saveForumData(data, true).catch(error => {
+            if (error.name !== 'AbortError') console.error('[微坛] 保存收竿状态失败', error);
+        });
+    } catch (error) { if (error.name !== 'AbortError') console.error('[微坛] 收竿失败', error); }
+}
+
+function stopFishingDisplay({ cancel = true } = {}) {
+    const fishing = viewState.companionFishing;
+    clearTimeout(companionFishingTimer); companionFishingTimer = null;
+    viewState.companionFishing = null;
+    if (fishing && cancel) cancelSavedFishing(fishing.data, fishing.current, fishing.castId);
+    if (!viewState.companionHomesteadJob) viewState.companionHomesteadBusy = false;
+}
+
+function syncFishingPanelRefresh() {
+    if (viewState.companionFishing) return;
+    clearTimeout(companionFishingTimer); companionFishingTimer = null;
+    if (!viewState.open || viewState.companionHomesteadPanel !== 'fishing'
+        || viewState.companionPanel !== 'home' || getSettings().ui.activeTab !== 'services'
+        || viewState.worldPage !== 'travel' || document.visibilityState === 'hidden') return;
+    const data = getForumData(), current = captureChatScope();
+    const fishing = getFishingView(data.world.companion);
+    if (fishing.phase !== 'cooldown') return;
+    companionFishingTimer = setTimeout(() => {
+        companionFishingTimer = null;
+        if (current() && getForumData() === data && viewState.open
+            && viewState.companionHomesteadPanel === 'fishing' && !viewState.companionFishing) render({ preserveScroll: true });
+    }, fishing.remainingMs + 30);
+}
+
+function syncCompanionWorkPose(root) {
+    const control = root?.querySelector('.tf-pet-sprite-control');
+    const motion = viewState.companionHomesteadMotion;
+    const fishing = viewState.companionFishing;
+    const pet = getForumData().world.companion;
+    const action = motion?.action === 'cook' && pet.homestead.location === 'kitchen' ? 'cook'
+        : motion?.action === 'fish' ? 'fish' : fishing ? 'fishing' : '';
+    if (!action || !viewState.open || document.visibilityState === 'hidden') { companionWorkPosePlayer?.stop(); return; }
+    companionWorkPosePlayer ||= createWorkPosePlayer();
+    companionWorkPosePlayer.sync({ control, action, itemId: motion?.itemId || '',
+        startedAt: motion?.startedAt || pet.homestead.fishing?.startedAt || Date.now(),
+        duration: motion?.duration || 800,
+        phase: () => viewState.companionFishing?.phase || '',
+        reduced: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    });
+}
+
+function beginFishingDisplay(data, current) {
+    stopFishingDisplay({ cancel: false });
+    const castId = data.world.companion.homestead.fishing?.id;
+    if (!castId) return;
+    const session = { data, current, castId, phase: getFishingView(data.world.companion).phase };
+    viewState.companionFishing = session;
+    viewState.companionHomesteadPanel = '';
+    viewState.companionDeviceCursor = -1;
+    clearCompanionRitual(); companionIdleController?.cancel(); companionRoamController?.cancel();
+    render({ preserveScroll: true });
+    const tick = () => {
+        if (viewState.companionFishing !== session) return;
+        const visible = current() && viewState.open && getSettings().ui.activeTab === 'services' && viewState.worldPage === 'travel'
+            && viewState.companionPanel === 'home' && document.visibilityState !== 'hidden';
+        let valid = visible;
+        try { assertForumDataCurrent(data); valid &&= data.world.companion.homestead.location === 'river' && !canCareForCompanion(data.world.companion, 'trip'); }
+        catch { valid = false; }
+        if (!valid) { stopFishingDisplay(); if (current()) render({ preserveScroll: true }); return; }
+        const view = getFishingView(data.world.companion);
+        if (view.castId !== session.castId) {
+            stopFishingDisplay({ cancel: false });
+            viewState.companionHomesteadPanel = 'fishing';
+            render({ preserveScroll: true }); return;
+        }
+        session.phase = view.phase;
+        if (!['waiting', 'bite'].includes(view.phase)) {
+            stopFishingDisplay();
+            viewState.companionHomesteadPanel = 'fishing';
+            viewState.companionHomesteadNotice = '浮漂静下来了，鱼儿已经游走。再试一次吧。';
+            render({ preserveScroll: true }); return;
+        }
+        const root = getRoot(), old = root?.querySelector('.tf-fishing-overlay');
+        // Keep the held rod and pointer target stable while the countdown changes.
+        if (old) {
+            const template = document.createElement('template');
+            template.innerHTML = renderFishingOverlay(data.world.companion, Date.now());
+            const fresh = template.content.firstElementChild;
+            if (fresh) {
+                const phaseChanged = old.dataset.fishingPhase !== view.phase;
+                if (phaseChanged) old.replaceWith(fresh);
+                else old.querySelectorAll('[data-fishing-clock]').forEach((node, i) => { node.textContent = fresh.querySelectorAll('[data-fishing-clock]')[i]?.textContent || ''; });
+            }
+        }
+        root?.querySelector('.tf-pet-sprite-control')?.setAttribute('data-fishing-phase', view.phase);
+        paintCompanionDeviceCursor(root, viewState);
+        companionFishingTimer = setTimeout(tick, Math.min(500, Math.max(30, view.remainingMs || 500)));
+    };
+    companionFishingTimer = setTimeout(tick, 100);
+}
+
+async function handleHomesteadFishing(action, target) {
+    if (action === 'fish-cancel') {
+        cancelHomesteadMotion(); stopFishingDisplay();
+        viewState.companionHomesteadPanel = 'fishing';
+        viewState.companionHomesteadNotice = '把鱼竿收好了，想钓的时候再来。';
+        return render({ preserveScroll: true });
+    }
+    if (viewState.companionHomesteadBusy || viewState.moduleBusy.has('travel')) return;
+    const data = getForumData(), current = captureChatScope();
+    let job = null;
+    try {
+        assertForumDataCurrent(data);
+        if (action === 'fish-kit') {
+            viewState.companionHomesteadNotice = ensureFishingKit(data).message;
+            await saveForumData(data, true);
+        } else if (action === 'fish-cast') {
+            if (viewState.companionFishing) return;
+            const result = castHomesteadLine(data);
+            viewState.companionHomesteadNotice = result.message;
+            beginFishingDisplay(data, current);
+            await saveForumData(data, true);
+        } else if (action === 'fish-reel') {
+            const castId = target.dataset.castId || viewState.companionFishing?.castId;
+            const attemptedAt = Date.now();
+            const preview = reelHomesteadFish(structuredClone({ world: data.world }), castId, attemptedAt);
+            if (!preview.changed) { viewState.companionHomesteadNotice = preview.message; return; }
+            stopFishingDisplay({ cancel: false });
+            job = { target: 'fishing', castId, cancelCast: () => cancelSavedFishing(data, current, castId) };
+            viewState.companionHomesteadJob = job;
+            viewState.companionHomesteadBusy = true;
+            const outcome = await animateHomesteadWork(data, current, job, 'fish', preview.caught ? preview.itemId : '',
+                () => reelHomesteadFish(data, castId, attemptedAt));
+            if (!outcome.completed) { job.cancelCast(); return; }
+            viewState.companionHomesteadNotice = outcome.result.message;
+            render({ preserveScroll: true });
+            await saveForumData(data, true);
+            if (current() && viewState.companionHomesteadJob === job) {
+                viewState.companionHomesteadPanel = 'fishing';
+                syncInjection();
+            }
+        }
+    } catch (error) {
+        if (current() && error.name !== 'AbortError') {
+            viewState.companionHomesteadNotice = error.message;
+            if (viewState.companionFishing) viewState.companionFishing.error = error.message;
+            if (job && viewState.companionHomesteadJob === job && !job.committed
+                && data.world.companion.homestead.fishing?.id === job.castId) {
+                viewState.companionHomesteadJob = null; viewState.companionHomesteadBusy = false;
+                const fishing = getFishingView(data.world.companion);
+                if (['waiting', 'bite'].includes(fishing.phase)) beginFishingDisplay(data, current);
+                else viewState.companionHomesteadPanel = 'fishing';
+                if (viewState.companionFishing) viewState.companionFishing.error = error.message;
+            }
+        }
+    } finally {
+        if (job && viewState.companionHomesteadJob === job) {
+            viewState.companionHomesteadJob = null; viewState.companionHomesteadBusy = false;
+        }
+        if (current()) render({ preserveScroll: true });
+    }
+}
+
+function homesteadMotionIsCurrent(data, current, job, location) {
+    if (!current() || viewState.companionHomesteadJob !== job || !viewState.open
+        || getSettings().ui.activeTab !== 'services' || viewState.worldPage !== 'travel'
+        || viewState.companionPanel !== 'home' || document.visibilityState === 'hidden') return false;
+    try {
+        assertForumDataCurrent(data);
+        return getForumData() === data && data.world.companion.homestead.location === location
+            && !canCareForCompanion(data.world.companion, 'trip') && !viewState.moduleBusy.has('travel');
+    } catch { return false; }
+}
+
+async function animateHomesteadWork(data, current, job, action, itemId, commit = () => {}) {
+    const location = data.world.companion.homestead.location;
+    const approachPackingTable = action === 'pack' && viewState.companionPanel !== 'home';
+    const approachStove = action === 'cook' && location === 'kitchen';
+    clearCompanionRitual(); companionIdleController?.cancel();
+    viewState.companionVisualAction = '';
+    viewState.companionActionToken += 1;
+    clearTimeout(viewState.companionActionTimer);
+    viewState.companionFeedback = null;
+    viewState.companionHomesteadPanel = '';
+    viewState.companionPanel = 'home';
+    if ((approachPackingTable || approachStove) && !companionLivesInWater(data.world.companion)) {
+        viewState.companionHomesteadApproaching = true;
+        render({ preserveScroll: true });
+        const arrived = await new Promise(resolve => {
+            job.cancelWalk = () => resolve(false);
+            const point = approachStove ? { x: 195, y: 153 } : getHomeStationGeometry(data.world.companion).find(station => station.id === 'packing').approach;
+            if (!companionRoamController?.walkToPoint(point, { onArrive: () => resolve(true), onCancel: () => resolve(false) })) resolve(false);
+        });
+        if (viewState.companionHomesteadJob !== job) return { completed: false };
+        viewState.companionHomesteadApproaching = false;
+        job.cancelWalk = null;
+        if (!arrived) throw new Error(approachStove ? '暂时走不到灶台前，回到厨房再试一次吧。' : '暂时走不到行囊旁，试试挪开附近的家具。');
+    }
+    companionHomesteadMotionController ||= createHomesteadMotionController({
+        reducedMotion: () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        onChange: state => { viewState.companionHomesteadMotion = state; },
+    });
+    const pending = companionHomesteadMotionController.run({ action, itemId,
+        valid: () => homesteadMotionIsCurrent(data, current, job, location),
+        commit: () => { const result = commit(); job.committed = true; return result; } });
+    companionRoamController?.cancel();
+    render({ preserveScroll: true });
+    return pending;
+}
+
+async function handleHomesteadAction(action, target) {
+    if (action.startsWith('fish-')) return handleHomesteadFishing(action, target);
+    if (viewState.companionHomesteadBusy || viewState.moduleBusy.has('travel')) return;
+    const data = getForumData(), current = captureChatScope(), companion = data.world.companion;
+    if (action === 'close') {
+        viewState.companionHomesteadPanel = '';
+        return render({ preserveScroll: true });
+    }
+    const job = { action };
+    viewState.companionHomesteadJob = job;
+    viewState.companionHomesteadBusy = true;
+    const returnPanel = viewState.companionHomesteadPanel;
+    try {
+        assertForumDataCurrent(data);
+        let result;
+        if (action === 'starter') {
+            const result = ensureHomesteadStarter(data);
+            viewState.companionHomesteadNotice = result.message;
+        } else if (action === 'depart') {
+            job.target = 'packing';
+            startHomesteadJourney(structuredClone({ world: data.world }), target.dataset.location, getSettings().modules.travel);
+            const outcome = await animateHomesteadWork(data, current, job, 'pack', 'bento',
+                () => startHomesteadJourney(data, target.dataset.location, getSettings().modules.travel));
+            if (!outcome.completed) return;
+            result = outcome.result;
+            viewState.companionHomesteadNotice = data.world.companion.message;
+        } else {
+            const args = { plotId: target.dataset.plotId, cropId: target.dataset.cropId, itemId: target.dataset.itemId, nodeId: target.dataset.nodeId, recipeId: target.dataset.recipeId };
+            job.target = args.plotId ? `plot:${args.plotId}` : args.nodeId ? `node:${args.nodeId}` : args.recipeId ? 'stove' : 'storage';
+            const preview = performHomesteadAction(structuredClone({ world: data.world }), action, args, Date.now());
+            if (!preview.changed) { viewState.companionHomesteadNotice = preview.message; return; }
+            const plot = companion.homestead.plots.find(item => item.id === args.plotId);
+            const itemId = args.itemId || (action === 'plant' ? `${args.cropId}-seed` : action === 'harvest' ? plot?.cropId
+                : action === 'gather' ? RESOURCE_NODES.find(item => item.id === args.nodeId)?.itemId : action === 'exchange' ? `${args.cropId}-seed` : RECIPES.find(recipe => recipe.id === args.recipeId)?.outputId || 'bento');
+            const outcome = await animateHomesteadWork(data, current, job, action === 'exchange' ? 'pack' : action, itemId,
+                () => performHomesteadAction(data, action, args, Date.now()));
+            if (!outcome.completed) return;
+            result = outcome.result;
+            viewState.companionHomesteadNotice = result.message;
+            if (['plant', 'water', 'harvest', 'gather'].includes(action)) {
+                viewState.companionHomesteadPanel = '';
+                viewState.companionHomesteadFxUntil = Date.now() + 850;
+                viewState.companionHomesteadFx = { plant: '种下期待', water: '浇好水啦', harvest: '收获装好啦', gather: '收进行囊' }[action];
+            }
+        }
+        // Remove completed tools immediately, even when the host save takes time.
+        if (job.committed) render({ preserveScroll: true });
+        await saveForumData(data, true);
+        if (!current() || viewState.companionHomesteadJob !== job) return;
+        assertForumDataCurrent(data);
+        syncInjection();
+        if (action === 'depart') wakeCompanionJourneyClock();
+        else if (['cook', 'feed', 'exchange'].includes(action)) viewState.companionHomesteadPanel = returnPanel;
+    } catch (error) {
+        if (error.name !== 'AbortError' && current() && viewState.companionHomesteadJob === job) {
+            viewState.companionHomesteadNotice = error.message;
+            viewState.companionHomesteadPanel = returnPanel;
+        }
+    } finally {
+        if (viewState.companionHomesteadJob === job) {
+            viewState.companionHomesteadJob = null;
+            viewState.companionHomesteadBusy = false;
+            if (current()) render({ preserveScroll: true });
+        }
+    }
+}
+
+async function interactWithHomestead(target) {
+    if (viewState.companionHomesteadBusy || viewState.moduleBusy.has('travel')) return;
+    const data = getForumData(), current = captureChatScope(), pet = data.world.companion;
+    const kind = target.dataset.target;
+    if (!kind) return;
+    const stationary = ['packing', 'storage'].includes(kind);
+    const blocked = canCareForCompanion(pet, 'trip');
+    if (blocked && !stationary) return homesteadNotice(blocked);
+    cancelHomesteadCommand(); cancelCompanionRoomCommand(); clearCompanionRitual();
+    viewState.companionRoomCare = null;
+    viewState.companionHomesteadPanel = '';
+    const location = pet.homestead.location;
+    const command = { data, current, location, kind };
+    viewState.companionHomesteadCommand = command;
+    try {
+        if (ensureHomesteadStarter(data, Date.now()).changed) await saveForumData(data, true);
+        if (!current() || viewState.companionHomesteadCommand !== command) return;
+        assertForumDataCurrent(data);
+    } catch (error) {
+        if (current() && viewState.companionHomesteadCommand === command) {
+            viewState.companionHomesteadCommand = null;
+            homesteadNotice(error.message);
+        }
+        return;
+    }
+    const valid = () => current() && viewState.companionHomesteadCommand === command && getForumData() === data
+        && viewState.open && getSettings().ui.activeTab === 'services' && viewState.worldPage === 'travel'
+        && viewState.companionPanel === 'home' && pet.homestead.location === location;
+    const arrive = async () => {
+        if (!valid()) return;
+        viewState.companionHomesteadCommand = null;
+        try {
+            assertForumDataCurrent(data);
+            if (kind === 'packing') {
+                if (!blocked) {
+                    const job = { target: 'packing' };
+                    viewState.companionHomesteadJob = job;
+                    viewState.companionHomesteadBusy = true;
+                    try {
+                        const outcome = await animateHomesteadWork(data, current, job, 'pack', 'bento');
+                        if (!outcome.completed || viewState.companionHomesteadJob !== job) return;
+                    } finally {
+                        if (viewState.companionHomesteadJob === job) {
+                            viewState.companionHomesteadJob = null;
+                            viewState.companionHomesteadBusy = false;
+                            if (current()) render({ preserveScroll: true });
+                        }
+                    }
+                }
+                showCompanionPanel('travel', { focus: false }); return render({ preserveScroll: true });
+            }
+            if (kind === 'storage') viewState.companionHomesteadPanel = 'storage';
+            else if (kind === 'stove') viewState.companionHomesteadPanel = 'kitchen';
+            else if (kind === 'fishing') {
+                if (ensureFishingKit(data).changed) await saveForumData(data, true);
+                if (!current() || !viewState.open) return;
+                const fishing = getFishingView(data.world.companion);
+                if (['waiting', 'bite'].includes(fishing.phase)) return beginFishingDisplay(data, current);
+                if (data.world.companion.homestead.fishing) {
+                    cancelHomesteadFishing(data, data.world.companion.homestead.fishing.id);
+                    await saveForumData(data, true);
+                }
+                viewState.companionHomesteadPanel = 'fishing';
+            }
+            else if (kind.startsWith('plot:')) viewState.companionHomesteadPanel = kind;
+            else if (kind.startsWith('node:')) return await handleHomesteadAction('gather', { dataset: { nodeId: kind.slice(5) } });
+            else {
+                const destination = kind === 'door' ? 'yard' : kind.replace('location:', '');
+                changeHomesteadLocation(data, destination, Date.now());
+                viewState.companionHomesteadNotice = companionLivesInWater(pet) ? `${getAquaticHabitat(destination).kind === 'free' ? '点场景空处' : '点水面'}让它游一游；你可以照常种地、采集和做菜。` : destination === 'home' ? '回到小窝啦，整理一下今天的收获吧。' : destination === 'kitchen' ? '厨房亮着暖灯。点灶台选一道菜，把今天的收获做成晚饭。' : '点空地走一走，点地块或采集物让它过去。';
+                companionRoamController?.cancel({ reset: true });
+                await saveForumData(data, true);
+            }
+            if (current()) render({ preserveScroll: true });
+        } catch (error) { if (error.name !== 'AbortError' && current()) homesteadNotice(error.message); }
+    };
+    if (blocked && stationary || companionLivesInWater(pet)) return arrive();
+    viewState.companionVisualAction = '';
+    viewState.companionActionToken += 1;
+    clearTimeout(viewState.companionActionTimer);
+    viewState.companionFeedback = null;
+    render({ preserveScroll: true });
+    const node = kind.startsWith('node:') && RESOURCE_NODES.find(item => item.id === kind.slice(5));
+    const plotIndex = kind.startsWith('plot:') ? Number(kind.split('-').at(-1)) - 1 : -1;
+    const point = Number.isFinite(Number(target.dataset.x)) && target.dataset.x !== undefined
+        ? { x: Number(target.dataset.x), y: Number(target.dataset.y) }
+        : node ? { x: node.x, y: node.y + 12 }
+            : plotIndex >= 0 ? { x: [47, 142, 237][plotIndex % 3], y: plotIndex < 3 ? 144 : 220 }
+                : (location === 'home' && getHomeStationGeometry(pet).find(station => station.id === kind)?.approach) || { x: 35, y: 182 };
+    const accepted = companionRoamController?.walkToPoint(point, { onArrive: () => { void arrive(); } });
+    if (!accepted) { viewState.companionHomesteadCommand = null; homesteadNotice('现在走不过去，先休息一下，或挪开附近的家具。'); }
 }
 
 function activateCompanionVisualAction(action) {
@@ -2271,6 +2705,11 @@ function renderCompanionPacking(data) {
     const carryingHint = away ? '旅途中暂不可修改，返家后可准备下一次行囊。' : busy ? '当前操作进行中，行囊暂不可修改。' : selected.size ? '下方勾选的背包物品会组成行囊；取消勾选后可手动填写。' : '背包为空也能填写。手写行囊作为旅途备注；背包物品提供对应的旅行效果。';
     const carrying = `<label class="tf-packing-note"><span>${carryingLabel}</span><input type="text" data-companion-field="carrying" value="${escapeHtml(away ? companion.departedCarrying || companion.carrying : companion.carrying)}" maxlength="240" placeholder="例如：干粮、地图、护符……" ${disabled ? 'disabled' : selected.size ? 'readonly' : ''}><small>${carryingHint}</small></label>`;
     const active = [...data.world.trips].reverse().find(trip => trip.status === 'away');
+    const slotItems = away ? (active?.packingItems || []) : [...selected].map(id => items.find(item => item.id === id) || { name: '已移除' });
+    const slots = '<div class="tf-homestead-pack-slots" aria-label="六格行囊">' + Array.from({ length: 6 }, (_, i) => {
+        const item = slotItems[i], catalogId = item?.petItemId || data.world.inventory.find(entry => entry.id === item?.id)?.petItemId;
+        return '<span class="' + (item ? 'is-packed' : '') + '"><small>' + (i + 1) + '</small>' + (catalogId ? renderHomesteadItemIcon(catalogId) : '<i aria-hidden="true">' + (item ? '✦' : '＋') + '</i>') + '<b>' + escapeHtml(item?.name || '空位') + '</b></span>';
+    }).join('') + '</div>';
     const selection = items.map(item => {
         const role = getCompanionPackingRole(item);
         const missing = item.consumed || item.quantity < 1 || item.usable === false;
@@ -2280,7 +2719,7 @@ function renderCompanionPacking(data) {
     const contents = away
         ? tripItems || '<p>' + (active ? '本次没有携带背包物品。' : '本次未记录背包物品明细。') + '</p>'
         : selection || '<p>' + (busy ? '当前没有选择背包物品，行囊暂时锁定。' : '背包里还没有可携带的物品。可以填写上方行囊，也可以留空轻装出发。') + '</p>';
-    return '<section class="tf-card tf-packing"><header><h3>' + (away ? '旅途行囊' : preparing ? '正在准备行囊' : '准备行囊') + '</h3><span>最多 6 种背包物品</span></header>' + carrying + (away ? '<p>旅途中 · ' + escapeHtml(active?.packingSummary || companion.departedCarrying || '轻装出发') + '</p>' : '<p>每种食物消耗 1 份，缩短 10% 行程，最多 20%；导航道具再缩短 5%，同类不叠加。其他道具影响来信和纪念品题材。</p>') + '<div class="tf-packing-items">' + contents + '</div>' + ((away ? active?.packingEffects : plan.effects) || []).map(effect => '<p class="tf-packing-effect">' + escapeHtml(effect) + '</p>').join('') + '</section>';
+    return '<section class="tf-card tf-packing"><header><h3>' + (away ? '旅途行囊' : preparing ? '正在准备行囊' : '准备行囊') + '</h3><span>最多 6 种背包物品</span></header>' + slots + carrying + (away ? '<p>旅途中 · ' + escapeHtml(active?.packingSummary || companion.departedCarrying || '轻装出发') + '</p>' : '<p>每种食物消耗 1 份，缩短 10% 行程，最多 20%；导航道具再缩短 5%，同类不叠加。其他道具影响来信和纪念品题材。</p>') + '<div class="tf-packing-items">' + contents + '</div>' + ((away ? active?.packingEffects : plan.effects) || []).map(effect => '<p class="tf-packing-effect">' + escapeHtml(effect) + '</p>').join('') + '</section>';
 }
 
 function renderCompanionTravelHistory(data) {
@@ -2491,6 +2930,9 @@ function handleCompanionRoomKeyDown(event) {
 
 function showCompanionPanel(panel, { focus = true, preserveCareSource = false } = {}) {
     if (!DEVICE_PAGES.includes(panel)) return;
+    cancelHomesteadMotion();
+    cancelHomesteadCommand();
+    viewState.companionHomesteadPanel = '';
     if (viewState.companionPanel === 'room' && getCompanionRoomDraft()?.saving && panel !== 'room') return;
     if (panel === 'room') ensureCompanionRoomDraft();
     const root = getRoot(), page = root?.querySelector('.tf-companion-device');
@@ -2518,7 +2960,7 @@ function showCompanionPanel(panel, { focus = true, preserveCareSource = false } 
         page.querySelector('.tf-device-viewport').classList.remove('is-selecting-food');
     }
     if (panel === 'dress') viewState.companionProfileOpen = true;
-    if (closeTransient || panel === 'room') {
+    if (closeTransient || panel === 'room' || panel === 'home' || page.querySelector('.tf-homestead-bar')) {
         render({ preserveScroll: true });
         if (focus) getRoot()?.querySelector('[data-action="companion-menu-confirm"]')?.focus({ preventScroll: true });
         return;
@@ -2585,6 +3027,7 @@ async function feedCompanionFood(food, roomTarget = null) {
     if (viewState.companionRitual?.kind === 'meal' && viewState.companionRitual.until > Date.now()) return;
     const data = getForumData();
     const companion = data.world.companion;
+    if (companionLivesInWater(companion)) roomTarget = null;
     advanceCompanionLife(companion);
     const before = { ...companion, cleanliness: companion.life.cleanliness };
     const blocked = canCareForCompanion(companion, 'feed');
@@ -2603,7 +3046,7 @@ async function feedCompanionFood(food, roomTarget = null) {
     companion.mood = favorite ? '最喜欢' : liked ? '满足' : '迟疑';
     companion.lastFood = food.id;
     companion.lastAction = 'feed';
-    companion.message = favorite ? `${companion.name}一眼认出最喜欢的${food.name}，开心得整只都跳了起来！` : liked ? `${companion.name}认真吃完${food.name}，满足地靠近了屏幕。` : `${companion.name}试探着尝了一口${food.name}；这并不是它最习惯的食物。`;
+    companion.message = favorite ? `${companion.name}一眼认出最喜欢的${food.name}，${companionLivesInWater(companion) ? '开心地轻摆尾巴。' : '开心得整只都跳了起来！'}` : liked ? `${companion.name}认真吃完${food.name}，满足地靠近了屏幕。` : `${companion.name}试探着尝了一口${food.name}；这并不是它最习惯的食物。`;
     if (!rewarded) companion.message = `${companion.name}还在回味刚才的点心，暂时吃不下更多了。`;
     showCompanionFeedback(companion, before, rewarded ? `吃到${food.name}啦` : '还在回味，过会儿再吃');
     companion.lastInteractionAt = Date.now();
@@ -2624,6 +3067,7 @@ async function careForCompanion(care, target, roomTarget = null) {
     if (viewState.moduleBusy.has('travel')) return notify('info', '旅行准备完成后再照顾旅伴');
     const data = getForumData();
     const companion = data.world.companion;
+    if (companionLivesInWater(companion)) roomTarget = null;
     advanceCompanionLife(companion);
     const before = { ...companion, cleanliness: companion.life.cleanliness };
     const blocked = canCareForCompanion(companion, care);
@@ -2659,6 +3103,10 @@ async function careForCompanion(care, target, roomTarget = null) {
     companion.message = ['pet', 'play', 'rest'].includes(care)
         ? personalizeCompanionReaction(companion, getCompanionHabit(companion)[care])
         : getCompanionExtraReaction(companion, care);
+    if (companionLivesInWater(companion) && getAquaticHabitat(companion.homestead?.location).kind === 'free') {
+        if (care === 'rest') companion.message = `${companion.name}停下游动，轻轻收拢身体，安静进入浅眠。`;
+        if (care === 'pet') companion.message = `${companion.name}轻轻游近你的指尖，摆了摆尾巴。`;
+    }
     if (care === 'dress') maybeCompanionSelfChangeAccessory(companion, { force: true });
     else maybeCompanionSelfChangeAccessory(companion);
     companion.lastInteractionAt = Date.now();
@@ -3460,6 +3908,8 @@ function updateStableShell(root, markup) {
 function render({ preserveScroll = false } = {}) {
     const root = getRoot();
     if (!root) return;
+    if ((viewState.companionHomesteadJob || viewState.companionFishing) && (!viewState.open || getSettings().ui.activeTab !== 'services'
+        || viewState.worldPage !== 'travel' || viewState.companionPanel !== 'home')) cancelHomesteadMotion();
     if (viewState.companionRitual) {
         const companion = getForumData().world.companion, life = getCompanionLifeView(companion);
         const bedtime = viewState.companionRitual.kind === 'bedtime';
@@ -3469,6 +3919,8 @@ function render({ preserveScroll = false } = {}) {
     else prepareCompanionGreeting(getForumData());
     const previousHabitat = root.querySelector('.tf-pet-habitat-layer')?.dataset.habitat;
     const petScroll = new Map([...root.querySelectorAll('.tf-pet-device-page')].map(node => [node.dataset.companionPanel, node.querySelector('.tf-pet-device-content').scrollTop]));
+    const homesteadSheet = root.querySelector('.tf-homestead-panel');
+    const homesteadScroll = homesteadSheet ? { id: homesteadSheet.dataset.homesteadPanel, top: homesteadSheet.querySelector('.tf-homestead-panel-content').scrollTop } : null;
     const petPanels = [...root.querySelectorAll('.tf-pet-life-details')].map(node => node.open);
     const roomDraft = viewState.companionPanel === 'room' ? getCompanionRoomDraft() : null;
     const roomEditor = root.querySelector('.tf-room-editor');
@@ -3494,6 +3946,8 @@ function render({ preserveScroll = false } = {}) {
     const shouldPreserveScroll = preserveScroll || (Boolean(viewState.renderedScrollKey) && viewState.renderedScrollKey === nextScrollKey);
     const savedPosition = viewState.scrollPositions.get(nextScrollKey);
     updateStableShell(root, renderShell());
+    const nextSheet = root.querySelector('.tf-homestead-panel');
+    if (homesteadScroll && nextSheet?.dataset.homesteadPanel === homesteadScroll.id) nextSheet.querySelector('.tf-homestead-panel-content').scrollTop = homesteadScroll.top;
     const nextHabitat = root.querySelector('.tf-pet-habitat-layer');
     if (previousHabitat && nextHabitat && previousHabitat !== nextHabitat.dataset.habitat) nextHabitat.classList.add('is-scene-entering');
     root.querySelectorAll('.tf-pet-life-details').forEach((node, index) => { if (index < petPanels.length) node.open = petPanels[index]; });
@@ -3524,6 +3978,8 @@ function render({ preserveScroll = false } = {}) {
     syncCompanionGamePlayer(root);
     paintCompanionDeviceCursor(root, viewState);
     syncCompanionIdle();
+    syncFishingPanelRefresh();
+    syncCompanionWorkPose(root);
     paintInAppToasts();
     applySearchFilter();
     updateLaunchers();
@@ -4266,9 +4722,12 @@ async function processCompanionJourneyClock({ forceReturn = false } = {}) {
         if (!getSettings().modules.travel.enabled) { pet.life.lastTickAt = Date.now(); pet.life.game = null; }
         const result = advanceCompanionJourney(data, { forceReturn });
         if (!result.changed) {
-            if (lifeChanged) {
-                await saveForumData(data, true);
-                if (viewState.open) render({ preserveScroll: true });
+            if (lifeChanged) await saveForumData(data, true);
+            const homeVisible = viewState.open && getSettings().ui.activeTab === 'services' && viewState.worldPage === 'travel' && viewState.companionPanel === 'home';
+            const homesteadKey = pet.homestead.location + ':' + pet.homestead.plots.map(plot => getCropView(plot).stage).join(',') + ':' + Object.values(pet.homestead.nodes).map(at => at <= Date.now()).join(',');
+            if (homeVisible && !viewState.companionHomesteadCommand && !viewState.companionRoomCommand && !viewState.companionHomesteadBusy && (lifeChanged || viewState.companionHomesteadClockKey !== homesteadKey || viewState.companionHomesteadPanel?.startsWith('plot:'))) {
+                viewState.companionHomesteadClockKey = homesteadKey;
+                render({ preserveScroll: true });
             }
             return result;
         }
@@ -4931,11 +5390,39 @@ async function setRoleModeration(npcId, kind, enabled) {
 async function handleRootClick(event) {
     const target = event.target.closest('[data-action]');
     if (!target) {
+        if (event.target.closest('.tf-pet-stage')) {
+            viewState.companionHomesteadCommand = null;
+            if (viewState.companionHomesteadJob || viewState.companionFishing) {
+                cancelHomesteadMotion(); render({ preserveScroll: true });
+                companionRoamController?.moveTo({ clientX: event.clientX, clientY: event.clientY });
+            }
+        }
         const canvas = event.target.closest('.tf-room-canvas');
         if (canvas && event.detail > 0) placeCompanionRoomItem(event, canvas);
         return;
     }
     const action = target.dataset.action;
+    if (action === 'homestead-target' && event.detail > 0) {
+        const touch = viewState.companionPointerStart, box = target.getBoundingClientRect();
+        // Touch browsers may retarget an empty-floor tap to a nearby button.
+        // Keep that tap a walking command instead of unexpectedly opening a door.
+        if (touch?.type === 'touch' && performance.now() - touch.at < 1000
+            && (touch.x < box.left || touch.x > box.right || touch.y < box.top || touch.y > box.bottom)) {
+            const actual = document.elementFromPoint(touch.x, touch.y), stage = getRoot()?.querySelector('.tf-pet-stage');
+            if (actual && stage?.contains(actual) && !actual.closest('button,[data-action]')) {
+                if (viewState.companionHomesteadJob || viewState.companionFishing) { cancelHomesteadMotion(); render({ preserveScroll: true }); }
+                cancelHomesteadCommand();
+                companionRoamController?.moveTo({ clientX: touch.x, clientY: touch.y });
+            }
+            return;
+        }
+    }
+    if (viewState.companionHomesteadBusy && (['homestead-target', 'homestead-action', 'companion-care', 'companion-room-interact', 'companion-menu-confirm'].includes(action) || action.startsWith('pet-'))) return;
+    if (viewState.companionFishing && (['homestead-target', 'companion-care', 'companion-room-interact'].includes(action)
+        || action.startsWith('pet-') || (action === 'homestead-action' && !target.dataset.homesteadAction?.startsWith('fish-')))) return;
+    if (action !== 'homestead-target') cancelHomesteadCommand();
+    if (action === 'homestead-target') return interactWithHomestead(target);
+    if (action === 'homestead-action') return handleHomesteadAction(target.dataset.homesteadAction, target);
     if (action !== 'companion-room-interact' && action !== 'companion-feed-food') cancelCompanionRoomCommand();
     if (action.startsWith('room-')) return handleCompanionRoomAction(action, target, event);
     if (action.startsWith('pet-')) return handlePetLifeAction(action, target);
@@ -5139,6 +5626,20 @@ async function handleRootClick(event) {
         return render({ preserveScroll: true });
     }
     if (action === 'companion-menu-nav') {
+        if (viewState.companionFishing && Number(target.dataset.direction) > 0) return handleHomesteadFishing('fish-cancel', target);
+        if (viewState.companionHomesteadBusy && Number(target.dataset.direction) > 0) {
+            if (viewState.companionHomesteadJob?.committed) return;
+            cancelHomesteadMotion();
+            companionRoamController?.cancel();
+            viewState.companionHomesteadNotice = '先歇一会，在小窝里走走吧。';
+            return render({ preserveScroll: true });
+        }
+        if (viewState.companionHomesteadPanel) {
+            if (Number(target.dataset.direction) > 0) return handleHomesteadAction('close', target);
+            const choices = getCompanionDeviceChoices(getRoot());
+            viewState.companionDeviceCursor = choices.length ? (viewState.companionDeviceCursor + 1) % choices.length : -1;
+            return paintCompanionDeviceCursor(getRoot(), viewState, { scroll: true });
+        }
         if (viewState.companionPanel === 'home' && getForumData().world.companion.life.game) return handleCompanionGameInput(Number(target.dataset.direction || 1), event);
         if (viewState.companionPanel === 'home' && viewState.companionGameResultOpen) return handlePetLifeAction('pet-game-dismiss', target);
         if (Number(target.dataset.direction) > 0) {
@@ -5157,6 +5658,7 @@ async function handleRootClick(event) {
         return render({ preserveScroll: true });
     }
     if (action === 'companion-menu-confirm') {
+        if (viewState.companionFishing) return handleHomesteadFishing('fish-reel', { dataset: { castId: viewState.companionFishing.castId } });
         if (viewState.companionPanel === 'home' && getForumData().world.companion.life.game) return handleCompanionGameInput(0, event);
         if (viewState.companionPanel === 'home' && viewState.companionGameResultOpen) return handlePetLifeAction('pet-game-retry', target);
         const choices = getCompanionDeviceChoices(getRoot());
@@ -6252,6 +6754,7 @@ function handleRootDragEnd() {
 }
 
 function handleRootPointerDown(event) {
+    viewState.companionPointerStart = { type: event.pointerType, x: event.clientX, y: event.clientY, at: performance.now() };
     const handle = event.target.closest('[data-read-order-drag-id]');
     if (!handle || (event.button !== 0 && event.pointerType !== 'touch')) return;
     promptPointerDrag = {
@@ -7114,6 +7617,9 @@ function openForum(tab = '') {
 }
 
 function closeForum() {
+    cancelHomesteadMotion();
+    cancelHomesteadCommand();
+    viewState.companionHomesteadPanel = '';
     clearCompanionRitual();
     cancelCompanionTouch();
     viewState.open = false;
@@ -7127,7 +7633,7 @@ function bindSillyTavernEvents() {
         if (viewState.autoRefreshTimer) window.clearTimeout(viewState.autoRefreshTimer);
         viewState.autoRefreshTimer = 0;
     };
-    if (context.eventTypes?.CHAT_CHANGED) context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => { companionRoamController?.cancel({ reset: true }); clearCompanionRitual(); viewState.companionDeviceCursor = -1; viewState.companionMenuSelection = 'status'; viewState.companionCareReturnPanel = ''; viewState.companionPanel = 'home'; viewState.companionProfileOpen = false; viewState.companionAppearanceDraft = null; viewState.companionRoomDraft = null; viewState.companionRoomCare = null; viewState.companionRoomFoodTarget = null; viewState.companionRoomCommand = null; companionGamePlayer?.stop(false); viewState.companionGameResultOpen = false; cancelCompanionTouch(); viewState.companionCleaning = false; viewState.companionCleanProgress = 0; viewState.companionFeedback = null; viewState.companionFoodMenuOpen = false; viewState.companionVisualAction = ""; viewState.companionActionToken += 1; clearTimeout(viewState.companionActionTimer); clearTimeout(viewState.companionFeedbackTimer); cancelAutoRefresh(); viewState.generationController?.abort(); viewState.generationStage = ''; viewState.pendingImport = null; viewState.worldCatalog = []; viewState.promptSourceContext = null; viewState.selectedNpcId = ''; viewState.publicNpcId = ''; viewState.selectedPostId = ''; viewState.selectedConversationId = ''; viewState.selectedEventId = ''; viewState.eventHubOpen = false; viewState.deliverySelections.clear(); viewState.deliveryReviews.clear(); viewState.replyTarget = null; viewState.expandedComments.clear(); refresh(); });
+    if (context.eventTypes?.CHAT_CHANGED) context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => { cancelHomesteadMotion(); companionRoamController?.cancel({ reset: true }); viewState.companionHomesteadCommand = null; viewState.companionHomesteadPanel = ''; viewState.companionHomesteadNotice = ''; clearCompanionRitual(); viewState.companionDeviceCursor = -1; viewState.companionMenuSelection = 'status'; viewState.companionCareReturnPanel = ''; viewState.companionPanel = 'home'; viewState.companionProfileOpen = false; viewState.companionAppearanceDraft = null; viewState.companionRoomDraft = null; viewState.companionRoomCare = null; viewState.companionRoomFoodTarget = null; viewState.companionRoomCommand = null; companionGamePlayer?.stop(false); viewState.companionGameResultOpen = false; cancelCompanionTouch(); viewState.companionCleaning = false; viewState.companionCleanProgress = 0; viewState.companionFeedback = null; viewState.companionFoodMenuOpen = false; viewState.companionVisualAction = ""; viewState.companionActionToken += 1; clearTimeout(viewState.companionActionTimer); clearTimeout(viewState.companionFeedbackTimer); cancelAutoRefresh(); viewState.generationController?.abort(); viewState.generationStage = ''; viewState.pendingImport = null; viewState.worldCatalog = []; viewState.promptSourceContext = null; viewState.selectedNpcId = ''; viewState.publicNpcId = ''; viewState.selectedPostId = ''; viewState.selectedConversationId = ''; viewState.selectedEventId = ''; viewState.eventHubOpen = false; viewState.deliverySelections.clear(); viewState.deliveryReviews.clear(); viewState.replyTarget = null; viewState.expandedComments.clear(); refresh(); });
     if (context.eventTypes?.MESSAGE_RECEIVED) context.eventSource.on(context.eventTypes.MESSAGE_RECEIVED, (_messageId, type) => {
         if (type === 'first_message' || !getSettings().generation.autoRefreshOnMessage || !getSettings().modules.forum.enabled || !hasActiveChat()) return;
         cancelAutoRefresh();
@@ -7168,7 +7674,7 @@ export async function initializeForumUi() {
                 const companion = getForumData().world.companion;
                 const resume = target?.dataset.action === 'pet-mode' && companion.status !== 'away';
                 const care = target?.dataset.tend === 'wake' ? 'wake' : 'pet';
-                return !viewState.moduleBusy.has('travel') && (resume || !canCareForCompanion(companion, care)) && !companion.life.game;
+                return !viewState.companionFishing && !viewState.companionHomesteadBusy && !viewState.moduleBusy.has('travel') && (resume || !canCareForCompanion(companion, care)) && !companion.life.game;
             },
             isCleaning: () => Boolean(viewState.companionCleaning),
             scrub: scrubCompanion,
@@ -7183,6 +7689,14 @@ export async function initializeForumUi() {
         document.body.append(root);
     }
     document.addEventListener('keydown', event => { if (event.key === 'Escape' && !event.defaultPrevented && viewState.open) closeForum(); });
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden' && (viewState.companionHomesteadJob || viewState.companionFishing)) {
+            cancelHomesteadMotion();
+            companionRoamController?.cancel();
+            render({ preserveScroll: true });
+        }
+        if (document.visibilityState === 'visible' && viewState.open && viewState.companionHomesteadPanel === 'fishing') render({ preserveScroll: true });
+    });
     window.addEventListener('resize', updateLaunchers);
     installMenuLauncherCapture();
     installLaunchers();

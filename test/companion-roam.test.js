@@ -70,14 +70,14 @@ test('quiet start survives repeated renders and walking alternates with full res
     tick(249); assert.equal(root.pet.getAttribute('data-roam-state'), 'resting');
     tick(1); assert.equal(root.pet.getAttribute('data-roam-state'), 'walking');
     assert.equal(root.pet.getAttribute('data-roam-direction'), 'right');
-    for (let i = 0; i < 70; i++) advance(100);
+    for (let i = 0; i < 120 && root.pet.getAttribute('data-roam-state') === 'walking'; i++) advance(100);
     assert.equal(root.pet.getAttribute('data-roam-state'), 'resting');
     assert.deepEqual(motions, [true, false]);
-    tick(4000); assert.equal(root.pet.getAttribute('data-roam-state'), 'resting');
-    tick(2000); assert.equal(root.pet.getAttribute('data-roam-state'), 'walking');
+    tick(7374); assert.equal(root.pet.getAttribute('data-roam-state'), 'resting');
+    tick(1); assert.equal(root.pet.getAttribute('data-roam-state'), 'walking');
 });
 
-test('movement has the same speed at 30, 60 and 120 frames per second', async t => {
+test('the gentle start covers the same distance at 30, 60 and 120 frames per second', async t => {
     const results = [];
     for (const fps of [30, 60, 120]) {
         await t.test(`${fps} fps`, child => {
@@ -88,7 +88,7 @@ test('movement has the same speed at 30, 60 and 120 frames per second', async t 
         });
     }
     for (const result of results) {
-        assert.ok(Math.abs(Math.hypot(...result) - 11) < .01, 'cat travels 22 px per second');
+        assert.ok(Math.hypot(...result) > 9 && Math.hypot(...result) < 10, 'the first half second includes a gentle start below cruise speed');
         assert.ok(Math.abs(result[0] - results[0][0]) < .01);
         assert.ok(Math.abs(result[1] - results[0][1]) < .01);
     }
@@ -213,7 +213,7 @@ test('an existing idle gesture finishes before walking and motion callbacks allo
     tick(3500); assert.equal(root.pet.getAttribute('data-idle-pose'), 'look');
     root.pet.removeAttribute('data-idle-pose'); tick(500);
     assert.equal(root.pet.getAttribute('data-roam-state'), 'walking'); assert.deepEqual(motions, [true]);
-    for (let i = 0; i < 40; i++) advance(100);
+    for (let i = 0; i < 120 && root.pet.getAttribute('data-roam-state') === 'walking'; i++) advance(100);
     assert.equal(root.pet.getAttribute('data-roam-state'), 'resting'); assert.deepEqual(motions, [true, false]);
 });
 
@@ -587,4 +587,299 @@ test('cancelling or retargeting a furniture command reports one cancellation aft
     f.advance(100); assert.equal(f.controller.moveTo({ clientX: 260, clientY: 155 }), true);
     assert.equal(events.filter(event => event.phase === 'cancelled').length, 2);
     finishMove(f); assert.deepEqual(arrivals, []);
+});
+
+test('scene point walking reaches its destination and applies the arrival callback exactly once', t => {
+    const f = setup(t), arrivals = [];
+    f.state.sceneKey = 'homestead:forest';
+    f.controller.sync();
+    assert.equal(f.controller.walkToPoint({ x: 230, y: 175 }, { onArrive: () => arrivals.push(roomFoot(f)) }), true);
+    f.advance(100);
+    assert.equal(arrivals.length, 0, 'gathering cannot settle at the beginning of a walk');
+    const previous = f.root.pet; previous.isConnected = false; f.root.pet = pet();
+    f.state.lifeTick = 1; f.controller.sync();
+    finishMove(f);
+    assert.equal(arrivals.length, 1, 'harmless life ticks and scene rerenders preserve the arrival');
+    assert.ok(Math.hypot(arrivals[0].x - 230, arrivals[0].y - 175) < .01);
+    for (let index = 0; index < 200; index++) f.advance(100);
+    assert.equal(arrivals.length, 1, 'autonomous walking never repeats the completed command');
+});
+
+test('cancelling, changing scene key, and disabling the world discard pending point arrivals', t => {
+    const f = setup(t), arrivals = [];
+    f.state.sceneKey = 'homestead:forest'; f.controller.sync();
+    for (const invalidate of [
+        () => f.controller.cancel(),
+        () => { f.state.sceneKey = `${f.state.sceneKey}:next`; f.controller.sync(); },
+        () => { f.state.enabled = false; f.controller.sync(); },
+        () => { f.state.activity = 'away'; f.controller.sync(); },
+    ]) {
+        f.state.enabled = true; f.state.activity = 'idle'; f.controller.cancel({ reset: true });
+        assert.equal(f.controller.walkToPoint({ x: 230, y: 175 }, { onArrive: () => arrivals.push('stale') }), true);
+        f.advance(100); invalidate();
+        for (let index = 0; index < 150; index++) f.advance(100);
+        assert.deepEqual(arrivals, [], 'cancelled farming and exit commands cannot apply later');
+    }
+    f.state.enabled = false; f.state.activity = 'idle'; f.controller.sync();
+    assert.equal(f.controller.walkToPoint({ x: 230, y: 175 }, { onArrive: () => arrivals.push('disabled') }), false);
+    f.state.enabled = true; f.controller.sync(); finishMove(f);
+    assert.deepEqual(arrivals, []);
+});
+
+test('retargeting point commands or issuing a floor move cancels the previous pending action', t => {
+    const f = setup(t), arrivals = [];
+    f.controller.sync();
+    assert.equal(f.controller.walkToPoint({ x: 230, y: 175 }, { onArrive: () => arrivals.push('first') }), true);
+    f.advance(100);
+    assert.equal(f.controller.walkToPoint({ x: 100, y: 175 }, { onArrive: () => arrivals.push('second') }), true);
+    finishMove(f); assert.deepEqual(arrivals, ['second']);
+    assert.equal(f.controller.walkToPoint({ x: 230, y: 175 }, { onArrive: () => arrivals.push('third') }), true);
+    f.advance(100);
+    assert.equal(f.controller.moveTo({ clientX: 160, clientY: 170 }), true);
+    finishMove(f); assert.deepEqual(arrivals, ['second']);
+});
+
+test('homestead floor boundaries clamp point targets and autonomous motion to walkable ground', t => {
+    const f = setup(t, () => 0), arrivals = [];
+    customRoom(f);
+    f.state.habitat = 'garden'; f.state.sceneKey = 'homestead:yard'; f.state.floorY = 145;
+    f.controller.sync();
+    assert.equal(f.controller.walkToPoint({ x: 230, y: 50 }, { onArrive: () => arrivals.push(roomFoot(f)) }), true);
+    finishMove(f);
+    assert.equal(arrivals.length, 1);
+    assert.ok(Math.abs(arrivals[0].y - 145) < .01, 'a target above the floor resolves to its walkable edge');
+    for (let index = 0; index < 300; index++) {
+        f.advance(100);
+        assert.ok(roomFoot(f).y >= 145 - .01, 'idle roaming also respects the scene floor');
+    }
+});
+
+test('reduced motion and missing animation runtime complete explicit point actions once', async t => {
+    for (const withoutFrames of [false, true]) await t.test(withoutFrames ? 'no frames' : 'reduced motion', child => {
+        const f = setup(child, () => .75, { withoutFrames }), arrivals = [];
+        if (!withoutFrames) f.motion.matches = true;
+        f.controller.sync();
+        assert.equal(f.controller.walkToPoint({ x: 230, y: 175 }, { onArrive: () => arrivals.push(roomFoot(f)) }), true);
+        assert.equal(arrivals.length, 1);
+        assert.ok(Math.hypot(arrivals[0].x - 230, arrivals[0].y - 175) < .01);
+        for (let index = 0; index < 60; index++) f.advance(1000);
+        assert.equal(arrivals.length, 1);
+        assert.equal(f.frames.size, 0);
+    });
+});
+
+test('an arrival can change scene and begin another command without replaying either action', t => {
+    const f = setup(t), arrivals = [];
+    f.state.sceneKey = 'homestead:yard'; f.controller.sync();
+    assert.equal(f.controller.walkToPoint({ x: 230, y: 175 }, { onArrive: () => {
+        arrivals.push('yard');
+        f.state.sceneKey = 'homestead:forest'; f.controller.sync();
+        f.controller.walkToPoint({ x: 100, y: 175 }, { onArrive: () => arrivals.push('forest') });
+    } }), true);
+    finishMove(f);
+    assert.deepEqual(arrivals, ['yard', 'forest']);
+    for (let index = 0; index < 200; index++) f.advance(100);
+    assert.deepEqual(arrivals, ['yard', 'forest']);
+});
+
+test('homestead panels pause roaming at the current feet position through repeated rerenders', t => {
+    const f = setup(t, () => 0);
+    customRoom(f);
+    f.state.habitat = 'garden'; f.state.sceneKey = 'homestead:yard'; f.state.floorY = 86;
+    f.controller.sync();
+    f.controller.walkToPoint({ x: 250, y: 170 }); finishMove(f);
+    const before = roomFoot(f);
+    assert.ok(Math.hypot(before.x - 250, before.y - 170) < .01);
+    f.state.locked = true; f.controller.sync();
+    assert.equal(f.stage.hasAttribute('data-roam-interactive'), false);
+    for (let index = 0; index < 5; index++) {
+        const previous = f.root.pet;
+        previous.isConnected = false;
+        f.root.pet = pet();
+        Object.assign(f.root.pet, { offsetLeft: 116, offsetTop: 144, offsetWidth: 88, offsetHeight: 86 });
+        f.root.pet.querySelector = previous.querySelector;
+        f.controller.sync(); f.advance(30000);
+        assert.deepEqual(roomFoot(f), before, 'opening or repainting the seed menu cannot recenter the pet');
+        assert.equal(f.root.pet.getAttribute('data-roam-state'), 'resting');
+        assert.equal(f.frames.size, 0, 'panels do not leave an autonomous walk scheduled');
+    }
+    f.state.locked = false; f.controller.sync();
+    assert.deepEqual(roomFoot(f), before); assert.equal(f.stage.hasAttribute('data-roam-interactive'), true);
+    f.tick(1500); assert.equal(f.root.pet.getAttribute('data-roam-state'), 'walking', 'roaming resumes after the normal quiet delay');
+});
+
+function resizeHomestead(f, narrow) {
+    f.stage.clientWidth = narrow ? 200 : 320;
+    f.stage.clientHeight = narrow ? 150 : 240;
+    f.root.pet.offsetLeft = narrow ? 56 : 116;
+    f.root.pet.offsetTop = narrow ? 84 : 144;
+    f.window.emit('resize');
+}
+
+test('locked homestead work restores its scene anchor after a narrow layout clamps the touch target', async t => {
+    for (const simultaneousLock of [false, true]) await t.test(simultaneousLock ? 'resize on first locked render' : 'resize during a locked action', child => {
+        const f = setup(child), arrivals = [];
+        customRoom(f); f.state.habitat = 'garden'; f.state.sceneKey = 'homestead:kitchen'; f.state.floorY = 86;
+        f.controller.sync();
+        f.controller.walkToPoint({ x: 265, y: 175 }, { onArrive: () => arrivals.push('ready') }); finishMove(f);
+        const anchor = roomFoot(f);
+        f.state.locked = true;
+        if (!simultaneousLock) f.controller.sync();
+        resizeHomestead(f, true);
+        assert.ok(roomFoot(f).x < anchor.x - 10, 'the test actually forces temporary clamping');
+        const shadow = f.root.pet.querySelector;
+        f.root.pet.isConnected = false; f.root.pet = pet();
+        Object.assign(f.root.pet, { offsetLeft: 56, offsetTop: 84, offsetWidth: 88, offsetHeight: 86, querySelector: shadow });
+        for (let index = 0; index < 5; index++) f.controller.sync();
+        resizeHomestead(f, false);
+        assert.ok(Math.hypot(roomFoot(f).x - anchor.x, roomFoot(f).y - anchor.y) < .01, 'repaint and temporary clamping cannot overwrite the intended scene anchor');
+        assert.equal(f.frames.size, 0); assert.deepEqual(arrivals, ['ready']);
+        f.state.locked = false; f.controller.sync();
+        assert.ok(Math.hypot(roomFoot(f).x - anchor.x, roomFoot(f).y - anchor.y) < .01, 'unlocking keeps the restored position');
+    });
+});
+
+test('cancelling, changing identity, or unlocking discards a previous locked homestead anchor', async t => {
+    for (const reason of ['cancel', 'identity', 'scene', 'unlock']) await t.test(reason, child => {
+        const f = setup(child);
+        customRoom(f); f.state.habitat = 'garden'; f.state.sceneKey = 'homestead:kitchen'; f.state.floorY = 86;
+        f.controller.sync(); f.controller.walkToPoint({ x: 265, y: 175 }); finishMove(f);
+        f.state.locked = true; f.controller.sync(); resizeHomestead(f, true);
+        if (reason === 'cancel') f.controller.cancel();
+        else if (reason === 'identity') { f.state.identity = {}; f.controller.sync(); }
+        else if (reason === 'scene') { f.state.sceneKey = 'homestead:river'; f.controller.sync(); }
+        else {
+            f.state.locked = false; f.controller.sync();
+            assert.equal(f.controller.walkToPoint({ x: 200, y: 175 }), true); finishMove(f);
+            f.state.locked = true; f.controller.sync();
+        }
+        const fresh = roomFoot(f);
+        assert.ok(Math.abs(fresh.x - 265) > 10);
+        resizeHomestead(f, false);
+        assert.ok(Math.hypot(roomFoot(f).x - fresh.x, roomFoot(f).y - fresh.y) < .01, 'later resize must use the new action/context, never the old cooking position');
+        assert.equal(f.frames.size, 0);
+    });
+});
+
+test('locked homestead actions reject floor, point, furniture and pointer commands', t => {
+    const f = setup(t), arrivals = [];
+    customRoom(f, [{ id: 'seat', type: 'sofa', x: 92, y: 160, rotation: 0 }]);
+    f.controller.sync(); f.controller.walkToPoint({ x: 245, y: 190 }); finishMove(f);
+    const before = roomFoot(f);
+    f.state.locked = true; f.controller.sync();
+    assert.equal(f.controller.moveTo({ clientX: 260, clientY: 170 }), false);
+    assert.equal(f.controller.walkToPoint({ x: 210, y: 190 }, { onArrive: () => arrivals.push('point') }), false);
+    assert.equal(f.controller.interactWith('seat', { onArrive: () => arrivals.push('seat') }), false);
+    roomGesture(f, [260, 170]).up(); f.advance(30000);
+    assert.deepEqual(roomFoot(f), before); assert.deepEqual(arrivals, []); assert.equal(f.frames.size, 0);
+    assert.equal(f.stage.hasAttribute('data-roam-target'), false);
+    f.state.locked = false; f.controller.sync();
+    assert.equal(f.controller.walkToPoint({ x: 210, y: 190 }, { onArrive: () => arrivals.push('fresh') }), true);
+    finishMove(f); assert.deepEqual(arrivals, ['fresh']);
+});
+
+test('locking while approaching a target cancels its pending arrival without teleporting', t => {
+    const f = setup(t), arrivals = [];
+    f.state.sceneKey = 'homestead:forest'; f.controller.sync();
+    f.controller.walkToPoint({ x: 230, y: 175 }, { onArrive: () => arrivals.push('stale') });
+    f.advance(100); const before = f.position();
+    assert.notDeepEqual(before, [0, 0]);
+    f.state.locked = true; f.controller.sync();
+    assert.deepEqual(f.position(), before); assert.equal(f.frames.size, 0);
+    f.advance(60000); f.state.locked = false; f.controller.sync();
+    for (let index = 0; index < 300; index++) f.advance(100);
+    assert.deepEqual(arrivals, [], 'unlocking may resume idle walking, never the cancelled harvest or exit');
+});
+
+test('reduced-motion panel locks keep manual placement and unlock without recentering', t => {
+    const f = setup(t), arrivals = [];
+    f.motion.matches = true; f.controller.sync();
+    f.controller.walkToPoint({ x: 230, y: 175 }, { onArrive: () => arrivals.push('arrived') });
+    const before = f.position(); assert.notDeepEqual(before, [0, 0]);
+    f.state.locked = true; f.controller.sync(); f.advance(30000);
+    f.root.pet.isConnected = false; f.root.pet = pet(); f.controller.sync();
+    assert.deepEqual(f.position(), before);
+    f.state.locked = false; f.controller.sync(); f.advance(30000);
+    assert.deepEqual(f.position(), before); assert.deepEqual(arrivals, ['arrived']); assert.equal(f.frames.size, 0);
+});
+
+test('point cancellation reports once and releases awaited work when a pointer stops the approach', async t => {
+    for (const reason of ['cancel', 'pointer', 'lock', 'sleep', 'chat', 'destroy']) await t.test(reason, async child => {
+        const f = setup(child), events = [];
+        f.controller.sync();
+        let resolveWait;
+        const waiting = new Promise(resolve => { resolveWait = resolve; });
+        assert.equal(f.controller.walkToPoint({ x: 230, y: 175 }, {
+            onArrive: () => { events.push('arrived'); resolveWait('arrived'); },
+            onCancel: () => { events.push('cancelled'); resolveWait('cancelled'); },
+        }), true);
+        f.advance(100);
+        if (reason === 'pointer') {
+            f.root.emit('pointerdown', { pointerId: 7, target: f.root.pet });
+            f.document.emit('pointerup', { pointerId: 7, target: f.root.pet });
+        } else if (reason === 'lock') { f.state.locked = true; f.controller.sync(); }
+        else if (reason === 'sleep') { f.state.activity = 'sleep'; f.controller.sync(); }
+        else if (reason === 'chat') { f.state.identity = {}; f.controller.sync(); }
+        else if (reason === 'destroy') f.controller.destroy();
+        else f.controller.cancel();
+        assert.deepEqual(events, ['cancelled'], 'interrupted walking must release the waiting action immediately');
+        assert.equal(await waiting, 'cancelled');
+        f.controller.cancel(); f.controller.sync();
+        for (let index = 0; index < 300; index++) f.advance(100);
+        assert.deepEqual(events, ['cancelled'], 'cleanup and later movement cannot repeat cancellation or deliver stale arrival');
+    });
+});
+
+test('successful point arrivals never deliver cancellation, including static placement', async t => {
+    for (const reduced of [false, true]) await t.test(reduced ? 'reduced motion' : 'animated walk', child => {
+        const f = setup(child), events = [];
+        f.motion.matches = reduced; f.controller.sync();
+        assert.equal(f.controller.walkToPoint({ x: 230, y: 175 }, {
+            onArrive: () => events.push('arrived'), onCancel: () => events.push('cancelled'),
+        }), true);
+        finishMove(f); assert.deepEqual(events, ['arrived']);
+        f.controller.cancel(); f.controller.destroy();
+        assert.deepEqual(events, ['arrived']);
+    });
+});
+
+test('retargeting cancels only the old waiter and cancellation cleanup may safely repeat', t => {
+    const f = setup(t), events = [];
+    f.controller.sync();
+    f.controller.walkToPoint({ x: 230, y: 175 }, {
+        onArrive: () => events.push('old-arrival'),
+        onCancel: () => { events.push('old-cancel'); f.controller.cancel(); },
+    });
+    f.advance(100);
+    assert.equal(f.controller.walkToPoint({ x: 100, y: 175 }, {
+        onArrive: () => events.push('new-arrival'), onCancel: () => events.push('new-cancel'),
+    }), true);
+    finishMove(f); assert.deepEqual(events, ['old-cancel', 'new-arrival']);
+    f.controller.cancel(); assert.deepEqual(events, ['old-cancel', 'new-arrival']);
+});
+
+test('a manual reversal pauses the gait before a gentle restart and clears its phase at rest', t => {
+    const f = setup(t);
+    f.controller.sync();
+    assert.equal(f.controller.walkToPoint({ x: 230, y: 175 }), true);
+    f.advance(50);
+    assert.equal(f.root.pet.getAttribute('data-roam-phase'), 'start');
+    f.advance(200);
+    assert.equal(f.root.pet.getAttribute('data-roam-phase'), 'cruise');
+    const beforeTurn = f.position();
+    assert.equal(f.controller.walkToPoint({ x: 100, y: 175 }), true);
+    f.advance(100);
+    assert.equal(f.root.pet.getAttribute('data-roam-phase'), 'turn');
+    assert.deepEqual(f.position(), beforeTurn, 'a reversal plants its feet while the body turns');
+    f.advance(50);
+    assert.equal(f.root.pet.getAttribute('data-roam-phase'), 'start');
+    assert.ok(f.position()[0] < beforeTurn[0], 'the new route restarts toward the second target');
+    let slowedBeforeArrival = false;
+    for (let index = 0; index < 300 && f.root.pet.getAttribute('data-roam-state') === 'walking'; index++) {
+        f.advance(50);
+        slowedBeforeArrival ||= f.root.pet.getAttribute('data-roam-phase') === 'arrive';
+    }
+    assert.ok(slowedBeforeArrival, 'approaching the goal slows the route before it stops');
+    assert.equal(f.root.pet.getAttribute('data-roam-state'), 'resting');
+    assert.equal(f.root.pet.getAttribute('data-roam-phase'), null);
 });

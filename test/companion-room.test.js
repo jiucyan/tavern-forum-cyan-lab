@@ -23,7 +23,8 @@ test('old chats keep their scene and receive a disabled independent empty room',
 
 test('room layouts survive save/import normalization and companion world updates', () => {
     const expected = createCompanionRoomPreset('garden');
-    const data = normalizeForumDataShape({ world: { companion: { name: '团子', room: expected } } });
+    // Keep this persistence test independent of the local nighttime sleep schedule.
+    const data = normalizeForumDataShape({ world: { companion: { name: '团子', room: expected, life: { autoSleep: false } } } });
     const restored = normalizeForumDataShape(JSON.parse(JSON.stringify(data)));
     assert.deepEqual(restored.world.companion.room, expected);
     const updates = normalizeWorldUpdates('<module_data>{"worldUpdates":{"companion":{"name":"豆包","mood":"开心"}}}</module_data>');
@@ -102,7 +103,7 @@ test('item edits are immutable, identity is stable, and rotation clamps the comp
     assert.equal(changed.items[0].id, id);
     assert.equal(changed.items[0].type, 'bed');
     assert.equal(changed.items[0].color, 'sky');
-    assert.deepEqual(getRoomItemBounds(changed.items[0]), { x: 0, y: 60, width: 68, height: 112 });
+    assert.deepEqual(getRoomItemBounds(changed.items[0]), { x: 0, y: 62, width: 66, height: 108 });
     const removed = removeRoomItem(changed, id);
     assert.equal(removed.items.length, 0);
     assert.equal(changed.items.length, 1);

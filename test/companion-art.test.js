@@ -29,6 +29,22 @@ const articulatedParts = {
     soot: 'tf-pixel-arms',
 };
 
+test('resting tadpoles retain their swimming body and never acquire the grown frog paws', () => {
+    const baby = renderCompanionArtwork('frog', 'leaf', 'baby', { roomPoses: true });
+    const resting = baby.slice(baby.indexOf('class="tf-room-pose-art"'));
+    assert.match(resting, /data-pose-art="settled-tadpole"/);
+    assert.match(resting, /tf-growth-swim-tail/);
+    assert.match(resting, /data-accessory="leaf"/);
+    assert.doesNotMatch(resting, /folded-frog|tf-room-head-|tf-pixel-legs/);
+    for (const stage of ['young', 'adult']) assert.match(renderCompanionArtwork('frog', 'none', stage, { roomPoses: true }), /data-pose-art="folded-frog"/);
+    for (const stage of ['baby', 'young']) {
+        const fish = renderCompanionArtwork('goldfish', 'none', stage, { roomPoses: true });
+        const restingFish = fish.slice(fish.indexOf('class="tf-room-pose-art"'));
+        assert.match(restingFish, /tf-betta-tail/);
+        assert.match(restingFish, /tf-betta-fin/);
+    }
+});
+
 test('every built-in companion uses the shared body, expression and action layers', () => {
     for (const kind of species) {
         const artwork = renderCompanionArtwork(kind, 'none');

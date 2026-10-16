@@ -1,6 +1,11 @@
 import { getCompanionLifeView, canCareForCompanion } from './companion-life.js';
 import { renderCompanionIcon } from './companion-icons.js';
 import { renderCompanionRoomEditor } from './companion-room-ui.js';
+import { renderHomesteadScene, renderHomeStations, renderHomesteadBar, renderHomesteadPanel, getHomeStationGeometry } from './companion-homestead-ui.js';
+import { renderHomesteadMotion, renderFishingRod } from './companion-homestead-motion-ui.js';
+import { renderFishingOverlay } from './companion-kitchen-fishing-ui.js';
+import { getFishingView } from './companion-homestead.js';
+import { renderAquaticHabitat, getAquaticHabitat, isAquaticCompanion } from './companion-aquatic.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 export const DEVICE_PAGES = ['home', 'menu', 'status', 'games', 'album', 'travel', 'dress', 'room'];
@@ -11,6 +16,9 @@ const menu = [
 const pageTabs = menu.filter(([id]) => ['status', 'games', 'album', 'travel', 'dress'].includes(id));
 
 function deviceControlLabels(home, state, petAction = '') {
+    if (state.companionFishing) return ['菜单', state.companionFishing.phase === 'bite' ? '收竿！' : '收竿', '取消'];
+    if (state.companionHomesteadBusy) return state.companionHomesteadJob?.committed ? ['菜单', '保存中', '等待'] : ['菜单', '忙碌', '取消'];
+    if (state.companionHomesteadPanel) return ['选择', '确认', '返回'];
     if (state.companionFoodMenuOpen) return ['选择', '确认', '返回'];
     if (!home) return ['选择', '确认', '回小窝'];
     const returnFromCare = state.companionCareReturnPanel && state.companionCareReturnPanel !== 'home';
@@ -29,12 +37,96 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     const current = DEVICE_PAGES.includes(state.companionPanel) ? state.companionPanel : 'home';
     const take = selector => page.querySelector(selector);
     const device = take('.tf-pet-console'), screen = take('.tf-pet-screen'), room = take('.tf-pet-stage');
+    const character = room.querySelector('.tf-pixel-pet');
+    const kind = [...(character?.classList || [])].find(value => value.startsWith('is-kind-'))?.slice(8) || 'mystery';
+    const growthStage = [...(character?.classList || [])].find(value => value.startsWith('is-growth-'))?.slice(10) || 'adult';
+    const aquatic = isAquaticCompanion(kind, growthStage, pet.avatarUrl);
+    if (aquatic) {
+        const control = room.querySelector('.tf-pet-sprite-control');
+        const location = pet.homestead?.location || 'home', habitat = getAquaticHabitat(location);
+        const point = life.sleeping ? habitat.rest : habitat.spawn;
+        control.dataset.aquatic = kind === 'goldfish' ? 'fish' : 'tadpole';
+        room.dataset.aquaticHabitat = location;
+        room.dataset.aquaticMode = habitat.kind;
+        control.style.setProperty('--tf-water-home-x', `${point[0] / 3.2}%`);
+        control.style.setProperty('--tf-water-home-y', `${point[1] / 2.4}%`);
+        room.insertAdjacentHTML('beforeend', renderAquaticHabitat(location));
+        const animationLayer = room.querySelector('.tf-pet-animation-layer');
+        if (animationLayer) control.append(animationLayer);
+        // Keep care available without sending a floating companion onto a bed.
+        room.querySelectorAll('.tf-room-live-hit').forEach(node => {
+            const item = pet.room?.items?.find(value => value.id === node.dataset.roomItemId);
+            if (['bed', 'bowl'].includes(item?.type)) {
+                const label = habitat.kind === 'free'
+                    ? item.type === 'bed' ? '安静休息' : '喂食'
+                    : item.type === 'bed' ? '在水边安静休息' : '往水中投喂';
+                node.setAttribute('aria-label', label); node.setAttribute('title', label);
+            }
+            else node.remove();
+        });
+    }
     room.insertAdjacentHTML('beforeend', '<span class="tf-pet-move-target" aria-hidden="true"></span>');
     const dashboard = take('.tf-pet-dashboard'), album = take('.tf-pet-memory-book');
     page.classList.add('tf-companion-device');
     page.classList.remove(...DEVICE_PAGES.map(id => 'is-panel-' + id));
     page.classList.add('is-panel-' + current);
     page.dataset.devicePage = current;
+    page.dataset.homesteadLocation = pet.homestead?.location || 'home';
+    const homesteadVisible = current === 'home' && !pet.life.game && !state.companionGameResultOpen
+        && !state.companionCleaning && !state.companionFoodMenuOpen && !state.companionRoomCare;
+    if ((homesteadVisible || aquatic && current === 'home' && !pet.life.game && !state.companionGameResultOpen) && pet.status !== 'away') {
+        const scene = renderHomesteadScene(pet);
+        if (scene.html) {
+            room.classList.add(pet.homestead.location === 'kitchen' ? 'is-homestead-kitchen' : 'is-homestead-outdoors');
+            const layer = room.querySelector('.tf-pet-habitat-layer');
+            layer.removeAttribute('aria-hidden');
+            layer.innerHTML = scene.html;
+            room.querySelectorAll('.tf-room-foreground,.tf-room-live-hit').forEach(node => node.remove());
+        } else room.insertAdjacentHTML('beforeend', renderHomeStations(pet));
+        const motion = state.companionHomesteadMotion;
+        if (motion) {
+            room.classList.add('is-homestead-working');
+            room.querySelectorAll('[data-action="homestead-target"]').forEach(node => {
+                if (node.dataset.target === state.companionHomesteadJob?.target) node.classList.add('is-working-target');
+            });
+            const control = room.querySelector('.tf-pet-sprite-control');
+            const label = { plant: '你正在播种', water: '你正在浇水', harvest: '你正在收获', gather: '你正在采集', pack: state.companionHomesteadJob?.action === 'exchange' ? '你正在分装种子' : '你正在整理行囊', cook: motion.itemId === 'bento' ? '你正在做便当' : '小锅咕嘟咕嘟', feed: '正在吃东西', fish: '你轻轻收竿' }[motion.action];
+            control.dataset.homesteadMotion = motion.action;
+            const atStove = motion.action === 'cook' && pet.homestead.location === 'kitchen';
+            if (atStove) control.dataset.atStove = 'true';
+            for (const node of [room, control]) {
+                node.style.setProperty('--tf-homestead-duration', `${motion.duration}ms`);
+                node.style.setProperty('--tf-homestead-elapsed', `${-Math.min(motion.duration, Math.max(0, Date.now() - motion.startedAt))}ms`);
+            }
+            control.setAttribute('aria-busy', 'true');
+            control.setAttribute('aria-disabled', 'true');
+            control.setAttribute('aria-label', label);
+            const taskTarget = [...room.querySelectorAll('[data-action="homestead-target"]')].find(node => node.dataset.target === state.companionHomesteadJob?.target);
+            const homeStations = getHomeStationGeometry(pet);
+            const homeWorkPoint = homeStations.find(station => station.id === state.companionHomesteadJob?.target)?.work
+                || homeStations.find(station => station.id === (motion.action === 'pack' ? 'packing' : 'storage'))?.work;
+            const workPoint = taskTarget?.dataset.workX && taskTarget?.dataset.workY
+                ? { x: Number(taskTarget.dataset.workX), y: Number(taskTarget.dataset.workY) }
+                : taskTarget?.style.left && taskTarget?.style.top
+                    ? { x: parseFloat(taskTarget.style.left) * 3.2, y: parseFloat(taskTarget.style.top) * 2.4 + 8 }
+                    : ['pack', 'cook'].includes(motion.action) ? homeWorkPoint : { x: 160, y: 160 };
+            const task = renderHomesteadMotion(motion.action, { itemId: motion.itemId, atStove, kind, growthStage, aquatic, workPoint });
+            (task.includes('data-player-task=') ? room : control).insertAdjacentHTML('beforeend', task);
+            room.insertAdjacentHTML('beforeend', `<span class="tf-homestead-working" role="status">${label}<i aria-hidden="true"></i></span>`);
+        }
+        if (state.companionFishing) {
+            room.classList.add('is-homestead-fishing');
+            room.querySelectorAll('[data-action="homestead-target"]').forEach(node => node.setAttribute('aria-disabled', 'true'));
+            const control = room.querySelector('.tf-pet-sprite-control');
+            control.dataset.fishingPhase = getFishingView(pet).phase;
+            control.style.setProperty('--tf-fishing-cast-elapsed', `${-Math.max(0, Date.now() - (pet.homestead.fishing?.startedAt || 0))}ms`);
+            control.setAttribute('aria-label', '正在河边钓鱼');
+            control.insertAdjacentHTML('beforeend', renderFishingRod());
+            room.insertAdjacentHTML('beforeend', renderFishingOverlay(pet, Date.now()));
+            room.querySelector('[data-target="fishing"]')?.classList.add('is-working-target');
+        }
+        if (state.companionHomesteadFxUntil > Date.now()) room.insertAdjacentHTML('beforeend', `<span class="tf-homestead-result" aria-hidden="true">${esc(state.companionHomesteadFx)}</span>`);
+    }
     const pane = (id, title) => {
         const node = document.createElement('section');
         node.className = 'tf-pet-device-page tf-pet-life'; node.dataset.companionPanel = id;
@@ -71,6 +163,11 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     }
     content(travel).append(...take('.tf-pet-travel-panel').children);
     content(travel).querySelector('.tf-pet-section-heading')?.remove();
+    const visited = pet.homestead?.visited || ['home'];
+    const localRoutes = [['forest', '林间小径', '草莓种子'], ['river', '河边', '小萝卜种子']];
+    const canDepart = pet.status !== 'away' && pet.homestead?.location === 'home' && !canCareForCompanion(pet, 'trip') && !state.moduleBusy?.has('travel');
+    if (!pet.homestead?.starterGranted) content(travel).insertAdjacentHTML('afterbegin', '<section class="tf-homestead-travel"><p>柜子里为你备好了种子、工具和第一份便当。</p><button type="button" data-action="homestead-action" data-homestead-action="starter">领取小窝用品，装进行囊</button></section>');
+    content(travel).insertAdjacentHTML('afterbegin', `<section class="tf-homestead-travel"><h3>沿着熟悉的小路出发</h3><p>先在行囊里选好物品，再让它独自去走走。途中会来信，返家会带回种子。</p><div>${localRoutes.map(([id, title, seed]) => `<button type="button" data-action="homestead-action" data-homestead-action="depart" data-location="${id}" ${canDepart && visited.includes(id) ? '' : 'disabled'}><b>${title}</b><small>${visited.includes(id) ? `带回 ${seed} ×2` : '陪它走到这里后解锁'}</small></button>`).join('')}</div>${pet.homestead?.location !== 'home' ? '<p>先沿小路回到小窝，再整理行囊出发。</p>' : ''}</section>`);
     if (pet.status !== 'away') {
         const packing = content(travel).querySelector('.tf-packing');
         const rules = document.createElement('details');
@@ -109,6 +206,7 @@ export function renderCompanionDevice(html, data, state, extraActions) {
         tired: ['有点困了', '休息', 'rest'], lonely: ['想你陪陪', '摸摸', 'pet'],
     }[life.activity];
     const busy = state.companionCleaning || state.companionFoodMenuOpen || state.companionGameResultOpen
+        || state.companionHomesteadBusy || state.companionHomesteadPanel || state.companionFishing
         || state.moduleBusy?.has('travel');
     if (need && !busy && !canCareForCompanion(pet, need[2])) {
         const action = need[2] === 'pet' ? 'data-action="companion-care" data-care="pet"' : `data-action="companion-device-open" data-panel="${need[2]}"`;
@@ -116,6 +214,7 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     }
     content(mainMenu).append(nav);
     viewport.append(room, mainMenu, status, games, memories, travel, dress, roomEditor);
+    if (homesteadVisible) viewport.insertAdjacentHTML('beforeend', renderHomesteadPanel(data, state));
     const food = take('.tf-pet-food-select');
     if (food) { viewport.classList.add('is-selecting-food'); viewport.append(food); }
     const top = take('.tf-pet-screen-top');
@@ -124,6 +223,7 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     const labels = deviceControlLabels(current === 'home', state, room.querySelector('.tf-pet-sprite-control')?.getAttribute('aria-label') || '');
     bottom.innerHTML = `<span class="tf-device-selection-label" aria-live="polite">${pet.life.game ? '一起玩' : deviceControlHint(labels)}</span>`;
     screen.replaceChildren(top, viewport, bottom);
+    if (homesteadVisible) bottom.insertAdjacentHTML('beforebegin', renderHomesteadBar(pet));
     if (pet.life.game || state.companionGameResultOpen) device.querySelectorAll('.tf-pet-device-controls button').forEach(node => {
         node.dataset.gameLabel = node.querySelector('span').innerHTML;
         node.dataset.gameAria = node.getAttribute('aria-label');
@@ -131,7 +231,12 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     const wrap = document.createElement('div'); wrap.className = 'tf-pet-console-wrap'; wrap.append(device);
     const home = document.createElement('section'); home.className = 'tf-companion-home';
     home.append(wrap);
-    home.insertAdjacentHTML('beforeend', '<p class="tf-pet-move-guide">点小窝空地，让它走过去 · 点宠物摸摸它</p>');
+    home.insertAdjacentHTML('beforeend', `<p class="tf-pet-move-guide">${aquatic ? `${getAquaticHabitat(pet.homestead?.location).kind === 'free' ? '点场景空处' : '点水面'}，让它游过去 · 种地和做菜由你来操作` : '点小窝空地，让它走过去 · 点宠物摸摸它'}</p>`);
+    const guide = home.querySelector('.tf-pet-move-guide');
+    guide.setAttribute('role', 'status');
+    guide.textContent = state.companionFishing ? state.companionFishing.error || '看浮漂轻轻晃动，等鱼儿咬钩后点击收竿 · C 可收起鱼竿' : state.companionHomesteadBusy
+        ? state.companionHomesteadJob?.committed ? '已经忙完啦，正在记下这份小收获。' : '等它忙完这一小会 · 点空地或按 C 可以取消'
+        : state.companionHomesteadNotice || '点空地走过去 · 从小窝出门，去种菜和采集';
     page.replaceChildren(home);
     return page.outerHTML;
 }
@@ -140,6 +245,7 @@ export function getCompanionDeviceChoices(root) {
     const page = root?.querySelector('.tf-companion-device');
     if (!page) return [];
     if (page.querySelector('.tf-pet-food-select')) return [...page.querySelectorAll('.tf-pet-food-select [data-food-id]')];
+    if (page.querySelector('.tf-homestead-panel')) return [...page.querySelectorAll('.tf-homestead-panel button')].filter(node => !node.disabled && node.getClientRects().length);
     const pane = page.querySelector('.tf-pet-device-page:not([hidden])');
     if (!pane) return [];
     return [...pane.querySelectorAll('.tf-pet-device-content button, .tf-pet-device-content summary, .tf-pet-device-content input, .tf-pet-device-content select')]
@@ -158,6 +264,7 @@ export function paintCompanionDeviceCursor(root, state, { scroll = false } = {})
     const petAction = page.querySelector('.tf-pet-sprite-control')?.getAttribute('aria-label') || '';
     const labels = deviceControlLabels(home, state, petAction);
     page.querySelectorAll('.tf-pet-device-controls button').forEach((node, index) => {
+        node.setAttribute('aria-disabled', String(Boolean(state.companionHomesteadBusy && index === 1)));
         node.setAttribute('aria-label', labels[index]);
         node.querySelector('span').innerHTML = `${'ABC'[index]}<small>${labels[index]}</small>`;
     });

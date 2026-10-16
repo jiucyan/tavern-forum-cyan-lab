@@ -4,8 +4,8 @@ export const ROOM_MAX_ITEMS = 24;
 export const ROOM_FLOOR_Y = 112;
 
 export const ROOM_FURNITURE = Object.freeze([
-    { id: 'bed', name: '小床', category: 'furniture', width: 112, height: 68 },
-    { id: 'sofa', name: '软沙发', category: 'furniture', width: 116, height: 58 },
+    { id: 'bed', name: '小床', category: 'furniture', width: 108, height: 66 },
+    { id: 'sofa', name: '软沙发', category: 'furniture', width: 108, height: 56 },
     { id: 'table', name: '圆角茶几', category: 'furniture', width: 68, height: 50 },
     { id: 'chair', name: '木椅', category: 'furniture', width: 42, height: 48 },
     { id: 'bookshelf', name: '书柜', category: 'furniture', width: 60, height: 88 },
@@ -20,8 +20,8 @@ export const ROOM_FURNITURE = Object.freeze([
     { id: 'toy', name: '玩具球', category: 'decor', width: 32, height: 32 },
     { id: 'basket', name: '收纳篮', category: 'decor', width: 44, height: 36 },
     { id: 'aquarium', name: '小鱼缸', category: 'decor', width: 60, height: 42 },
-    { id: 'window', name: '小窗', category: 'wall', width: 84, height: 64 },
-    { id: 'picture', name: '风景画', category: 'wall', width: 50, height: 40 },
+    { id: 'window', name: '小窗', category: 'wall', width: 74, height: 64 },
+    { id: 'picture', name: '风景画', category: 'wall', width: 42, height: 36 },
     { id: 'clock', name: '挂钟', category: 'wall', width: 32, height: 32 },
     { id: 'wall-shelf', name: '壁挂架', category: 'wall', width: 70, height: 40 },
 ].map(Object.freeze));
@@ -408,7 +408,12 @@ function itemArt(type, color) {
 
 function placedArt(item) {
     const definition = furnitureById.get(item.type);
-    return `<g data-room-item="${item.id}" transform="translate(${item.x} ${item.y}) rotate(${item.rotation * 90})"><g transform="translate(${-definition.width / 2} ${-definition.height / 2})">${itemArt(item.type, item.color)}</g></g>`;
+    // Upholstered drawings have native dimensions; fit the drawing and its
+    // contact points to the same furniture size used by the editor and paths.
+    const nativeSize = { bed: [112, 68], sofa: [116, 58] }[item.type];
+    const art = itemArt(item.type, item.color);
+    const fitted = nativeSize ? `<g transform="scale(${definition.width / nativeSize[0]} ${definition.height / nativeSize[1]})">${art}</g>` : art;
+    return `<g data-room-item="${item.id}" transform="translate(${item.x} ${item.y}) rotate(${item.rotation * 90})"><g transform="translate(${-definition.width / 2} ${-definition.height / 2})">${fitted}</g></g>`;
 }
 
 export function renderRoomFurniture(type, color = 'natural', rotation = 0) {

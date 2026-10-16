@@ -5,6 +5,7 @@ import { DEFAULT_BUILTIN_PROMPTS, WORLD_MODULE_DEFINITIONS } from './constants.j
 import { createId, parseJsonResponse } from './prompt.js';
 import { normalizeCompanionHabitat } from './companion-scenes.js';
 import { normalizeCompanionRoom } from './companion-room.js';
+import { normalizeHomestead, PET_ITEMS, addPetItem } from './companion-homestead.js';
 
 function text(value, fallback = '') {
     return typeof value === 'string' && value.trim() ? value.trim() : fallback;
@@ -145,6 +146,7 @@ function normalizeWorldStateValues(value) {
         autoAccessory: Boolean(companion.autoAccessory),
         habitat: normalizeCompanionHabitat(companion.habitat),
         room: normalizeCompanionRoom(companion.room),
+        homestead: normalizeHomestead(companion.homestead),
         weather: ['auto', 'sunny', 'cloudy', 'rain', 'wind', 'snow'].includes(companion.weather) ? companion.weather : 'auto',
         timeOfDay: ['auto', 'dawn', 'day', 'dusk', 'night'].includes(companion.timeOfDay) ? companion.timeOfDay : 'auto',
         lastInteractionAt: Math.max(0, Number(companion.lastInteractionAt || 0)),
@@ -173,6 +175,8 @@ function normalizeWorldStateValues(value) {
         departureMessage: text(item?.departureMessage),
         returnMessage: text(item?.returnMessage),
         souvenir: text(item?.souvenir),
+        homesteadDestination: ['forest', 'river'].includes(item?.homesteadDestination) ? item.homesteadDestination : '',
+        homesteadRewardClaimedAt: integer(item?.homesteadRewardClaimedAt),
         souvenirDescription: text(item?.souvenirDescription),
         souvenirEffect: text(item?.souvenirEffect),
         messages: list(item?.messages || item?.signals || item?.checkpoints).map((entry, index) => {
@@ -197,6 +201,7 @@ function normalizeWorldStateValues(value) {
     })).slice(-120);
     world.inventory = list(world.inventory).map(item => ({
         id: text(item?.id) || createId('item'),
+        petItemId: Object.hasOwn(PET_ITEMS, item?.petItemId || '') ? item.petItemId : '',
         name: text(item?.name, '未命名物品'),
         description: text(item?.description),
         quantity: integer(item?.quantity, 1, 0, 9999),
@@ -315,6 +320,11 @@ const PACKING_ROLES = {
 };
 
 export function getCompanionPackingRole(item) {
+    const catalog = Object.hasOwn(PET_ITEMS, item?.petItemId || '') ? PET_ITEMS[item.petItemId] : null;
+    if (catalog) {
+        const kind = catalog.packRole || 'tool';
+        return { kind, ...PACKING_ROLES[kind] };
+    }
     // 道具名称优先，避免把“鱼形护符”“草莓相机”当成可食用物品。
     const name = text(item?.name);
     const value = `${name} ${text(item?.description)} ${text(item?.effect)}`;
@@ -363,6 +373,28 @@ export function assertCompanionPackingReady(plan, expectedSignature = '') {
 
 export function isInventoryItemTraveling(data, itemId) {
     return list(data?.world?.trips).some(trip => trip.status === 'away' && list(trip.packingItems).some(item => item.id === itemId && !item.consumed));
+}
+
+export function startHomesteadJourney(data, destination, moduleSettings = {}, options = {}) {
+    data.world = normalizeWorldState(data.world);
+    const companion = data.world.companion, timestamp = options.now ?? Date.now();
+    if (!['forest', 'river'].includes(destination) || !companion.homestead.visited.includes(destination)) throw new Error('先陪它走到这个地方，再准备独自远行吧。');
+    if (companion.homestead.location !== 'home') throw new Error('先回小窝整理行囊吧。');
+    if (companion.status === 'away' || data.world.trips.some(trip => trip.status === 'away')) throw new Error('旅伴已经出发了。');
+    const blocked = canCareForCompanion(companion, 'trip', timestamp);
+    if (blocked) throw new Error(blocked);
+    if (companion.energy < 15 || companion.satiety < 10) throw new Error('先吃点东西、休息一下，再出发吧。');
+    assertCompanionPackingReady(buildCompanionPackingPlan(data, moduleSettings));
+    const name = destination === 'forest' ? '林间小径' : '河边';
+    const trip = normalizeTrip({ id: createId('trip'), traveler: companion.name, destination: name, status: 'planned',
+        departureMessage: `我带好行囊，去${name}转转，回来和你讲见闻。`,
+        messages: [{ content: destination === 'forest' ? '林间的光落在叶子上，我停下来听了一会儿鸟鸣。' : '小河泛着细细的光，我找到了一处安静的浅滩。', progress: .35 },
+            { content: '我找到了一些可以带回庭院种下的种子，已经仔细收进小袋子。', progress: .72 }],
+        returnMessage: `我从${name}回来啦，种子留给我们的菜地！`, notes: `沿着熟悉的小路游览${name}，带回适合庭院播种的种子。` });
+    trip.homesteadDestination = destination;
+    data.world.trips.push(trip);
+    try { return prepareCompanionJourney(data, trip.id, moduleSettings, { ...options, now: timestamp }); }
+    catch (error) { data.world.trips = data.world.trips.filter(item => item.id !== trip.id); throw error; }
 }
 
 function fallbackJourneyMessages(companionName, destination, packing) {
@@ -451,7 +483,11 @@ export function advanceCompanionJourney(data, options = {}) {
     const timestamp = Math.max(0, Number(options.now || Date.now()));
     data.world = normalizeWorldState(data.world);
     const trip = [...data.world.trips].reverse().find(item => item.status === 'away');
-    if (!trip) return { changed: false, delivered: [], returned: false, souvenir: '', trip: null };
+    if (!trip) {
+        const pending = data.world.trips.find(item => item.status === 'returned' && item.homesteadDestination && !item.homesteadRewardClaimedAt && !item.recalled);
+        const souvenir = pending ? claimHomesteadTravelReward(data, pending, timestamp) : '';
+        return { changed: Boolean(souvenir), delivered: [], returned: false, souvenir, trip: pending || null };
+    }
     const companion = data.world.companion;
     const delivered = [];
     if (options.forceReturn) {
@@ -490,10 +526,24 @@ export function advanceCompanionJourney(data, options = {}) {
     companion.bond = Math.min(100, Number(companion.bond || 0) + 1);
     companion.lastAction = 'return';
     companion.message = trip.recalled ? `收到召回消息，我提前从${trip.destination}回家啦。` : trip.returnMessage || `我从${trip.destination}回来啦。`;
-    const souvenir = addTravelSouvenirToInventory(data, trip, companion.name, timestamp);
+    const souvenir = trip.homesteadDestination ? claimHomesteadTravelReward(data, trip, timestamp) : addTravelSouvenirToInventory(data, trip, companion.name, timestamp);
+    if (companion.homestead) companion.homestead.location = 'home';
     if (souvenir) companion.message = `${companion.message} “${souvenir}”已经放进背包。`;
+    else if (trip.homesteadDestination && !trip.recalled && !trip.homesteadRewardClaimedAt) companion.message += ' 背包满了，种子已替你留好，腾出位置后会自动收进背包。';
     companion.updatedAt = timestamp;
     return { changed: true, delivered, returned: true, souvenir, trip };
+}
+
+function claimHomesteadTravelReward(data, trip, timestamp) {
+    if (trip.recalled || trip.homesteadRewardClaimedAt) return '';
+    const seed = trip.homesteadDestination === 'forest' ? 'strawberry-seed' : 'turnip-seed';
+    trip.souvenir = `${PET_ITEMS[seed].name} ×2`;
+    trip.souvenirDescription = '带回庭院种下，就能收获新的食材。';
+    try { addPetItem(data, seed, 2, timestamp); }
+    catch { return ''; } // A full inventory must never strand the pet or discard the reward.
+    trip.homesteadRewardClaimedAt = timestamp;
+    trip.souvenirClaimedAt = timestamp;
+    return trip.souvenir;
 }
 
 function minutesOfDay(value) {
@@ -714,6 +764,8 @@ export function normalizeTaskVerification(value) {
 }
 
 export function classifyInventoryItem(item) {
+    const catalog = Object.hasOwn(PET_ITEMS, item?.petItemId || '') ? PET_ITEMS[item.petItemId] : null;
+    if (catalog) return catalog.kind === 'food' ? 'companion' : 'story';
     const value = `${item?.name || ''} ${item?.description || ''} ${item?.effect || ''}`;
     if (/药|止痛|绷带|敷料|药剂|药水|治疗|疗愈|恢复|医用|medical|medicine|potion|bandage/i.test(value)) return 'medical';
     if (/食物|零食|饼|鱼|肉|胡萝卜|莓|果|种子|谷物|口粮|点心|饮料|food|snack|cookie|berry|seed/i.test(value)) return 'companion';
@@ -725,6 +777,8 @@ export function applyInventoryItemUse(data, itemId, requestedUse = 'auto') {
     const item = data.world.inventory.find(entry => entry.id === itemId);
     if (!item || item.consumed || item.quantity <= 0 || item.usable === false) return { applied: false, reason: '这个物品现在不能使用' };
     if (isInventoryItemTraveling(data, itemId)) return { applied: false, reason: '这件道具正随旅伴旅行，返家后才能使用' };
+    const petItem = PET_ITEMS[item.petItemId];
+    if (petItem && petItem.kind !== 'food') return { applied: false, reason: petItem.kind === 'seed' ? '请到旅伴庭院选择一块空地播种' : '这是小窝生活的工具或材料，会在相应操作时使用，不会直接消耗' };
     const kind = ['medical', 'companion', 'story'].includes(requestedUse) ? requestedUse : classifyInventoryItem(item);
     let summary = `使用了 ${item.name}${item.effect ? `：${item.effect}` : ''}`;
     let targetId = '';

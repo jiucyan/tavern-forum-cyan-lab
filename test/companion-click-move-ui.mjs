@@ -46,9 +46,10 @@ async function open(width = 1280) {
     return page;
 }
 
-async function fixture(page, { species = '黑猫', stage = 'adult', habitat = 'meadow', pet = {}, life = {}, state = {} } = {}) {
+async function fixture(page, { species = '黑猫', stage = 'adult', habitat = 'meadow', roomPreset = '', pet = {}, life = {}, state = {} } = {}) {
     await page.evaluate(async values => {
         const { getForumData, getSettings } = await import('/src/store.js');
+        const { createCompanionRoomPreset, normalizeCompanionRoom } = await import('/src/companion-room.js');
         getSettings().modules.travel.enabled = true; getSettings().ui.activeTab = 'services';
         const view = petTest.viewState, companion = getForumData().world.companion;
         document.activeElement?.blur();
@@ -62,7 +63,8 @@ async function fixture(page, { species = '黑猫', stage = 'adult', habitat = 'm
             companionGameResultOpen: false, companionRitual: null, companionRitualTimer: 0, busy: false }, values.state);
         Object.assign(companion, { name: '团子', species: values.species, status: 'home', satiety: 80, happiness: 75, energy: 80,
             bond: 5, habitat: values.habitat, lastInteractionAt: 0, lastAction: '', avatarUrl: '', accessory: 'none', bodyColor: '', accentColor: '',
-            weather: 'clear', timeOfDay: 'day', message: '' }, values.pet);
+            weather: 'clear', timeOfDay: 'day', message: '',
+            room: values.roomPreset ? createCompanionRoomPreset(values.roomPreset) : normalizeCompanionRoom({}) }, values.pet);
         const date = new Date(), today = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
         Object.assign(companion.life, { stage: values.stage, mode: 'active', cleanliness: 80, game: null, autoSleep: false,
             sleepUntil: 0, awakeUntil: 0, growthNotice: null, lastTickAt: Date.now(), greetingDay: today,
@@ -73,7 +75,7 @@ async function fixture(page, { species = '黑猫', stage = 'adult', habitat = 'm
         globalThis.petCalls = 0; globalThis.roamSaves = 0;
         SillyTavern.getContext().generateRaw = async () => { petCalls++; throw Error('Unexpected API call'); };
         await Promise.all([...new Set([...document.querySelectorAll('.tf-pet-sprite-control image')].map(el => el.getAttribute('href')))].map(async href => { const image = new Image(); image.src = href; await image.decode(); }));
-    }, { species, stage, habitat, pet, life, state });
+    }, { species, stage, habitat, roomPreset, pet, life, state });
     await page.locator('.tf-companion-device').scrollIntoViewIfNeeded();
 }
 
@@ -106,20 +108,56 @@ async function assertFits(page, label) {
     assert.equal(await page.locator('.tf-app').evaluate(node => node.scrollWidth > node.clientWidth + 2), false, `${label}: app horizontal overflow`);
     assert.ok(control.width >= 44 && control.height >= 44, `${label}: touch target too small`);
 }
+async function assertHomeScale(page, label) {
+    const value = await position(page), sceneWidth = value.sprite.width / value.stage.width * 320;
+    assert.ok(Math.abs(sceneWidth - 76) <= 1, `${label}: pet must remain 76 scene units at every viewport; got ${sceneWidth}`);
+}
 
 async function capture(page, name) {
     const bytes = await page.locator('.tf-companion-device').screenshot({ path: join(output, `${name}.png`), animations: 'allow' });
     snapshots.push({ name, uri: `data:image/png;base64,${bytes.toString('base64')}` });
 }
-async function floorPoint(page, side = 'left', high = true) {
-    const box = await page.locator('.tf-pet-stage').boundingBox();
-    return { x: side === 'left' ? box.x + 6 : box.x + box.width - 6, y: high ? box.y + 25 : box.y + box.height - 25 };
+async function floorPoint(page, side = 'left', high = true, touch = false) {
+    return page.locator('.tf-pet-stage').evaluate((stage, { side, high, touch }) => {
+        const box = stage.getBoundingClientRect(), x = side === 'left' ? box.x + 6 : box.right - 6;
+        // Landmarks can extend to the edge. A floor test must not activate the
+        // full-height doorway and then mistake its scene transition for arrival.
+        const candidates = high ? [25, box.height * .48, box.height * .6, box.height * .75] : [box.height - 25, box.height * .8, box.height * .65];
+        for (const offset of candidates) {
+            const point = { x, y: box.y + offset }, hit = document.elementFromPoint(point.x, point.y);
+            if (hit?.closest('.tf-pet-stage') !== stage || hit.closest('button,a,input,[role="button"]')) continue;
+            // Chromium may adjust a touch to a nearby clickable SVG even when
+            // elementFromPoint reports empty floor. Keep the finger area clear.
+            if (touch && [...stage.querySelectorAll('button,a,input,[role="button"]')].some(node => {
+                const rect = node.getBoundingClientRect();
+                return rect.width && rect.height && point.x > rect.left - 18 && point.x < rect.right + 18
+                    && point.y > rect.top - 18 && point.y < rect.bottom + 18;
+            })) continue;
+            return point;
+        }
+        throw Error('No exposed floor at requested edge');
+    }, { side, high, touch });
 }
 async function command(page, side = 'left', high = true, touch = false) {
-    const point = await floorPoint(page, side, high);
+    const point = await floorPoint(page, side, high, touch);
+    await page.evaluate(() => {
+        globalThis.roamPointerTrace = [];
+        if (globalThis.roamPointerTraceBound) return;
+        globalThis.roamPointerTraceBound = true;
+        for (const type of ['pointerdown', 'pointerup', 'pointercancel']) document.addEventListener(type, event => {
+            roamPointerTrace.push({ type, id: event.pointerId, primary: event.isPrimary, x: event.clientX, y: event.clientY,
+                target: event.target.outerHTML.slice(0, 200), button: event.target.closest('button')?.outerHTML.slice(0, 350), at: Date.now() });
+        }, true);
+    });
     if (touch) await page.touchscreen.tap(point.x, point.y); else await page.mouse.click(point.x, point.y);
     const moving = await position(page);
-    assert.equal(moving.mode, 'manual', 'a real floor pointer gesture commands manual movement');
+    const inputContext = moving.mode === 'manual' ? null : await page.evaluate(point => {
+        const hit = document.elementFromPoint(point.x, point.y), stage = document.querySelector('.tf-pet-stage');
+        return { point, hit: hit?.outerHTML.slice(0, 350), classes: stage?.className,
+            visualAction: petTest.viewState.companionVisualAction, foodMenu: petTest.viewState.companionFoodMenuOpen,
+            busy: petTest.viewState.companionHomesteadBusy, panel: petTest.viewState.companionPanel, pointerTrace: roamPointerTrace };
+    }, point);
+    assert.equal(moving.mode, 'manual', 'a real floor pointer gesture commands manual movement: ' + JSON.stringify(inputContext));
     assert.equal(moving.state, 'walking', 'normal motion walks instead of teleporting');
     assert.equal(await page.locator('.tf-pet-stage').getAttribute('data-roam-target'), 'true');
     assert.ok(await page.locator('.tf-pet-move-target').isVisible(), 'reachable destination is visible');
@@ -128,7 +166,7 @@ async function command(page, side = 'left', high = true, touch = false) {
 }
 async function arrive(page, target, label) {
     const settled = await advanceUntil(page, value => value.state === 'resting', label);
-    assert.ok(Math.abs(settled.shadow.x + settled.shadow.width / 2 - target.x) < 1.6, `${label}: foot reaches marker horizontally`);
+    assert.ok(Math.abs(settled.shadow.x + settled.shadow.width / 2 - target.x) < 1.6, `${label}: foot reaches marker horizontally ${JSON.stringify({ target, settled })}`);
     assert.ok(Math.abs(settled.shadow.y + settled.shadow.height / 2 - target.y) < 1.6, `${label}: foot reaches marker vertically`);
     assert.equal(await page.locator('.tf-pet-stage').getAttribute('data-roam-target'), null, `${label}: target clears on arrival`);
     await assertFits(page, label);
@@ -139,8 +177,21 @@ async function noTarget(page, label) {
     assert.equal(await page.locator('.tf-pet-stage[data-roam-interactive]').count(), 0, label + ': floor unavailable');
     assert.equal(await page.locator('.tf-pet-move-guide').isVisible(), false, label + ': instruction hidden');
 }
+async function petTouchPoint(page) {
+    return page.locator(selector).evaluate(node => {
+        const box = node.getBoundingClientRect();
+        // Home landmarks overlap some transparent parts of the pet button.
+        // Touch its exposed body rather than accidentally activating a doorway.
+        for (const [x, y] of [[.5, .72], [.5, .5], [.3, .65], [.7, .65]]) {
+            const point = { x: box.x + box.width * x, y: box.y + box.height * y };
+            if (document.elementFromPoint(point.x, point.y)?.closest('.tf-pet-sprite-control') === node) return point;
+        }
+        throw Error('The moved pet has no exposed touch point');
+    });
+}
 
 try {
+    if (!process.argv.includes('--mobile-only')) {
     const page = await open();
     const saved = await readPet(page);
     assert.equal(await page.locator('.tf-pet-move-guide').isVisible(), true);
@@ -159,8 +210,11 @@ try {
 
     for (const width of [1280, 390, 320]) {
         await page.setViewportSize({ width, height: 900 });
-        for (const [species, stage] of [['黑猫', 'adult'], ['斗鱼', 'baby'], ['垂耳兔', 'young']]) {
+        // Fish and tadpole movement is covered by companion-aquatic-ui.mjs.
+        // This matrix exercises the different land avatars and growth stages.
+        for (const [species, stage] of [['黑猫', 'adult'], ['小企鹅', 'baby'], ['垂耳兔', 'young']]) {
             await fixture(page, { species, stage });
+            await assertHomeScale(page, `${species}/${stage}/${width}`);
             for (const [side, high] of [['left', true], ['right', false]]) {
                 target = await command(page, side, high);
                 await arrive(page, target, `${species}/${stage}/${width}/${side}`);
@@ -169,6 +223,19 @@ try {
         }
     }
     console.log('PASS desktop/390/320 and different species/ages keep the entire target, avatar and shadow inside the room');
+
+    for (const width of [1280, 390, 320]) {
+        await page.setViewportSize({ width, height: 900 });
+        await fixture(page, { roomPreset: 'cozy' });
+        await assertHomeScale(page, `furnished-room/${width}`);
+        assert.equal(await page.locator('.tf-pet-stage .tf-scene-art[data-scene="custom-room"]').count(), 1);
+        for (const [side, high] of [['left', true], ['right', false]]) {
+            target = await command(page, side, high);
+            await arrive(page, target, `furnished-room/${width}/${side}`);
+        }
+        await capture(page, `click-move-furnished-${width}`);
+    }
+    console.log('PASS furnished home uses the same movement and boundary checks at desktop/390/320');
 
     await page.setViewportSize({ width: 1280, height: 900 }); await fixture(page);
     let point = await floorPoint(page);
@@ -219,30 +286,48 @@ try {
     console.log('PASS unavailable modes, changing rooms and chat discard the command');
 
     await fixture(page); await page.emulateMedia({ reducedMotion: 'reduce' });
-    point = await floorPoint(page); await page.mouse.click(point.x, point.y);
+    const originalPosition = await position(page);
+    const originalFoot = { x: originalPosition.shadow.x + originalPosition.shadow.width / 2, y: originalPosition.shadow.y + originalPosition.shadow.height / 2 };
+    point = await floorPoint(page);
+    // The entire touch target stays 8px inside the room. A tap above/left of
+    // that reachable area places the feet on its nearest safe boundary; the
+    // displacement depends on the current responsive layout, not a fixed y.
+    const reachableFoot = {
+        x: Math.max(originalPosition.stage.x + 8 + originalFoot.x - originalPosition.control.x,
+            Math.min(point.x, originalPosition.stage.right - 8 - (originalPosition.control.right - originalFoot.x))),
+        y: Math.max(originalPosition.stage.y + 8 + originalFoot.y - originalPosition.control.y,
+            Math.min(point.y, originalPosition.stage.bottom - 8 - (originalPosition.control.bottom - originalFoot.y))),
+    };
+    await page.mouse.click(point.x, point.y);
     const staticPosition = await position(page);
     assert.equal(staticPosition.mode, 'manual'); assert.equal(staticPosition.state, 'resting');
-    assert.ok(staticPosition.x < -1 && staticPosition.y < -13, 'reduced motion applies explicit placement');
+    assert.ok(Math.hypot(staticPosition.shadow.x + staticPosition.shadow.width / 2 - originalFoot.x,
+        staticPosition.shadow.y + staticPosition.shadow.height / 2 - originalFoot.y) > 10, 'reduced motion leaves the original foot position');
+    assert.ok(Math.abs(staticPosition.shadow.x + staticPosition.shadow.width / 2 - reachableFoot.x) < 1.6, 'reduced motion reaches the clamped horizontal foot destination');
+    assert.ok(Math.abs(staticPosition.shadow.y + staticPosition.shadow.height / 2 - reachableFoot.y) < 1.6, 'reduced motion reaches the clamped vertical foot destination');
+    await assertFits(page, 'reduced-motion placement');
+    assert.equal(await page.locator('.tf-pet-stage').getAttribute('data-roam-target'), null, 'instant arrival leaves no destination marker');
     assert.notEqual(await page.locator(selector).evaluate(node => getComputedStyle(node).translate), '0px', 'static movement is rendered by CSS');
     await page.clock.runFor(10000); assert.equal((await position(page)).x, staticPosition.x); assert.equal((await position(page)).y, staticPosition.y);
     await capture(page, 'click-move-reduced-motion');
     await page.emulateMedia({ reducedMotion: 'no-preference' }); await page.close();
     console.log('PASS reduced-motion floor taps place the pet instantly and never start automatic movement');
+    }
 
     const mobile = await open(390), cdp = await mobile.context().newCDPSession(mobile);
-    target = await command(mobile, 'left', true, true); await mobile.clock.runFor(250);
+    let target = await command(mobile, 'left', true, true); await mobile.clock.runFor(250);
     await capture(mobile, 'click-move-mobile'); await arrive(mobile, target, 'mobile tap');
-    const beforeCare = await readPet(mobile), petBox = await mobile.locator(selector).boundingBox();
-    await mobile.touchscreen.tap(petBox.x + petBox.width - 2, petBox.y + petBox.height / 2);
+    const beforeCare = await readPet(mobile), petPoint = await petTouchPoint(mobile);
+    await mobile.touchscreen.tap(petPoint.x, petPoint.y);
     const afterCare = await readPet(mobile);
     assert.equal(afterCare.bond - beforeCare.bond, 3, 'touching the moved pet applies one normal petting reward');
     assert.equal(await mobile.locator('.tf-pet-stage').getAttribute('data-roam-target'), null, 'care never creates a floor instruction');
-    await fixture(mobile); point = await floorPoint(mobile, 'right', false);
+    await fixture(mobile); let point = await floorPoint(mobile, 'right', false, true);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...point, id: 1 }] });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: point.x, y: point.y - 35, id: 1 }] });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     assert.notEqual((await position(mobile)).mode, 'manual', 'page swipe does not move the pet');
-    await fixture(mobile); point = await floorPoint(mobile);
+    await fixture(mobile); point = await floorPoint(mobile, 'left', true, true);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...point, id: 1 }] });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...point, id: 1 }, { x: point.x + 25, y: point.y, id: 2 }] });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
@@ -262,6 +347,14 @@ try {
         if (mode === 'games') await mobile.locator('[data-action="pet-game-start"][data-game="catch"]').tap();
         await noTarget(mobile, `real ${mode} after manual movement`);
     }
+    await fixture(mobile, { roomPreset: 'cozy' });
+    await assertHomeScale(mobile, 'mobile furnished home');
+    target = await command(mobile, 'left', true, true);
+    await arrive(mobile, target, 'mobile furnished home tap');
+    const beforeRoomCare = await readPet(mobile), roomPetPoint = await petTouchPoint(mobile);
+    await mobile.touchscreen.tap(roomPetPoint.x, roomPetPoint.y);
+    assert.equal((await readPet(mobile)).bond - beforeRoomCare.bond, 3, 'touching the moved furnished-room pet applies one reward');
+    await capture(mobile, 'click-move-furnished-mobile-care');
     await mobile.close(); assert.deepEqual(errors, []);
     console.log('PASS actual mobile taps, single-care hit, scrolling/multi-touch rejection, drag feeding, wash, game and rest');
     console.log('PASS no browser errors');
