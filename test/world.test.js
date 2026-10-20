@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_SETTINGS } from '../src/constants.js';
 import { COMPANION_HABITATS } from '../src/companion-scenes.js';
 import { createNpc, normalizeForumDataShape } from '../src/forum.js';
+import { mergeForumBackup } from '../src/backup.js';
 
 import {
     applyModerationProposal,
@@ -24,6 +25,9 @@ import {
     normalizeWorldUpdates,
     prepareCompanionJourney,
     advanceCompanionJourney,
+    normalizeWorldState,
+    claimCompanionTravelSouvenir,
+    retryPendingInventoryRewards,
     resolveCompanionTravelTiming,
     roleCan,
 } from '../src/world.js';
@@ -188,6 +192,60 @@ test('one API journey plan is scheduled and settled entirely by the local clock'
     const duplicateReturn = advanceCompanionJourney(data, { now: prepared.trip.returnAt + 1000 });
     assert.equal(duplicateReturn.changed, false);
     assert.equal(data.world.inventory.length, 1);
+});
+
+test('loading an older over-capacity inventory preserves every possession', () => {
+    const inventory = Array.from({ length: 305 }, (_, index) => ({ id: `saved-${index}`, name: `旧物 ${index}`, quantity: 1 }));
+    const state = normalizeForumDataShape({ world: { inventory } });
+    const restored = normalizeForumDataShape(JSON.parse(JSON.stringify(state)));
+    assert.deepEqual(restored.world.inventory.map(item => item.id), inventory.map(item => item.id));
+});
+
+test('a full bag never blocks an ordinary return and its souvenir settles once after a reload and free slot', () => {
+    const at = 1_800_000_000_000;
+    let data = normalizeForumDataShape({ world: {
+        companion: { name: '团子', status: 'away', life: { autoSleep: false } },
+        trips: [{ id: 'full-bag-trip', traveler: '团子', destination: '河边', status: 'away', returnAt: at, souvenir: '蓝色羽毛' }],
+        inventory: Array.from({ length: 300 }, (_, index) => ({ id: `keepsake-${index}`, name: `纪念品 ${index}`, quantity: 1 })),
+    } });
+    const beforeIds = data.world.inventory.map(item => item.id);
+    const returned = advanceCompanionJourney(data, { now: at });
+    assert.equal(returned.returned, true);
+    assert.equal(data.world.companion.status, 'home');
+    assert.equal(data.world.trips[0].status, 'returned');
+    assert.equal(data.world.trips[0].souvenirClaimedAt, 0);
+    assert.match(data.world.companion.message, /纪念品.*留好/);
+    assert.deepEqual(data.world.inventory.map(item => item.id), beforeIds);
+    assert.equal(claimCompanionTravelSouvenir(data, 'full-bag-trip', at + 1), '');
+    data = normalizeForumDataShape(JSON.parse(JSON.stringify(data)));
+    assert.equal(advanceCompanionJourney(data, { now: at + 2 }).changed, false);
+    data.world.inventory.pop();
+    const settled = advanceCompanionJourney(data, { now: at + 3 });
+    assert.equal(settled.souvenir, '蓝色羽毛');
+    assert.equal(data.world.trips[0].souvenirClaimedAt, at + 3);
+    assert.equal(data.world.inventory.length, 300);
+    data = normalizeForumDataShape(JSON.parse(JSON.stringify(data)));
+    assert.equal(advanceCompanionJourney(data, { now: at + 4 }).changed, false);
+    assert.equal(claimCompanionTravelSouvenir(data, 'full-bag-trip', at + 5), '');
+    assert.equal(data.world.inventory.filter(item => item.name === '蓝色羽毛').length, 1);
+    assert.equal(data.world.inventory[0].id, 'keepsake-0');
+});
+
+test('pending souvenirs survive the journey history limit until they can be collected', () => {
+    const at = 1_800_000_000_000;
+    const data = normalizeForumDataShape({ world: {
+        trips: [{ id: 'old-pending', status: 'returned', souvenir: '旧旅途明信片' },
+            ...Array.from({ length: 120 }, (_, index) => ({ id: `later-${index}`, status: 'cancelled' }))],
+        inventory: Array.from({ length: 300 }, (_, index) => ({ id: `keepsake-${index}`, name: `纪念品 ${index}`, quantity: 1 })),
+    } });
+    assert.equal(data.world.trips.length, 121);
+    assert.equal(retryPendingInventoryRewards(data, at).pending, 1);
+    data.world.inventory.pop();
+    assert.deepEqual(retryPendingInventoryRewards(data, at + 1).items, ['旧旅途明信片']);
+    normalizeWorldState(data.world);
+    assert.equal(data.world.trips.length, 120);
+    assert.equal(retryPendingInventoryRewards(data, at + 2).changed, false);
+    assert.equal(data.world.inventory.filter(item => item.name === '旧旅途明信片').length, 1);
 });
 
 test('inventory food and medical supplies close local companion and health loops', () => {
@@ -356,6 +414,113 @@ test('returned companion souvenirs settle into inventory exactly once', () => {
     applyWorldUpdates(data, updates, config);
     assert.equal(data.world.inventory.filter(item => item.name === '蓝色羽毛').length, 1);
     assert.ok(data.world.trips[0].souvenirClaimedAt);
+});
+
+test('linked return fields reserve one souvenir at capacity without duplicating the carrying fallback', () => {
+    const config = settings(); config.modules.travel.enabled = true;
+    let data = normalizeForumDataShape({ world: {
+        companion: { name: '团子', status: 'away', life: { autoSleep: false } },
+        inventory: Array.from({ length: 300 }, (_, index) => ({ id: `keepsake-${index}`, name: `纪念品 ${index}`, quantity: 1 })),
+    } });
+    const updates = normalizeWorldUpdates({ worldUpdates: { travel: {
+        companion: { status: 'home', carrying: '蓝色羽毛' },
+        journeys: [{ id: 'linked-full-return', traveler: '团子', destination: '湖边', status: 'returned', souvenir: '蓝色羽毛' }],
+    } } });
+    applyWorldUpdates(data, updates, config);
+    assert.equal(data.world.companion.status, 'home');
+    assert.equal(data.world.inventory.length, 300);
+    assert.equal(data.world.inventory[0].id, 'keepsake-0');
+    assert.equal(data.world.trips[0].souvenirClaimedAt, 0);
+    assert.equal(data.world.pendingInventoryRewards.length, 0, 'the trip already owns this pending reward');
+    data = normalizeForumDataShape(JSON.parse(JSON.stringify(data)));
+    applyWorldUpdates(data, updates, config);
+    data.world.inventory.pop();
+    assert.deepEqual(retryPendingInventoryRewards(data).items, ['蓝色羽毛']);
+    applyWorldUpdates(data, updates, config);
+    assert.equal(data.world.inventory.filter(item => item.name === '蓝色羽毛').length, 1);
+    assert.equal(data.world.pendingInventoryRewards.length, 0);
+});
+
+test('legacy carrying rewards and generated inventory overflow persist with IDs and collect once', () => {
+    const config = settings(); config.modules.travel.enabled = true; config.modules.inventory.enabled = true;
+    let data = normalizeForumDataShape({ world: {
+        companion: { name: '团子', status: 'away', departedAt: 123, life: { autoSleep: false } },
+        inventory: Array.from({ length: 300 }, (_, index) => ({ id: `keepsake-${index}`, name: `纪念品 ${index}`, quantity: 1 })),
+    } });
+    const updates = normalizeWorldUpdates({ worldUpdates: {
+        companion: { status: 'home', carrying: '贝壳' },
+        inventory: [{ id: 'generated-gift', name: '林间书签', source: '林中来信', quantity: 1 }],
+    } });
+    applyWorldUpdates(data, updates, config);
+    assert.equal(data.world.companion.status, 'home');
+    assert.equal(data.world.companion.carrying, '');
+    assert.match(data.world.companion.message, /背包满/);
+    assert.equal(data.world.inventory.length, 300);
+    assert.deepEqual(data.world.pendingInventoryRewards.map(item => item.name), ['贝壳', '林间书签']);
+    const pendingIds = data.world.pendingInventoryRewards.map(item => item.id);
+    assert.equal(new Set(pendingIds).size, 2);
+    assert.ok(pendingIds.every(Boolean));
+    data = normalizeForumDataShape(JSON.parse(JSON.stringify(data)));
+    applyWorldUpdates(data, updates, config);
+    assert.deepEqual(data.world.pendingInventoryRewards.map(item => item.id), pendingIds);
+    assert.equal(retryPendingInventoryRewards(data).changed, false);
+    data.world.inventory.splice(-2);
+    const settled = advanceCompanionJourney(data);
+    assert.equal(settled.changed, true);
+    assert.equal(data.world.inventory.length, 300);
+    assert.deepEqual(data.world.inventory.slice(-2).map(item => item.id), pendingIds);
+    data = normalizeForumDataShape(JSON.parse(JSON.stringify(data)));
+    assert.equal(retryPendingInventoryRewards(data).changed, false);
+    applyWorldUpdates(data, updates, config);
+    assert.equal(data.world.inventory.filter(item => item.name === '贝壳').length, 1);
+    assert.equal(data.world.inventory.filter(item => item.name === '林间书签').length, 1);
+    assert.equal(data.world.pendingInventoryRewards.length, 0);
+    assert.equal(data.world.inventory[0].id, 'keepsake-0');
+});
+
+test('merging a renamed companion return cannot make the same trip reward collectible again', () => {
+    const at = 1800000000000;
+    const source = normalizeForumDataShape({ world: {
+        companion: { name: '团子', status: 'away', life: { autoSleep: false } },
+        trips: [{ id: 'same-trip', traveler: '团子', status: 'away', returnAt: at, souvenir: '唯一纪念品' }],
+        inventory: Array.from({ length: 300 }, (_, i) => ({ id: `old-${i}`, name: `旧物${i}`, quantity: 1 })),
+    } });
+    const current = structuredClone(source), incoming = structuredClone(source);
+    advanceCompanionJourney(current, { now: at });
+    incoming.world.companion.name = '豆包';
+    incoming.world.inventory.pop();
+    advanceCompanionJourney(incoming, { now: at });
+    for (const legacy of [false, true]) {
+        const backup = structuredClone(incoming);
+        if (legacy) delete backup.world.inventory.at(-1).travelTripId;
+        const merged = mergeForumBackup(current, backup);
+        assert.equal(merged.world.trips[0].souvenirClaimedAt, at);
+        merged.world.inventory.splice(0, 2);
+        retryPendingInventoryRewards(merged, at + 1);
+        assert.equal(merged.world.inventory.filter(item => item.name === '唯一纪念品').length, 1);
+    }
+});
+
+test('pending travel rewards recognize legacy receipts by trip ID after the companion is renamed', () => {
+    const data = normalizeForumDataShape({ world: {
+        companion: { name: '豆包', life: { autoSleep: false } },
+        trips: [{ id: 'legacy-trip', traveler: '团子', status: 'returned', souvenir: '贝壳' }],
+        inventory: [{ id: 'legacy-receipt', name: '贝壳', quantity: 1, source: '豆包返程 · legacy-trip' }],
+    } });
+    retryPendingInventoryRewards(data);
+    assert.ok(data.world.trips[0].souvenirClaimedAt);
+    assert.equal(data.world.inventory.length, 1);
+    const incoming = structuredClone(data);
+    incoming.world.trips[0].homesteadRewardClaimedAt = 1234;
+    const merged = mergeForumBackup(data, incoming);
+    assert.equal(merged.world.trips[0].homesteadRewardClaimedAt, 1234);
+});
+
+test('AI inventory output cannot manufacture a local journey reward receipt', () => {
+    const updates = normalizeWorldUpdates({ inventory: [{ name: '生成的物品', travelTripId: 'real-trip' }] });
+    assert.equal(updates.inventory[0].travelTripId, '');
+    const stored = normalizeWorldState({ inventory: [{ name: '本地纪念品', travelTripId: 'real-trip' }] });
+    assert.equal(stored.inventory[0].travelTripId, 'real-trip');
 });
 
 test('NPC reports reuse linked forum output and system admin proposals remain user-confirmable', () => {

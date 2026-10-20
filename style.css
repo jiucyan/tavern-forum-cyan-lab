@@ -12365,12 +12365,8 @@ button.tf-avatar {
 #tavern-forum-root .tf-companion-device.is-action-feed.is-species-goldfish:has(.tf-pet-sprite-control .is-growth-young) { --tf-feed-mouth-x: 17%; --tf-feed-mouth-y: 62%; }
 #tavern-forum-root .tf-companion-device.is-action-feed.is-species-robo-bird:has(.tf-pet-sprite-control .is-growth-baby) { --tf-feed-mouth-x: 86%; --tf-feed-mouth-y: 63%; }
 #tavern-forum-root .tf-companion-device.is-action-feed.is-species-robo-bird:has(.tf-pet-sprite-control .is-growth-young) { --tf-feed-mouth-x: 90%; --tf-feed-mouth-y: 52%; }
-/* The aquatic companion is fitted at .72 around its centre and lowered by 3%.
-   Use the painted mouth landmarks after that fit, including the adult fish's side muzzle. */
-#tavern-forum-root .tf-companion-device.is-action-feed:has(.tf-pet-sprite-control[data-aquatic="fish"] .is-growth-adult) { --tf-feed-mouth-x: 20.8625%; --tf-feed-mouth-y: 51.65%; }
-#tavern-forum-root .tf-companion-device.is-action-feed:has(.tf-pet-sprite-control[data-aquatic="fish"] .is-growth-young) { --tf-feed-mouth-x: 26.375%; --tf-feed-mouth-y: 60.875%; }
-#tavern-forum-root .tf-companion-device.is-action-feed:has(.tf-pet-sprite-control[data-aquatic="fish"] .is-growth-baby) { --tf-feed-mouth-x: 29.75%; --tf-feed-mouth-y: 66.5%; }
-#tavern-forum-root .tf-companion-device.is-action-feed:has(.tf-pet-sprite-control[data-aquatic="tadpole"] .is-growth-baby) { --tf-feed-mouth-x: 45.5%; --tf-feed-mouth-y: 72.125%; }
+/* The drawing and food share one projection from the native mouth landmark. */
+#tavern-forum-root .tf-companion-device.is-action-feed .tf-pet-sprite-control[data-aquatic] { --tf-feed-mouth-x: var(--tf-aquatic-mouth-x); --tf-feed-mouth-y: var(--tf-aquatic-mouth-y); }
 @media (max-height: 620px) {
     #tavern-forum-root .tf-companion-device.is-action-feed { --tf-feed-sprite-size: clamp(118px, 56cqi, 164px); }
 }
@@ -17468,9 +17464,10 @@ button.tf-avatar {
 }
 #tavern-forum-root .tf-companion-device .tf-work-pose-art svg { display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 #tavern-forum-root .tf-companion-device .tf-pet-sprite-control[data-work-pose] :is(.tf-pixel-tail,.tf-betta-fin,.tf-rabbit-ear,.tf-penguin-wing,.tf-robo-wing,.tf-octopus-arm) { animation: none !important; }
-/* Keep the same native mouth coordinates for water feeding. */
+/* Centre the visible animal, not the transparent juvenile canvas. The SVG
+   matrix still exposes the native mouth landmarks to care/work animations. */
 #tavern-forum-root .tf-companion-device .tf-pet-sprite-control[data-aquatic] > .tf-pixel-avatar > .tf-pixel-pet {
-    transform: translateY(3%) scale(.72); transform-origin: 50% 50%; transform-box: view-box;
+    transform: translate(var(--tf-aquatic-art-x,0%),var(--tf-aquatic-art-y,0%)) scale(var(--tf-aquatic-art-scale,1)); transform-origin: 50% 50%; transform-box: view-box;
 }
 #tavern-forum-root .tf-companion-device .is-homestead-kitchen:has([data-at-stove="true"]) .tf-kitchen-stove-pot { visibility: hidden; }
 #tavern-forum-root .tf-companion-device .is-homestead-fishing .tf-homestead-target { cursor: default; background: transparent; box-shadow: none; }
@@ -17524,18 +17521,27 @@ button.tf-avatar {
 #tavern-forum-root .tf-companion-device .tf-pet-stage[data-aquatic-habitat] > .tf-aquatic-surface { z-index:510; }
 #tavern-forum-root .tf-companion-device :is(.tf-aquatic-habitat,.tf-aquatic-surface) > svg { width:100%; height:100%; display:block; overflow:visible; }
 #tavern-forum-root .tf-companion-device .tf-device-viewport .tf-pet-stage[data-aquatic-habitat] .tf-pet-sprite-control[data-aquatic] {
-    --pet-sprite-size:17.5cqi; position:absolute; width:var(--pet-sprite-size); height:var(--pet-sprite-size);
-    left:calc(var(--tf-water-home-x) - var(--pet-sprite-size) / 2); top:calc(var(--tf-water-home-y) - var(--pet-sprite-size) / 2);
+    --pet-sprite-size:23.75cqi;
+    --tf-aquatic-hit-width:max(44px,calc(var(--pet-sprite-size) * var(--tf-aquatic-body-width,1)));
+    --tf-aquatic-hit-height:max(44px,calc(var(--pet-sprite-size) * var(--tf-aquatic-body-height,1)));
+    position:absolute; width:var(--tf-aquatic-hit-width); height:var(--tf-aquatic-hit-height);
+    left:calc(var(--tf-water-home-x) - var(--tf-aquatic-hit-width) / 2); top:calc(var(--tf-water-home-y) - var(--tf-aquatic-hit-height) / 2);
     margin:0; padding:0; z-index:500; transform:none !important; animation:none !important; filter:none; transition:filter .2s;
+}
+#tavern-forum-root .tf-companion-device .tf-pet-sprite-control[data-aquatic] > .tf-pixel-avatar {
+    position:absolute; left:50%; top:50%; margin-left:calc(var(--pet-sprite-size) / -2); margin-top:calc(var(--pet-sprite-size) / -2);
 }
 #tavern-forum-root .tf-companion-device .tf-pet-sprite-control[data-aquatic] .tf-pet-character-shadow { display:none; }
 #tavern-forum-root .tf-companion-device .tf-pet-sprite-control[data-aquatic]::before { content:''; position:absolute; left:50%; top:50%; width:max(44px, 100%); height:max(44px, 100%); transform:translate(-50%, -50%); pointer-events:auto; }
 #tavern-forum-root .tf-companion-device .tf-pet-sprite-control[data-aquatic] > .tf-pet-animation-layer { position:absolute; inset:0; z-index:6; pointer-events:none; }
 #tavern-forum-root .tf-companion-device.is-action-feed .tf-pet-sprite-control[data-aquatic] .tf-feed-drop { inset:0; width:100%; height:100%; transform:none; }
-#tavern-forum-root .tf-companion-device.is-action-feed .tf-pet-sprite-control[data-aquatic] .tf-food-offering { width:calc(var(--pet-sprite-size) * .16); height:calc(var(--pet-sprite-size) * .16); }
+#tavern-forum-root .tf-companion-device.is-action-feed .tf-pet-sprite-control[data-aquatic] .tf-food-offering { width:calc(var(--pet-sprite-size) * .16 * var(--tf-aquatic-scene-scale,1)); height:calc(var(--pet-sprite-size) * .16 * var(--tf-aquatic-scene-scale,1)); }
 #tavern-forum-root .tf-companion-device:has(.tf-pet-sprite-control[data-aquatic]) :is(.tf-pet-ritual-bowl,.tf-ritual-blanket,.tf-ritual-night-lamp) { display:none; }
 #tavern-forum-root .tf-companion-device .tf-pet-sprite-control[data-aquatic] :is(.tf-play-ball,.tf-play-trail,.tf-care-action-fx) { display:none; }
 #tavern-forum-root .tf-companion-device.is-living-sleep .tf-pet-sprite-control[data-aquatic] > .tf-pixel-avatar { animation:tf-water-rest 4s ease-in-out infinite !important; transform:none; }
 #tavern-forum-root .tf-companion-device.is-living-sleep .tf-pet-sprite-control[data-aquatic] .tf-pixel-pet { opacity:.92; }
 @keyframes tf-water-rest { 0%,100% { translate:0 0; } 50% { translate:0 1px; } }
-@media(prefers-reduced-motion:reduce) { #tavern-forum-root .tf-companion-device.is-living-sleep .tf-pet-sprite-control[data-aquatic] > .tf-pixel-avatar { animation:none !important; } }
+@media(prefers-reduced-motion:reduce) {
+    #tavern-forum-root .tf-companion-device.is-living-sleep .tf-pet-sprite-control[data-aquatic] > .tf-pixel-avatar { animation:none !important; }
+    #tavern-forum-root .tf-companion-device.is-action-feed .tf-pet-sprite-control[data-aquatic] .tf-food-offering { transform:translate(-50%,-50%); }
+}

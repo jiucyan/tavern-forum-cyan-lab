@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createNpc, ensureTaskIssuerConversation } from '../src/forum.js';
 
 function createContext() {
     return {
@@ -183,4 +184,78 @@ test('character lore recognizes both primary and auxiliary SillyTavern lorebooks
     assert.equal(auxiliary.enabled, true);
     assert.equal(unrelated.characterBound, false);
     assert.equal(unrelated.enabled, false);
+});
+
+test('clearing one chat preserves persistent images still referenced by another chat', async () => {
+    const context = createContext();
+    const sharedImage = 'data:image/png;base64,SHARED';
+    const images = new Map([['shared-avatar', sharedImage], ['shared-post', sharedImage]]);
+    const otherChat = { posts: [{ imageKey: 'shared-post' }], npcs: [{ avatarKey: 'shared-avatar' }] };
+    context.chatMetadata.tavern_forum_data = {
+        posts: [{ id: 'post-a', content: 'A', imageKey: 'shared-post', comments: [] }],
+        npcs: [{ id: 'role-a', name: 'A', avatarKey: 'shared-avatar' }],
+    };
+    const prompts = [];
+    context.setExtensionPrompt = (_id, value) => prompts.push(value);
+    globalThis.SillyTavern = {
+        getContext: () => context,
+        libs: { localforage: { removeItem: async key => images.delete(key) } },
+    };
+    const store = await import(`../src/store.js?clear-shared-images=${Date.now()}`);
+    store.getSettings().avatarLibrary.push({ id: 'shared', name: '共享头像', imageKey: 'shared-avatar', url: '' });
+    await store.clearAllData();
+    assert.equal(context.chatMetadata.tavern_forum_data, undefined);
+    assert.equal(context.extensionSettings.tavern_forum, undefined);
+    assert.equal(images.get(otherChat.npcs[0].avatarKey), sharedImage);
+    assert.equal(images.get(otherChat.posts[0].imageKey), sharedImage);
+    assert.deepEqual(prompts, ['', '', '']);
+});
+
+test('public and private source contexts omit hidden automatic memories without editing stored memories', async () => {
+    const context = createContext();
+    globalThis.SillyTavern = { getContext: () => context, libs: {} };
+    const store = await import(`../src/store.js?readable-memory=${Date.now()}`);
+    store.getSettings().sources.worldInfo = false;
+    const data = store.getForumData();
+    const role = createNpc({ name: '居民', handle: 'resident' });
+    role.memory.publicHistory = ['回帖：HIDDEN_SOURCE_SENTINEL', '回帖：正常回帖'];
+    role.memory.publicSummary = '用户手写的个人摘要。\n\n近期公开经历摘录：\n回帖：HIDDEN_SOURCE_SENTINEL\n回帖：正常回帖';
+    role.memory.privateTalks = ['保留的私信记忆'];
+    data.npcs.push(role);
+    data.posts.push({ id: 'source-post', handle: 'other', content: '公开主帖', comments: [
+        { id: 'hidden-source', npcId: role.id, author: role.name, handle: role.handle, isAi: true,
+            content: 'HIDDEN_SOURCE_SENTINEL', moderation: { hidden: true, action: 'delete' } },
+    ] });
+    const publicSources = await store.getGenerationSourceContext();
+    const privateSources = await store.getRoleScopedSourceContext(role.id);
+    for (const sources of [publicSources, privateSources]) {
+        const memory = sources.roleMemories.find(npc => npc.id === role.id).memory;
+        assert.doesNotMatch(memory.publicHistory.join('\n') + memory.publicSummary, /HIDDEN_SOURCE_SENTINEL/);
+        assert.match(memory.publicSummary, /用户手写的个人摘要/);
+        assert.match(memory.publicHistory.join('\n'), /正常回帖/);
+        assert.deepEqual(memory.privateTalks, ['保留的私信记忆']);
+    }
+    assert.match(store.getForumData().npcs.find(npc => npc.id === role.id).memory.publicHistory.join('\n'), /HIDDEN_SOURCE_SENTINEL/);
+});
+
+test('blocked anonymous identities also exclude their old copies from sources and injection', async () => {
+    const context = createContext();
+    globalThis.SillyTavern = { getContext: () => context, libs: {} };
+    const store = await import(`../src/store.js?anonymous-identity=${Date.now()}`);
+    const settings = store.getSettings();
+    settings.sources.worldInfo = false;
+    settings.injection.enabled = true;
+    settings.injection.npcEnabled = true;
+    const data = store.getForumData();
+    const { npc } = ensureTaskIssuerConversation(data, { id: 'anon-source-task', title: '匿名委托', anonymous: true });
+    const alias = { ...structuredClone(npc), id: 'legacy-copy', anonymousTaskId: '', blocked: false, inject: true, persona: 'ALIAS_PERSONA_SENTINEL' };
+    data.npcs.push(alias);
+    data.posts.push({ id: 'legacy-post', npcId: alias.id, handle: alias.handle, content: 'ALIAS_POST_SENTINEL', selectedForInjection: true, comments: [] });
+    npc.blocked = true;
+    assert.equal((await store.getGenerationSourceContext()).roleMemories.some(role => role.id === alias.id), false);
+    const injection = store.syncInjection();
+    assert.doesNotMatch(injection.forumValue, /ALIAS_POST_SENTINEL/);
+    assert.doesNotMatch(injection.npcValue, /ALIAS_PERSONA_SENTINEL/);
+    npc.blocked = false;
+    assert.equal((await store.getGenerationSourceContext()).roleMemories.some(role => role.id === alias.id), true);
 });

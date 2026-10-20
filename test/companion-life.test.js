@@ -231,6 +231,23 @@ test('shop deducts once, food enters inventory, toys work and owned furniture ca
     const result = applyInventoryItemUse(state, state.world.inventory[0].id, 'companion'); assert.equal(result.applied, false); assert.equal(state.world.inventory[0].quantity, 2);
 });
 
+test('full bags reject new shop food before spending coins and can still replenish an existing stack', () => {
+    const state = data(); state.world.companion.life.coins = 16;
+    state.world.inventory = Array.from({ length: 300 }, (_, index) => ({ id: `keepsake-${index}`, name: `纪念品 ${index}`, quantity: 1 }));
+    const before = structuredClone(state);
+    assert.throws(() => buyCompanionItem(state, 'snack', T), /背包.*满/);
+    assert.deepEqual(state, before, 'a rejected purchase changes neither money nor possessions');
+
+    state.world.inventory[299] = { id: 'shop-snack', name: '口袋点心', source: '陪伴小铺', quantity: 1, consumed: false };
+    buyCompanionItem(state, 'snack', T);
+    assert.equal(state.world.inventory.length, 300);
+    assert.equal(state.world.inventory[299].quantity, 2);
+    assert.equal(state.world.companion.life.coins, 8);
+    state.world = normalizeWorldState(JSON.parse(JSON.stringify(state.world)));
+    assert.equal(state.world.inventory[0].id, 'keepsake-0');
+    assert.equal(state.world.inventory.find(item => item.id === 'shop-snack').quantity, 2);
+});
+
 test('souvenir display never consumes inventory and disappears when delivered; names escaped', () => {
     const state = data(); state.world.inventory = [{ id: 's', name: '<img onerror=x>', source: '团子返程 · t', quantity: 1 }];
     setCompanionDisplay(state, 's'); assert.equal(state.world.inventory[0].quantity, 1);

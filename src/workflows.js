@@ -1,6 +1,9 @@
 import { normalizeThreadReplies, parseJsonResponse } from './prompt.js';
+import { resolveNpcIdentity } from './forum.js';
 
 export const GENERATION_MODES = Object.freeze({ all: '常规刷新', posts: '只发新帖', threads: '继续旧帖讨论', world: '推进世界事件' });
+
+const handleKey = value => String(value || '').trim().replace(/^@/, '').toLocaleLowerCase();
 
 export function selectWorldUpdates(updates, settings, allowedModules = null) {
     const selected = {};
@@ -20,7 +23,10 @@ export function parseThreadUpdates(raw, data, maximum = 3) {
         const post = data.posts.find(item => item.id === entry.postId && !item.moderation?.hidden);
         if (!post) continue;
         const replies = normalizeThreadReplies(JSON.stringify({ replies: entry.comments || entry.replies || [] }))
-            .filter(reply => !data.npcs.some(npc => npc.blocked && (npc.handle === reply.handle || npc.name === reply.author)))
+            .filter(reply => !data.npcs.some(npc => resolveNpcIdentity(data, npc)?.blocked && (
+                (handleKey(npc.handle) && handleKey(npc.handle) === handleKey(reply.handle))
+                || (String(npc.name || '').trim() && String(npc.name || '').trim() === String(reply.author || '').trim())
+            )))
             .slice(0, maximum);
         if (replies.length) updates.push({ post, replies });
     }

@@ -1,5 +1,6 @@
 import { HOMESTEAD_LOCATIONS, CROPS, PET_ITEMS, RESOURCE_NODES, getCropView, getPetItemCount } from './companion-homestead.js';
 import { getRoomItemBounds } from './companion-room.js';
+import { resolveCompanionDisplayScene } from './companion-scenes.js';
 import { renderDetailedHomesteadBackdrop } from './companion-homestead-scenery.js';
 import { renderKitchenPanel, renderFishingPanel, renderKitchenFishingItemIcon } from './companion-kitchen-fishing-ui.js';
 
@@ -198,7 +199,13 @@ const stationArt = {
 
 // Art, touch targets, player tools and the persistent bar share scene geometry.
 // The painted bounds deliberately exclude transparent touch-target padding.
-export function getHomeStationGeometry(companion) {
+export function getHomeStationGeometry(companion, scene = resolveCompanionDisplayScene(companion)) {
+    if (!scene.homeStations) return [
+        { id: 'door', label: '庭院', barLabel: '庭院', approach: { x: 284, y: 196 } },
+        { id: 'packing', label: '整理行囊', barLabel: '行囊', approach: { x: 104, y: 194 }, work: { x: 145, y: 194 } },
+        { id: 'storage', label: '收纳', barLabel: '收纳', approach: { x: 218, y: 194 }, work: { x: 260, y: 194 } },
+        { id: 'location:kitchen', label: '厨房', barLabel: '厨房', approach: { x: 224, y: 194 } },
+    ];
     const decorated = companion?.room?.enabled;
     const packingX = decorated ? 160 : 135, packingY = decorated ? 110 : 108;
     return [
@@ -212,7 +219,9 @@ export function getHomeStationGeometry(companion) {
 const stationWorkAttrs = station => station?.work ? ` data-work-x="${station.work.x}" data-work-y="${station.work.y}"` : '';
 
 export function renderHomeStations(companion) {
-    const stations = getHomeStationGeometry(companion);
+    const scene = resolveCompanionDisplayScene(companion);
+    if (!scene.homeStations) return '';
+    const stations = getHomeStationGeometry(companion, scene);
     const occupied = companion?.room?.enabled ? (companion.room.items || []).filter(item => item.type !== 'rug').map(getRoomItemBounds) : [];
     return `<div class="tf-homestead-stations">${stations.map(station => {
         const { id, label, x, y, width, height, painted, approach } = station;
@@ -224,11 +233,13 @@ export function renderHomeStations(companion) {
     }).join('')}</div>`;
 }
 
-export function renderHomesteadBar(companion) {
+export function renderHomesteadBar(companion, scene = resolveCompanionDisplayScene(companion)) {
     const location = locationOf(companion);
-    const homeStations = getHomeStationGeometry(companion);
+    const homeStations = getHomeStationGeometry(companion, scene);
+    const homeScene = resolveCompanionDisplayScene({ ...companion, status: 'home', homestead: { ...companion.homestead, location: 'home' } });
     const routes = { home: ['packing', 'storage', 'location:kitchen', 'door'].map(id => { const station = homeStations.find(item => item.id === id); return [id, station.barLabel, station.approach.x, station.approach.y, stationWorkAttrs(station)]; }), kitchen: [['location:home', '回小窝', 22, 196], ['storage', '食材', 75, 157], ['stove', '做菜', 195, 153]], yard: [['location:home', '小窝', 16, 155], ['location:forest', '林间', 304, 155]], forest: [['location:yard', '庭院', 16, 216], ['location:river', '河边', 304, 216]], river: [['fishing', '钓鱼', 220, 155], ['location:forest', '回林间', 16, 216]] };
-    return `<nav class="tf-homestead-bar" aria-label="小世界地点与生活入口"><b>${esc(location.name)}</b><div>${routes[location.id].map(([id, label, x, y, attrs = '']) => target(id, `<span>${label}</span><i aria-hidden="true">${id.includes('location') || id === 'door' ? '›' : '·'}</i>`, x, y, attrs)).join('')}</div></nav>`;
+    for (const entry of routes[location.id]) if (entry[0] === 'location:home') entry[1] = location.id === 'kitchen' ? `回${homeScene.label}` : homeScene.label;
+    return `<nav class="tf-homestead-bar" aria-label="小世界地点与生活入口"><b>${esc(scene.label)}</b><div>${routes[location.id].map(([id, label, x, y, attrs = '']) => target(id, `<span>${label}</span><i aria-hidden="true">${id.includes('location') || id === 'door' ? '›' : '·'}</i>`, x, y, attrs)).join('')}</div></nav>`;
 }
 
 function plotPanel(data, plotId, now) {

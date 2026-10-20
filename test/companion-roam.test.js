@@ -4,6 +4,7 @@ import { createCompanionRoamController } from '../src/companion-roam.js';
 import { createCompanionIdleController } from '../src/companion-idle.js';
 import { ROOM_FLOOR_Y, normalizeCompanionRoom, getRoomInteraction, getRoomItemFootprint } from '../src/companion-room.js';
 import { roomPathObstacles, roomSegmentClear } from '../src/companion-room-path.js';
+import { getAquaticHabitat } from '../src/companion-aquatic.js';
 
 class Events {
     listeners = new Map();
@@ -114,6 +115,44 @@ test('movement stays inside the stage and resize clamps the current and destinat
     stage.clientWidth = 420; root.pet.offsetLeft = 130; window.emit('resize');
     tick(2498); assert.equal(root.pet.getAttribute('data-roam-state'), 'resting');
     tick(2); assert.equal(root.pet.getAttribute('data-roam-state'), 'walking');
+});
+
+test('larger aquatic canvases fit the scene without changing habitat centre coordinates', t => {
+    const f = setup(t);
+    f.stage.clientWidth = 320; f.stage.clientHeight = 240;
+    Object.assign(f.root.pet, { offsetLeft: 122, offsetTop: 128, offsetWidth: 76, offsetHeight: 76 });
+    Object.assign(f.state, { species: 'goldfish', aquatic: getAquaticHabitat('home') });
+    const saved = structuredClone(f.state);
+    f.controller.sync();
+    assert.equal(f.controller.moveTo({ clientX: 292, clientY: 32 }), true); finishMove(f);
+    let [x,y] = f.position();
+    assert.equal(f.root.pet.offsetLeft+x+f.root.pet.offsetWidth, 319);
+    assert.equal(f.root.pet.offsetTop+y, 1);
+    assert.equal(f.controller.moveTo({ clientX: 28, clientY: 212 }), true); finishMove(f);
+    [x,y] = f.position();
+    assert.equal(f.root.pet.offsetLeft+x, 1);
+    assert.equal(f.root.pet.offsetTop+y+f.root.pet.offsetHeight, 239);
+    assert.deepEqual(f.state, saved);
+
+    f.state.aquatic = getAquaticHabitat('yard'); f.controller.sync();
+    assert.equal(f.controller.moveTo({ clientX: 287, clientY: 53 }), true); finishMove(f);
+    [x,y] = f.position();
+    assert.equal(f.root.pet.offsetLeft+x+f.root.pet.offsetWidth, 319);
+    assert.equal(f.root.pet.offsetTop+y+f.root.pet.offsetHeight/2, 53);
+    assert.deepEqual(f.state.aquatic.bounds, [245,287,53,70]);
+});
+
+test('aquatic edge clamping also retains the expanded 44 px touch footprint', t => {
+    const f = setup(t);
+    f.stage.clientWidth = 320; f.stage.clientHeight = 240;
+    Object.assign(f.root.pet, { offsetLeft: 237, offsetTop: 197, offsetWidth: 32, offsetHeight: 32 });
+    Object.assign(f.state, { species: 'goldfish', aquatic: getAquaticHabitat('forest') });
+    f.controller.sync();
+    assert.equal(f.controller.moveTo({ clientX: 286, clientY: 219 }), true); finishMove(f);
+    const [x,y] = f.position();
+    assert.ok(f.root.pet.offsetLeft+x-6 >= 0);
+    assert.equal(f.root.pet.offsetTop+y+f.root.pet.offsetHeight+6, 239);
+    assert.deepEqual(f.state.aquatic.bounds, [215,286,207,219]);
 });
 
 test('pointer capture freezes the hit target through a long touch and release outside the root', t => {

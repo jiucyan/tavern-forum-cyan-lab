@@ -1,4 +1,4 @@
-import { formatMemoryContinuity } from './memory.js';
+import { formatMemoryContinuity, getReadableRoleMemory } from './memory.js';
 import { DEFAULT_BUILTIN_PROMPTS } from './constants.js';
 
 const DEFAULT_AUTHOR = '匿名网友';
@@ -227,6 +227,14 @@ function formatMemory(npc, options = {}) {
     ].filter(Boolean).join('\n');
 }
 
+function roleMemoryFromContext(npc, sourceContext) {
+    const handle = safeString(npc?.handle).replace(/^@/, '').toLocaleLowerCase();
+    const readable = (sourceContext?.roleMemories || []).find(role =>
+        (npc?.id && role.id === npc.id)
+        || (!npc?.id && handle && safeString(role.handle).replace(/^@/, '').toLocaleLowerCase() === handle));
+    return readable?.memory ? { ...npc, memory: readable.memory } : npc;
+}
+
 export function createId(prefix = 'item') {
     if (globalThis.crypto?.randomUUID) {
         return `${prefix}-${globalThis.crypto.randomUUID()}`;
@@ -310,7 +318,8 @@ export function buildForumGenerationRequest({
     const characterPersona = safeString(sourceContext?.characterPersona);
     const worldInfo = Array.isArray(sourceContext?.worldInfo) ? sourceContext.worldInfo : [];
     const facts = Array.isArray(sourceContext?.facts) ? sourceContext.facts : [];
-    const roleMemories = Array.isArray(sourceContext?.roleMemories) ? sourceContext.roleMemories : [];
+    const roleMemories = Array.isArray(sourceContext?.roleMemories)
+        ? sourceContext.roleMemories.map(npc => getReadableRoleMemory(npc, existingPosts)) : [];
     const presetPrompts = Array.isArray(sourceContext?.presetPrompts) ? sourceContext.presetPrompts : [];
     const recentPosts = Array.isArray(existingPosts)
         ? existingPosts.filter(post => !post?.moderation?.hidden).slice(-6).map(post => `[帖子ID=${safeString(post.id)}] @${safeString(post.handle, 'user')}：${safeString(post.content)}`).join('\n')
@@ -637,6 +646,30 @@ function extractCompletePostObjects(source) {
     return posts;
 }
 
+function removeJsonTrailingCommas(source) {
+    let result = '';
+    let inString = false;
+    let escaped = false;
+    for (let index = 0; index < source.length; index += 1) {
+        const character = source[index];
+        if (inString) {
+            result += character;
+            if (escaped) escaped = false;
+            else if (character === '\\') escaped = true;
+            else if (character === '"') inString = false;
+            continue;
+        }
+        if (character === '"') inString = true;
+        if (character === ',') {
+            let next = index + 1;
+            while (next < source.length && /\s/.test(source[next])) next += 1;
+            if (source[next] === '}' || source[next] === ']') continue;
+        }
+        result += character;
+    }
+    return result;
+}
+
 export function parseJsonResponse(raw) {
     if (raw && typeof raw === 'object') return raw;
     let text = safeString(raw);
@@ -648,9 +681,7 @@ export function parseJsonResponse(raw) {
     const moduleData = text.match(/<module_data>\s*([\s\S]*?)\s*<\/module_data>/i);
     if (moduleData?.[1]) text = moduleData[1].trim();
     const parseWithRepairs = source => {
-        let candidate = source
-            .replace(/^\uFEFF/, '')
-            .replace(/,\s*([}\]])/g, '$1');
+        let candidate = removeJsonTrailingCommas(source.replace(/^\uFEFF/, ''));
         let lastError = null;
         for (let attempt = 0; attempt < 8; attempt += 1) {
             try {
@@ -894,10 +925,10 @@ export function buildThreadReplyRequest({ post, userComment, npcs = [], sourceCo
     const count = randomInteger(repliesMin, repliesMax);
     const thread = [
         `主帖 @${safeString(post?.handle, 'user')}（${safeString(post?.author, DEFAULT_AUTHOR)}）：${safeString(post?.content)}`,
-        ...(post?.comments || []).slice(-16).map(comment => `回帖 @${safeString(comment.handle, 'user')}（${safeString(comment.author, DEFAULT_AUTHOR)}）：${safeString(comment.content)}`),
+        ...(post?.comments || []).filter(comment => !comment?.moderation?.hidden).slice(-16).map(comment => `回帖 @${safeString(comment.handle, 'user')}（${safeString(comment.author, DEFAULT_AUTHOR)}）：${safeString(comment.content)}`),
     ].join('\n');
     const npcLibrary = npcs.length
-        ? npcs.filter(npc => !npc.blocked).map(npc => `${formatMemory(npc)}\n人设：${[safeString(npc.persona), safeString(npc.bindingContent)].filter(Boolean).join('\n绑定资料：') || '暂无完整人设'}`).join('\n\n')
+        ? npcs.filter(npc => !npc.blocked).map(npc => `${formatMemory(getReadableRoleMemory(roleMemoryFromContext(npc, sourceContext), [post]))}\n人设：${[safeString(npc.persona), safeString(npc.bindingContent)].filter(Boolean).join('\n绑定资料：') || '暂无完整人设'}`).join('\n\n')
         : '暂无固定角色，可自然生成新的论坛用户。';
     const sourceSummary = [
         sourceContext.chat && `故事正文：\n${sourceContext.chat}`,
@@ -970,7 +1001,7 @@ export function normalizeNpcProfile(raw) {
 }
 
 export function buildDirectMessageRequest({ conversation, messages = [], npc = null, sourceContext = {}, userName = 'User', settings = {} }) {
-    const memoryRole = npc || (sourceContext.roleMemories || []).find(role =>
+    const memoryRole = (npc && roleMemoryFromContext(npc, sourceContext)) || (sourceContext.roleMemories || []).find(role =>
         (conversation?.handle && safeString(role.handle).replace(/^@/, '').toLocaleLowerCase() === safeString(conversation.handle).replace(/^@/, '').toLocaleLowerCase())
         || (conversation?.type === 'char' && conversation.targetId && role.bindingType === 'char' && role.bindingTarget === conversation.targetId));
     const recent = messages.slice(-30).map(message => `${message.role === 'assistant' ? conversation.name : userName}：${safeString(message.content)}`).join('\n');
@@ -1003,7 +1034,7 @@ export function buildRoleDirectMessageRequest({ conversation, messages = [], spe
         ...(sourceContext.facts || []).map(fact => `可知事实：${fact.content}`),
     ].filter(Boolean).join('\n\n');
     return {
-        system: `${builtinPrompt(settings, 'roleDirectMessage')}\n你正在扮演“${safeString(speaker?.name)}”（@${safeString(speaker?.handle)}），与“${safeString(otherRole?.name)}”进行绝对私密的一对一私信。\n${formatMemory(speaker, { privateChannel: true })}\n人设：${safeString(speaker?.persona) || safeString(speaker?.bindingContent, '根据已有资料自然保持一致。')}\n只能使用该角色明确知道的资料和这段私信历史；不得知道第三人的私信，不得把秘密公开，不替另一位角色发言。只输出一条自然私信，不写旁白或 JSON。`,
+        system: `${builtinPrompt(settings, 'roleDirectMessage')}\n你正在扮演“${safeString(speaker?.name)}”（@${safeString(speaker?.handle)}），与“${safeString(otherRole?.name)}”进行绝对私密的一对一私信。\n${formatMemory(roleMemoryFromContext(speaker, sourceContext), { privateChannel: true })}\n人设：${safeString(speaker?.persona) || safeString(speaker?.bindingContent, '根据已有资料自然保持一致。')}\n只能使用该角色明确知道的资料和这段私信历史；不得知道第三人的私信，不得把秘密公开，不替另一位角色发言。只输出一条自然私信，不写旁白或 JSON。`,
         user: `${references ? `【允许读取的资料】\n${references}\n\n` : ''}【A-B 私密记录】\n${recent || '暂无记录'}${direction ? `\n\n【用户给本轮的幕后方向（不要逐字复述）】\n${safeString(direction)}` : ''}\n\n请由“${safeString(speaker?.name)}”发送下一条消息。`,
     };
 }

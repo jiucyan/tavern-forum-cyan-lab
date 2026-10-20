@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { COMPANION_HABITATS, renderCompanionScene, resolveCompanionScene } from '../src/companion-scenes.js';
+import { COMPANION_HABITATS, renderCompanionScene, resolveCompanionScene, resolveCompanionDisplayScene } from '../src/companion-scenes.js';
 
 const pet = (overrides = {}) => ({ habitat: 'beach', status: 'home', life: { mode: 'active' }, ...overrides });
 const home = { habitat: 'beach', temporary: false, reason: '' };
@@ -85,4 +85,105 @@ test('indoor scene metadata protects rooms from outdoor weather', () => {
     for (const id of ['meadow', 'pond', 'forest', 'snowfield', 'city', 'garden', 'beach', 'fairground']) {
         assert.match(renderCompanionScene(id), /data-indoor="false"/, `${id}: outdoor scene`);
     }
+});
+
+test('all fourteen selectable scenes keep their actual identity, label and physical environment without mutating saves', () => {
+    for (const scene of COMPANION_HABITATS) {
+        const companion = pet({ habitat: scene.id, room: { enabled: false, items: [] }, homestead: { location: 'home', visited: ['home'] } });
+        const before = structuredClone(companion);
+        const view = resolveCompanionDisplayScene(companion);
+        assert.equal(view.id, `habitat:${scene.id}`);
+        assert.equal(view.habitat, scene.id);
+        assert.equal(view.label, scene.name);
+        assert.equal(view.location, 'home');
+        assert.equal(view.indoor, scene.indoor === true);
+        assert.equal(view.outdoors, !scene.indoor);
+        assert.equal(view.homestead, false);
+        assert.equal(view.customized, false);
+        assert.equal(view.temporary, false);
+        assert.equal(view.homeStations, false, 'catalogue scenes retain their own furnishings without extra room stations');
+        assert.equal(view.aquaticLocation, scene.indoor ? 'home' : `habitat:${scene.id}`);
+        assert.deepEqual(companion, before, scene.id);
+    }
+    const invalid = resolveCompanionDisplayScene(null);
+    assert.equal(invalid.id, 'habitat:meadow');
+    assert.equal(invalid.label, '风吹草地');
+});
+
+test('real homestead destinations and the decorated home have distinct descriptor identities', () => {
+    const destinations = [['yard', 'garden', '庭院'], ['forest', 'forest', '林间小径'], ['river', 'pond', '河边'], ['kitchen', 'kitchen', '小厨房']];
+    for (const [location, habitat, label] of destinations) {
+        const companion = pet({ room: { enabled: true }, homestead: { location } });
+        const view = resolveCompanionDisplayScene(companion);
+        assert.equal(view.id, `homestead:${location}`);
+        assert.equal(view.habitat, habitat);
+        assert.equal(view.label, label);
+        assert.equal(view.location, location);
+        assert.equal(view.homestead, true);
+        assert.equal(view.indoor, location === 'kitchen');
+        assert.equal(view.customized, false);
+        assert.equal(view.homeStations, false);
+        assert.equal(view.aquaticLocation, location);
+        assert.equal(companion.room.enabled, true, 'visiting another place preserves the home layout');
+    }
+    const home = resolveCompanionDisplayScene(pet({ room: { enabled: true }, homestead: { location: 'home' } }));
+    assert.equal(home.id, 'custom-room');
+    assert.equal(home.customized, true);
+    assert.equal(home.homeStations, true);
+    assert.equal(home.indoor, true);
+    assert.equal(home.aquaticLocation, 'home');
+});
+
+test('temporary care owns the visible scene until completion and never changes the actual walking destination', () => {
+    const companion = pet({ room: { enabled: true }, homestead: { location: 'river' } });
+    const before = structuredClone(companion);
+    for (const [state, habitat, reason] of [
+        [{ action: 'feed' }, 'kitchen', 'feed'], [{ cleaning: true }, 'bathroom', 'clean'],
+        [{ sleeping: true }, 'bedroom', 'sleep'], [{ game: true }, 'garden', 'play'], [{ action: 'dance' }, 'garden', 'play'],
+    ]) {
+        const view = resolveCompanionDisplayScene(companion, state);
+        assert.equal(view.id, `habitat:${habitat}`);
+        assert.equal(view.reason, reason);
+        assert.equal(view.temporary, true);
+        assert.equal(view.homestead, false);
+        assert.equal(view.homeStations, false);
+        assert.equal(view.location, 'river');
+    }
+    assert.equal(resolveCompanionDisplayScene(companion).id, 'homestead:river');
+    assert.equal(resolveCompanionDisplayScene(companion, { foodMenu: true, action: 'feed' }).id, 'homestead:river');
+    assert.deepEqual(companion, before);
+
+    const room = pet({ room: { enabled: true }, homestead: { location: 'home' } });
+    const resting = resolveCompanionDisplayScene(room, { roomCare: true, sleeping: true });
+    assert.equal(resting.id, 'custom-room');
+    assert.equal(resting.reason, 'room-care');
+    assert.equal(resting.homeStations, false);
+    assert.equal(resolveCompanionDisplayScene(room, { action: 'feed' }).id, 'habitat:kitchen');
+    assert.equal(resolveCompanionDisplayScene(pet({ habitat: 'kitchen' }), { action: 'feed' }).temporary, false);
+});
+
+test('aquatic care preserves the actual scene while games, travel and inactive modes keep their existing priorities', () => {
+    const companion = pet({ habitat: 'meadow', homestead: { location: 'river' } });
+    for (const state of [{ action: 'feed' }, { cleaning: true }, { sleeping: true }, { roomCare: true }, { action: 'dance' }]) {
+        const view = resolveCompanionDisplayScene(companion, { ...state, aquatic: true });
+        assert.equal(view.id, 'homestead:river');
+        assert.equal(view.reason, '');
+        assert.equal(view.aquaticLocation, 'river');
+        assert.equal(view.temporary, false);
+    }
+    assert.equal(resolveCompanionDisplayScene(companion, { aquatic: true, game: true }).id, 'habitat:garden');
+    const away = resolveCompanionDisplayScene({ ...companion, status: 'away' }, { aquatic: true, cleaning: true, sleeping: true });
+    assert.equal(away.id, 'habitat:meadow');
+    assert.equal(away.reason, '');
+    assert.equal(away.homestead, false);
+    assert.equal(away.homeStations, false);
+    for (const mode of ['paused', 'daycare']) {
+        const view = resolveCompanionDisplayScene({ ...companion, life: { mode } }, { cleaning: true, game: true });
+        assert.equal(view.id, 'homestead:river');
+        assert.equal(view.reason, '');
+    }
+    const openMeadow = resolveCompanionDisplayScene(pet({ habitat: 'meadow' }), { aquatic: true, action: 'feed' });
+    assert.equal(openMeadow.id, 'habitat:meadow');
+    assert.equal(openMeadow.aquaticLocation, 'habitat:meadow');
+    assert.equal(openMeadow.homeStations, false);
 });

@@ -8,12 +8,30 @@ export const AQUATIC_HABITATS = Object.freeze({
     river: { kind: 'river', label: '河边水域', box: [20, 75, 180, 64], bounds: [46, 174, 99, 117], spawn: [132, 111], rest: [52, 116] },
 });
 
+// Independent selectable scenes have their own geometry. In particular, the
+// native pond's distant water strip is much shallower than the homestead river.
+// bodyScale fits visible artwork; it must never shrink the 44 px pointer target.
+const naturalPool = (label, kind = 'pond') => Object.freeze({ kind, label, box: [100, 158, 128, 76],
+    bounds: [140, 188, 188, 204], spawn: [164, 198], rest: [144, 203], bodyScale: 1 });
+const SCENE_AQUATIC_HABITATS = Object.freeze({
+    'habitat:meadow': naturalPool('草地小池'),
+    'habitat:forest': naturalPool('林间浅溪', 'stream'),
+    'habitat:snowfield': naturalPool('融雪小潭'),
+    'habitat:city': naturalPool('屋顶水景'),
+    'habitat:garden': naturalPool('花园小池'),
+    'habitat:fairground': naturalPool('乐园水景'),
+    'habitat:pond': Object.freeze({ kind: 'pond', label: '荷叶池塘水面', nativeWater: true, bodyScale: .4,
+        box: [115, 115, 82, 28], bounds: [132, 182, 127, 131], spawn: [160, 128], rest: [136, 130] }),
+    'habitat:beach': Object.freeze({ kind: 'sea', label: '海边水面', nativeWater: true, bodyScale: 1,
+        box: [88, 90, 156, 60], bounds: [124, 208, 120, 120], spawn: [166, 120], rest: [128, 120] }),
+});
+
 export function isAquaticCompanion(kind, stage = 'adult', avatarUrl = '') {
     return !avatarUrl && (kind === 'goldfish' || kind === 'frog' && stage === 'baby');
 }
 
 export function getAquaticHabitat(location = 'home') {
-    return AQUATIC_HABITATS[location] || AQUATIC_HABITATS.home;
+    return AQUATIC_HABITATS[location] || SCENE_AQUATIC_HABITATS[location] || AQUATIC_HABITATS.home;
 }
 
 export function isAquaticPoint(point, habitat) {
@@ -26,7 +44,7 @@ export function isAquaticPoint(point, habitat) {
 const plants = '<path d="M17 54Q9 43 16 29Q21 39 17 54M21 55Q24 42 31 36Q29 50 21 55M79 55Q86 41 81 32Q76 46 79 55" fill="none" stroke="#789f78" stroke-width="3" stroke-linecap="round"/><path d="M17 48Q9 46 10 39M23 49Q31 47 32 42" fill="none" stroke="#a4bc85" stroke-width="2"/>';
 export function renderAquaticHabitat(location = 'home') {
     const habitat = getAquaticHabitat(location);
-    if (habitat.kind === 'free') return '';
+    if (habitat.kind === 'free' || habitat.nativeWater) return '';
     const [x, y, width, height] = habitat.box;
     const style = `left:${x / 3.2}%;top:${y / 2.4}%;width:${width / 3.2}%;height:${height / 2.4}%`;
     const back = habitat.kind === 'river' ? '' : habitat.kind === 'stream'

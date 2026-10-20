@@ -160,7 +160,15 @@ export function createCompanionRoamController({
         if (observed.aquatic) {
             const [minX, maxX, minY, maxY] = observed.aquatic.bounds;
             const min = offsetPoint({ x: minX, y: minY }), max = offsetPoint({ x: maxX, y: maxY });
-            return { minX: min.x, maxX: max.x, minY: min.y, maxY: max.y };
+            // Habitat coordinates constrain the animal centre. Intersect them
+            // with its measured drawing/touch footprint when the canvas grows.
+            const hitX = Math.max(0, 44 - petWidth) / 2, hitY = Math.max(0, 44 - petHeight) / 2;
+            // offset* layout measurements round subpixels; retain one screen
+            // pixel so fractional responsive sizes cannot cross the clip edge.
+            const edge = 1;
+            const area = { minX: Math.max(min.x, hitX + edge - left), maxX: Math.min(max.x, width - edge - left - petWidth - hitX),
+                minY: Math.max(min.y, hitY + edge - top), maxY: Math.min(max.y, height - edge - top - petHeight - hitY) };
+            return area.maxX >= area.minX && area.maxY >= area.minY ? area : null;
         }
         const area = { minX: 8 - left, maxX: width - 8 - left - petWidth, minY: 8 - top, maxY: height - 8 - top - petHeight };
         // The resident's feet stay on the floor of the 320 × 240 custom room.

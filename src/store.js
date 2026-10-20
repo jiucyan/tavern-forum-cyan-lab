@@ -1,4 +1,5 @@
 import { syncStoryEventLinks } from './events.js';
+import { getReadableRoleMemory } from './memory.js';
 import {
     CHAT_DATA_KEY,
     DEFAULT_BUILTIN_PROMPTS,
@@ -13,7 +14,7 @@ import {
     WORLD_MODULE_DEFINITIONS,
     WORLD_MODULE_INJECTION_ID,
 } from './constants.js';
-import { normalizeForumDataShape } from './forum.js';
+import { normalizeForumDataShape, resolveNpcIdentity } from './forum.js';
 import { buildForumInjection, buildNpcInjection, createId, formatChatContext } from './prompt.js';
 import { buildWorldModuleInjection } from './world.js';
 
@@ -745,7 +746,7 @@ export async function getGenerationSourceContext({ includeRestricted = false } =
     const facts = boundaryEnabled
         ? data.facts.filter(fact => fact.visibility === 'public' && fact.publishable)
         : data.facts.filter(fact => fact.publishable);
-    const roleMemories = data.npcs.filter(npc => !npc.blocked);
+    const roleMemories = data.npcs.filter(npc => !resolveNpcIdentity(data, npc)?.blocked).map(npc => getReadableRoleMemory(npc, data.posts, data.deletedPosts));
     return { chat, userPersona, characterPersona, worldInfo, presetPrompts, facts, roleMemories };
 }
 
@@ -767,7 +768,7 @@ export async function getRoleScopedSourceContext(roleId, { channel = 'private', 
         ...base,
         worldInfo: base.worldInfo.filter(mayRead),
         facts: data.facts.filter(fact => mayRead(fact) && (channel === 'private' || fact.publishable)),
-        roleMemories: data.npcs.filter(npc => allowedIds.has(String(npc.id))),
+        roleMemories: data.npcs.filter(npc => allowedIds.has(String(npc.id))).map(npc => getReadableRoleMemory(npc, data.posts, data.deletedPosts)),
     };
 }
 
@@ -775,13 +776,13 @@ export function syncInjection() {
     const context = getContext();
     const settings = getSettings();
     const data = getForumData();
-    const blockedIds = new Set(data.npcs.filter(npc => npc.blocked).map(npc => npc.id));
+    const blockedIds = new Set(data.npcs.filter(npc => resolveNpcIdentity(data, npc)?.blocked).map(npc => npc.id));
     const publicPosts = data.posts.filter(post => !blockedIds.has(post.npcId) && !post.moderation?.hidden).map(post => ({
         ...post,
         comments: (post.comments || []).filter(comment => !blockedIds.has(comment.npcId)),
     }));
     const forumValue = settings.injection.enabled ? buildForumInjection(publicPosts, { ...settings.injection, template: settings.builtinPrompts.mainChatInjection }) : '';
-    const npcValue = settings.injection.npcEnabled ? buildNpcInjection(data.npcs.filter(npc => !npc.blocked), { template: settings.builtinPrompts.roleInjection }) : '';
+    const npcValue = settings.injection.npcEnabled ? buildNpcInjection(data.npcs.filter(npc => !blockedIds.has(npc.id)), { template: settings.builtinPrompts.roleInjection }) : '';
     const worldValue = buildWorldModuleInjection(data, settings);
     context.setExtensionPrompt(INJECTION_ID, forumValue, EXTENSION_PROMPT_POSITION_IN_CHAT, Number(settings.injection.depth || 1), false, EXTENSION_PROMPT_ROLE_SYSTEM);
     context.setExtensionPrompt(NPC_INJECTION_ID, npcValue, EXTENSION_PROMPT_POSITION_IN_CHAT, Number(settings.injection.depth || 1), false, EXTENSION_PROMPT_ROLE_SYSTEM);
@@ -798,22 +799,8 @@ export function clearInjection() {
 
 export async function clearAllData() {
     const context = getContext();
-    const data = getForumData();
-    const settings = getSettings();
-    for (const post of data.posts) {
-        if (post.imageKey) await globalThis.SillyTavern?.libs?.localforage?.removeItem(post.imageKey);
-    }
-    const assetKeys = [
-        settings.ui.floatingButtonImageKey,
-        settings.appearance.brandIconKey,
-        settings.appearance.wallpaperKey,
-        ...Object.values(settings.appearance.viewThemes || {}).map(theme => theme.wallpaperKey),
-        settings.profile.avatarKey,
-        settings.profile.backgroundKey,
-        ...settings.avatarLibrary.map(item => item.imageKey),
-        ...data.npcs.flatMap(npc => [npc.avatarKey, npc.backgroundKey]),
-    ].filter(Boolean);
-    for (const key of new Set(assetKeys)) await globalThis.SillyTavern?.libs?.localforage?.removeItem(key);
+    // Other chats can still reference these global assets. Reset the current
+    // references without deleting image bytes whose complete owners are unknown.
     delete context.extensionSettings[MODULE_ID];
     sessionSecrets.text.clear();
     sessionSecrets.image.clear();

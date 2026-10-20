@@ -22,6 +22,48 @@ function excerpts(items, maximum = 5) {
     return lines(items).slice(-maximum).map(item => item.length > 180 ? item.slice(0, 180) + '…' : item).join('\n');
 }
 
+// Produce a request-only view. Moderation must not make a removed public source
+// readable again through its automatically recorded history or summary excerpt.
+export function getReadableRoleMemory(npc, posts = [], deletedPosts = []) {
+    if (!npc?.memory) return npc;
+    const hidden = new Set();
+    const visible = new Set();
+    const owns = item => item?.npcId && npc.id
+        ? item.npcId === npc.id
+        : handle(item?.handle) && handle(item.handle) === handle(npc.handle);
+    const record = (item, prefix, hiddenSource) => {
+        if (item?.isAi === false || !owns(item) || !clean(item?.content)) return;
+        (hiddenSource ? hidden : visible).add(`${prefix}：${clean(item.content)}`);
+    };
+    const scanPost = (post, removed = false) => {
+        record(post, '发帖', Boolean(removed || post?.moderation?.hidden));
+        for (const comment of Array.isArray(post?.comments) ? post.comments : []) {
+            record(comment, '回帖', Boolean(removed || post?.moderation?.hidden || comment?.moderation?.hidden));
+        }
+    };
+    for (const post of Array.isArray(posts) ? posts : []) scanPost(post);
+    for (const post of Array.isArray(deletedPosts) ? deletedPosts : []) scanPost(post, true);
+    for (const activity of visible) hidden.delete(activity);
+    const memory = npc.memory;
+    const publicHistory = (Array.isArray(memory.publicHistory) ? memory.publicHistory : []).filter(activity => !hidden.has(activity));
+    const hiddenExcerpts = new Set([...hidden].map(activity => excerpts([activity], 1)));
+    for (const activity of publicHistory) hiddenExcerpts.delete(excerpts([activity], 1));
+    let publicSummary = clean(memory.publicSummary);
+    const excerptMarker = '近期公开经历摘录：\n';
+    const excerptStart = publicSummary.indexOf(excerptMarker);
+    if (excerptStart >= 0) {
+        const before = publicSummary.slice(0, excerptStart + excerptMarker.length);
+        let summaryExcerpts = `\n${publicSummary.slice(before.length)}\n`;
+        for (const excerpt of hiddenExcerpts) summaryExcerpts = summaryExcerpts.split(`\n${excerpt}\n`).join('\n');
+        publicSummary = before + summaryExcerpts.slice(1, -1);
+    }
+    return { ...npc, memory: {
+        ...memory,
+        publicHistory,
+        publicSummary,
+    } };
+}
+
 // Extractive local summaries: original records and pinned items are never deleted.
 export function refreshMemorySummary(npc, { force = false, changed = false } = {}) {
     if (!npc?.memory) return false;

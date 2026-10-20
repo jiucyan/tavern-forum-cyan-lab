@@ -5,7 +5,7 @@ import { renderCompanionRitual } from './companion-ritual-ui.js';
 import { decorateCompanionLife, renderCompanionNavigation, renderCompanionSummary } from './companion-life-ui.js';
 import { DEVICE_PAGES, renderCompanionDevice, getCompanionDeviceChoices, paintCompanionDeviceCursor } from './companion-device-ui.js';
 import { bindCompanionTouch } from './companion-touch.js';
-import { COMPANION_HABITATS, renderCompanionScene, resolveCompanionScene } from './companion-scenes.js';
+import { COMPANION_HABITATS, renderCompanionScene, resolveCompanionDisplayScene } from './companion-scenes.js';
 import { ROOM_FURNITURE, ROOM_MAX_ITEMS, normalizeCompanionRoom, createCompanionRoomPreset, addRoomItem, updateRoomItem, removeRoomItem, renderCompanionRoom, getRoomInteraction } from './companion-room.js';
 import { renderCompanionRoomLive } from './companion-room-live-ui.js';
 import { renderCompanionRoomEditor } from './companion-room-ui.js';
@@ -32,8 +32,9 @@ import { renderCompanionArtwork } from './companion-art.js';
 import { renderCompanionFoodArt } from './companion-food-art.js';
 import { renderCompanionIcon } from './companion-icons.js';
 import { buildForumBackup, readForumBackup, mergeForumBackup, previewForumImport, remapBackupAssets } from './backup.js';
+import { assertImageOperationCurrent, discardNewImageAsset, storeImageAsset } from './image-assets.js';
 import { GENERATION_MODES, selectWorldUpdates, parseThreadUpdates, recordRelationshipEvent, compactRoleMemory } from './workflows.js';
-import { DEFAULT_BUILTIN_PROMPTS, DEFAULT_SETTINGS, WORLD_MODULE_DEFINITIONS } from './constants.js';
+import { DEFAULT_BUILTIN_PROMPTS, DEFAULT_SETTINGS, MODULE_ID, WORLD_MODULE_DEFINITIONS } from './constants.js';
 import {
     buildDirectMessageRequest,
     buildForumGenerationRequest,
@@ -73,6 +74,7 @@ import {
     ensureTaskIssuerConversation,
     ensureRoleConversation,
     linkNpcAuthors,
+    resolveNpcIdentity,
 } from './forum.js';
 import {
     clearAllData,
@@ -115,6 +117,8 @@ import {
     getPermissionLevel,
     createLocalFortune,
     createLocalHealthEvent,
+    claimCompanionTravelSouvenir,
+    retryPendingInventoryRewards,
     classifyInventoryItem,
     evaluateModuleGeneration,
     filterWorldUpdatesBySafety,
@@ -784,7 +788,7 @@ function renderSwitch({ checked, action, label, disabled = false, dataset = {} }
 }
 
 function npcForId(npcId) {
-    return npcId ? getForumData().npcs.find(npc => npc.id === npcId) : null;
+    return npcId ? resolveNpcIdentity(getForumData(), npcId) : null;
 }
 
 function npcForAuthor(author) {
@@ -794,10 +798,10 @@ function npcForAuthor(author) {
     const handle = String(author?.handle || '').replace(/^@/, '').trim().toLocaleLowerCase();
     if (handle) {
         const byHandle = data.npcs.find(npc => String(npc.handle || '').replace(/^@/, '').trim().toLocaleLowerCase() === handle);
-        if (byHandle) return byHandle;
+        if (byHandle) return resolveNpcIdentity(data, byHandle);
     }
     const name = String(author?.author || author?.name || '').trim();
-    return name ? data.npcs.find(npc => String(npc.name || '').trim() === name) || null : null;
+    return name ? resolveNpcIdentity(data, data.npcs.find(npc => String(npc.name || '').trim() === name)) : null;
 }
 
 function isRoleLibraryMember(npc) {
@@ -805,7 +809,12 @@ function isRoleLibraryMember(npc) {
 }
 
 function getRoleLibrary(data = getForumData()) {
-    return (data.npcs || []).filter(isRoleLibraryMember);
+    return getNpcIdentities(data).filter(isRoleLibraryMember);
+}
+
+function getNpcIdentities(data) {
+    return [...new Map((data.npcs || []).map(npc => resolveNpcIdentity(data, npc))
+        .filter(Boolean).map(npc => [npc.id, npc])).values()];
 }
 
 function renderStoredImage({ url = '', imageKey = '', alt = '', className = '' } = {}) {
@@ -1303,7 +1312,7 @@ function prepareConversations(data) {
 
 function getConversationProfileNpc(data, conversation) {
     if (!conversation || conversation.type === 'role_dm') return null;
-    if (conversation.type === 'npc') return data.npcs.find(npc => npc.id === conversation.targetId) || null;
+    if (conversation.type === 'npc') return resolveNpcIdentity(data, conversation.targetId);
     if (conversation.type === 'char') {
         return data.npcs.find(npc => npc.bindingType === 'char' && npc.bindingTarget === conversation.targetId)
             || ensureCharacterRole(data, getChatSnapshot());
@@ -1328,7 +1337,7 @@ function strangerDmAllowed(npc, { decide = false } = {}) {
 function isConversationAllowed(data, conversation) {
     if (!conversation) return false;
     if (conversation.type === 'role_dm') {
-        return (conversation.participantIds || []).every(id => !data.npcs.find(npc => npc.id === id)?.blocked);
+        return (conversation.participantIds || []).every(id => !resolveNpcIdentity(data, id)?.blocked);
     }
     return !getConversationProfileNpc(data, conversation)?.blocked;
 }
@@ -2113,13 +2122,9 @@ function companionLivesInWater(companion) {
 }
 
 function getCompanionDisplayedScene(companion) {
-    if (companionLivesInWater(companion) && companion.status !== 'away' && !companion.life?.game) {
-        const place = HOMESTEAD_LOCATIONS.find(item => item.id === companion.homestead?.location);
-        return place && place.id !== 'home' ? { habitat: place.habitat, customized: false, outdoors: place.id !== 'kitchen' }
-            : { habitat: companion.room?.enabled ? 'custom-room' : companion.habitat, customized: Boolean(companion.room?.enabled) };
-    }
-    if (getCompanionRoomCare(companion)) return { habitat: 'custom-room', customized: true, reason: 'room-care' };
-    const scene = resolveCompanionScene(companion, {
+    return resolveCompanionDisplayScene(companion, {
+        aquatic: companionLivesInWater(companion),
+        roomCare: Boolean(getCompanionRoomCare(companion)),
         action: getCompanionVisualAction(companion),
         cleaning: viewState.companionCleaning,
         foodMenu: viewState.companionFoodMenuOpen,
@@ -2127,9 +2132,6 @@ function getCompanionDisplayedScene(companion) {
         sleeping: getCompanionLifeView(companion).sleeping,
         feedbackKind: viewState.companionFeedback?.until > Date.now() ? viewState.companionFeedback.kind : '',
     });
-    const place = HOMESTEAD_LOCATIONS.find(item => item.id === companion.homestead?.location);
-    if (place && place.id !== 'home' && companion.status !== 'away' && !scene.reason) return { habitat: place.habitat, customized: false, outdoors: place.id !== 'kitchen' };
-    return companion.room?.enabled && !scene.reason ? { ...scene, habitat: 'custom-room', customized: true } : scene;
 }
 
 function getCompanionAmbientSnapshot() {
@@ -2139,6 +2141,7 @@ function getCompanionAmbientSnapshot() {
     const data = session.data, companion = data.world.companion;
     const life = getCompanionLifeView(companion);
     const roomCare = getCompanionRoomCare(companion);
+    const scene = getCompanionDisplayedScene(companion);
     return {
         identity: data,
         owner: companion,
@@ -2146,10 +2149,10 @@ function getCompanionAmbientSnapshot() {
         furnitureHold: roomCare ? { itemId: roomCare.itemId, kind: roomCare.kind } : null,
         species: getCompanionSpecies(companion.species)?.id || 'mystery',
         growthStage: companion.life?.stage || 'adult',
-        aquatic: companionLivesInWater(companion) ? getAquaticHabitat(companion.homestead?.location) : null,
-        habitat: getCompanionDisplayedScene(companion).habitat,
-        sceneKey: companion.homestead?.location || 'home',
-        floorY: companion.homestead?.location === 'kitchen' ? 142 : getCompanionDisplayedScene(companion).outdoors ? (companion.homestead?.location === 'river' ? 149 : 86) : undefined,
+        aquatic: companionLivesInWater(companion) ? getAquaticHabitat(scene.aquaticLocation) : null,
+        habitat: scene.habitat,
+        sceneKey: scene.id,
+        floorY: scene.homestead ? scene.location === 'kitchen' ? 142 : scene.location === 'river' ? 149 : 86 : undefined,
         locked: Boolean(viewState.companionFishing || viewState.companionHomesteadPanel || (viewState.companionHomesteadBusy && !viewState.companionHomesteadApproaching) || viewState.companionHomesteadMotion),
         activity: roomCare ? 'room-care' : viewState.companionRoomCommand?.owner === companion ? 'room-command' : life.activity,
         enabled: Boolean(viewState.open && session.settings.ui.activeTab === 'services'
@@ -2401,7 +2404,7 @@ async function animateHomesteadWork(data, current, job, action, itemId, commit =
         render({ preserveScroll: true });
         const arrived = await new Promise(resolve => {
             job.cancelWalk = () => resolve(false);
-            const point = approachStove ? { x: 195, y: 153 } : getHomeStationGeometry(data.world.companion).find(station => station.id === 'packing').approach;
+            const point = approachStove ? { x: 195, y: 153 } : getHomeStationGeometry(data.world.companion, getCompanionDisplayedScene(data.world.companion)).find(station => station.id === 'packing').approach;
             if (!companionRoamController?.walkToPoint(point, { onArrive: () => resolve(true), onCancel: () => resolve(false) })) resolve(false);
         });
         if (viewState.companionHomesteadJob !== job) return { completed: false };
@@ -2557,7 +2560,7 @@ async function interactWithHomestead(target) {
             else {
                 const destination = kind === 'door' ? 'yard' : kind.replace('location:', '');
                 changeHomesteadLocation(data, destination, Date.now());
-                viewState.companionHomesteadNotice = companionLivesInWater(pet) ? `${getAquaticHabitat(destination).kind === 'free' ? '点场景空处' : '点水面'}让它游一游；你可以照常种地、采集和做菜。` : destination === 'home' ? '回到小窝啦，整理一下今天的收获吧。' : destination === 'kitchen' ? '厨房亮着暖灯。点灶台选一道菜，把今天的收获做成晚饭。' : '点空地走一走，点地块或采集物让它过去。';
+                viewState.companionHomesteadNotice = companionLivesInWater(pet) ? `${getAquaticHabitat(getCompanionDisplayedScene(pet).aquaticLocation).kind === 'free' ? '点场景空处' : '点水面'}让它游一游；你可以照常种地、采集和做菜。` : destination === 'home' ? `回到${getCompanionDisplayedScene(pet).label}啦，整理一下今天的收获吧。` : destination === 'kitchen' ? '厨房亮着暖灯。点灶台选一道菜，把今天的收获做成晚饭。' : '点空地走一走，点地块或采集物让它过去。';
                 companionRoamController?.cancel({ reset: true });
                 await saveForumData(data, true);
             }
@@ -2576,7 +2579,7 @@ async function interactWithHomestead(target) {
         ? { x: Number(target.dataset.x), y: Number(target.dataset.y) }
         : node ? { x: node.x, y: node.y + 12 }
             : plotIndex >= 0 ? { x: [47, 142, 237][plotIndex % 3], y: plotIndex < 3 ? 144 : 220 }
-                : (location === 'home' && getHomeStationGeometry(pet).find(station => station.id === kind)?.approach) || { x: 35, y: 182 };
+                : (location === 'home' && getHomeStationGeometry(pet, getCompanionDisplayedScene(pet)).find(station => station.id === kind)?.approach) || { x: 35, y: 182 };
     const accepted = companionRoamController?.walkToPoint(point, { onArrive: () => { void arrive(); } });
     if (!accepted) { viewState.companionHomesteadCommand = null; homesteadNotice('现在走不过去，先休息一下，或挪开附近的家具。'); }
 }
@@ -2649,7 +2652,7 @@ function renderCompanionAppV3(data) {
         : 0;
     const time = getLocalCompanionTime(companion);
     const weather = getLocalCompanionWeather(data, time);
-    const statusLabel = companion.status === 'away' ? `正在${companion.destination || '附近'}旅行 · ${formatTimeUntil(activeTrip?.returnAt || companion.expectedReturnAt)}后返家` : companion.status === 'resting' ? '正在小窝休息' : '在小窝等你';
+    const statusLabel = companion.status === 'away' ? `正在${companion.destination || '附近'}旅行 · ${formatTimeUntil(activeTrip?.returnAt || companion.expectedReturnAt)}后返家` : companion.status === 'resting' ? `正在${displayScene.label}休息` : `在${displayScene.label}等你`;
     const statusCode = companion.status === 'away' ? 'TRIP' : companion.status === 'resting' ? 'REST' : 'HOME';
     const bond = Math.max(0, Math.min(100, Number(companion.bond || 0)));
     const fortune = data.world.fortune;
@@ -2676,7 +2679,7 @@ function renderCompanionAppV3(data) {
         const nativeOptions = (customRoom ? '<option value="" disabled selected>自己装修的小窝</option>' : '') + options.map(item => `<option value="${item.id}" ${isSelected(item) ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('');
         return `<section class="tf-environment-group is-${field}"><header><div><small>${kicker}</small><b>${label}</b></div><span>${environmentIcon(selected)} ${escapeHtml(customRoom ? '自己装修的小窝' : selected.name)}</span></header><div class="tf-environment-options" role="listbox" aria-label="${label}">${cards}</div><select class="tf-environment-native" data-companion-environment="${field}" aria-label="${label}" tabindex="-1">${nativeOptions}</select></section>`;
     };
-    const environmentControls = `<div class="tf-pet-environment-controls"><header class="tf-environment-title"><div><small>ROOM & WEATHER</small><b>小窝环境</b></div><p>背景、天气和时间都会立即反映在掌机屏幕中。</p></header>${renderEnvironmentGroup('habitat', '小窝背景', 'SCENE', COMPANION_HABITATS, companion.habitat || 'meadow')}${renderEnvironmentGroup('weather', '小窝天气', 'WEATHER', COMPANION_WEATHER_OPTIONS, companion.weather || 'auto')}${renderEnvironmentGroup('timeOfDay', '小窝时间', 'TIME', COMPANION_TIME_OPTIONS, companion.timeOfDay || 'auto')}</div>`;
+    const environmentControls = `<div class="tf-pet-environment-controls"><header class="tf-environment-title"><div><small>SCENE & WEATHER</small><b>场景与天气</b></div><p>切换不同场景，天气和时间会随场景呈现。</p></header>${renderEnvironmentGroup('habitat', '切换场景', 'SCENE', COMPANION_HABITATS, companion.habitat || 'meadow')}${renderEnvironmentGroup('weather', '天气', 'WEATHER', COMPANION_WEATHER_OPTIONS, companion.weather || 'auto')}${renderEnvironmentGroup('timeOfDay', '时间', 'TIME', COMPANION_TIME_OPTIONS, companion.timeOfDay || 'auto')}</div>`;
     const lastFood = COMPANION_FOODS.find(item => item.id === companion.lastFood) || COMPANION_FOODS[0];
     const animationLayer = `<span class="tf-pet-animation-layer" aria-hidden="true"><span class="tf-feed-drop" data-food-animation="${escapeHtml(lastFood.id)}"><i class="tf-food-tray"><b></b><em></em></i><i class="tf-food-offering">${renderCompanionFoodArt(lastFood.id)}</i><i class="tf-food-crumb is-one"></i><i class="tf-food-crumb is-two"></i><i class="tf-food-crumb is-three"></i><i class="tf-food-species-fx"></i></span><span class="tf-pet-hearts"><i>♥</i><i>♥</i><i>♥</i><i>♥</i></span><span class="tf-play-ball">◆</span><span class="tf-play-trail"><i></i><i></i><i></i></span><span class="tf-sleep-cloud"><i>Z</i><i>z</i><i>z</i></span><span class="tf-touch-rings"><i></i><i></i><i></i></span><span class="tf-pet-stars"><i>✦</i><i>·</i><i>✦</i><i>·</i></span><span class="tf-care-action-fx"><i></i><i></i><i></i></span><span class="tf-betta-bubbles"><i></i><i></i><i></i><i></i><i></i><i></i></span></span>`;
     const weatherLayer = `<span class="tf-pet-weather" aria-hidden="true"><span class="tf-weather-sun"><i></i></span><span class="tf-weather-moon">☾<i>·</i><i>·</i><i>·</i></span><span class="tf-weather-cloud"><i></i><i></i></span><span class="tf-weather-rain">${'<i></i>'.repeat(8)}</span><span class="tf-weather-snow"><i>✣</i><i>·</i><i>✣</i><i>·</i><i>✣</i><i>·</i></span><span class="tf-weather-wind"><i></i><i></i><i></i><b>◆</b></span></span>`;
@@ -2730,7 +2733,7 @@ function renderCompanionTravelHistory(data) {
         const letters = trip.messages.filter(message => message.deliveredAt);
         const label = returned ? (trip.recalled ? '提前召回' : '已返家') : trip.status === 'away' ? '旅途中' : trip.status === 'cancelled' ? '已取消' : '准备中';
         const skipped = trip.messages.filter(message => message.skippedAt).length;
-        return '<details class="tf-travel-record"><summary><b>' + escapeHtml(trip.destination) + '</b><span>' + label + ' · ' + stamp(trip.schedulePreparedAt || trip.createdAt) + '</span></summary><p>出发：' + stamp(trip.schedulePreparedAt) + (returned ? ' · 返家：' + stamp(trip.returnedAt) : '') + '</p>' + (trip.plannedDurationMinutes ? '<p>预计用时：' + formatTravelDuration(trip.plannedDurationMinutes) + (trip.baseDurationMinutes ? '（原定 ' + formatTravelDuration(trip.baseDurationMinutes) + '）' : '') + (returned && trip.schedulePreparedAt ? ' · 实际用时：' + formatTravelDuration(Math.max(0, (trip.returnedAt - trip.schedulePreparedAt) / 60000)) : '') + '</p>' : '') + '<p>行囊：' + escapeHtml(trip.packingSummary || '旧记录未保存行囊明细') + '</p>' + trip.packingEffects.map(effect => '<p class="tf-packing-effect">' + escapeHtml(effect) + '</p>').join('') + (trip.departureMessage ? '<p>出发留言：' + escapeHtml(trip.departureMessage) + '</p>' : '') + '<h4>收到的来信 · ' + letters.length + ' 封</h4>' + (letters.map(message => '<blockquote><small>' + stamp(message.deliveredAt) + '</small><p>' + escapeHtml(message.content) + '</p></blockquote>').join('') || '<p>暂无来信</p>') + (returned ? (trip.recalled ? '<p>提前结束本次旅行，' + skipped + ' 封未抵达的来信已取消。出发时的食物不退还。</p>' : '<p>' + escapeHtml(trip.notes || '没有额外的旅行摘要。') + '</p><p>返家留言：' + escapeHtml(trip.returnMessage || '平安回家。') + '</p>') + '<p>纪念品：' + escapeHtml(trip.souvenir || '这次没有带回纪念品') + (trip.souvenirClaimedAt ? ' · 已放入背包' : '') + '</p>' + (trip.souvenirDescription ? '<p>' + escapeHtml(trip.souvenirDescription) + '</p>' : '') + '<p>返还道具：' + escapeHtml(trip.packingItems.filter(item => !item.consumed).map(item => item.name).join('、') || '无') + '</p>' : '<p>完整摘要与纪念品将在返家后揭晓。</p>') + '</details>';
+        return '<details class="tf-travel-record"><summary><b>' + escapeHtml(trip.destination) + '</b><span>' + label + ' · ' + stamp(trip.schedulePreparedAt || trip.createdAt) + '</span></summary><p>出发：' + stamp(trip.schedulePreparedAt) + (returned ? ' · 返家：' + stamp(trip.returnedAt) : '') + '</p>' + (trip.plannedDurationMinutes ? '<p>预计用时：' + formatTravelDuration(trip.plannedDurationMinutes) + (trip.baseDurationMinutes ? '（原定 ' + formatTravelDuration(trip.baseDurationMinutes) + '）' : '') + (returned && trip.schedulePreparedAt ? ' · 实际用时：' + formatTravelDuration(Math.max(0, (trip.returnedAt - trip.schedulePreparedAt) / 60000)) : '') + '</p>' : '') + '<p>行囊：' + escapeHtml(trip.packingSummary || '旧记录未保存行囊明细') + '</p>' + trip.packingEffects.map(effect => '<p class="tf-packing-effect">' + escapeHtml(effect) + '</p>').join('') + (trip.departureMessage ? '<p>出发留言：' + escapeHtml(trip.departureMessage) + '</p>' : '') + '<h4>收到的来信 · ' + letters.length + ' 封</h4>' + (letters.map(message => '<blockquote><small>' + stamp(message.deliveredAt) + '</small><p>' + escapeHtml(message.content) + '</p></blockquote>').join('') || '<p>暂无来信</p>') + (returned ? (trip.recalled ? '<p>提前结束本次旅行，' + skipped + ' 封未抵达的来信已取消。出发时的食物不退还。</p>' : '<p>' + escapeHtml(trip.notes || '没有额外的旅行摘要。') + '</p><p>返家留言：' + escapeHtml(trip.returnMessage || '平安回家。') + '</p>') + '<p>纪念品：' + escapeHtml(trip.souvenir || '这次没有带回纪念品') + (trip.souvenirClaimedAt ? ' · 已放入背包' : trip.souvenir ? ' · 待收纳' : '') + '</p>' + (trip.souvenirDescription ? '<p>' + escapeHtml(trip.souvenirDescription) + '</p>' : '') + '<p>返还道具：' + escapeHtml(trip.packingItems.filter(item => !item.consumed).map(item => item.name).join('、') || '无') + '</p>' : '<p>完整摘要与纪念品将在返家后揭晓。</p>') + '</details>';
     }).join('') || '<p>从第一次出发开始，行囊、来信和收获都会保存在这里。</p>') + '</section>';
 }
 
@@ -2850,14 +2853,19 @@ async function handleCompanionRoomAction(action, target, event) {
         const data = draft.owner;
         assertForumDataCurrent(data);
         const previous = normalizeCompanionRoom(data.world.companion.room);
+        const previousLocation = data.world.companion.homestead.location;
         const next = normalizeCompanionRoom(action === 'room-save' ? { ...draft.data, enabled: true } : { ...previous, enabled: false });
         draft.saving = true; draft.notice = '正在保存小窝…';
         paintCompanionRoomEditor();
         data.world.companion.room = next;
+        data.world.companion.homestead.location = 'home';
         try {
             await saveForumData(data, true);
         } catch (error) {
-            if (JSON.stringify(data.world.companion.room) === JSON.stringify(next)) data.world.companion.room = previous;
+            if (JSON.stringify(data.world.companion.room) === JSON.stringify(next)) {
+                data.world.companion.room = previous;
+                if (data.world.companion.homestead.location === 'home') data.world.companion.homestead.location = previousLocation;
+            }
             draft.saving = false;
             draft.notice = '保存没有完成，草稿还在，可以重试或取消修改。';
             if (draft.current() && viewState.companionRoomDraft === draft) paintCompanionRoomEditor();
@@ -2866,7 +2874,7 @@ async function handleCompanionRoomAction(action, target, event) {
         if (!draft.current() || viewState.companionRoomDraft !== draft || draft.owner !== getForumData()) return;
         viewState.companionRoomDraft = null;
         viewState.companionPanel = 'home'; viewState.companionDeviceCursor = -1;
-        notify('success', action === 'room-save' ? '小窝布置已保存，快陪它住进来吧。' : '已切回场景小窝，保存的装修还在。');
+        notify('success', action === 'room-save' ? '小窝布置已保存，快陪它住进来吧。' : '已切回所选场景，保存的装修还在。');
         return render({ preserveScroll: true });
     }
     if (action === 'room-cancel') {
@@ -3158,7 +3166,7 @@ function renderCompanionAppV4(data) {
         html = html.replace(/<div class="tf-pet-screen-menu[^\"]*">[\s\S]*?<div class="tf-pet-screen-bottom">/, `${menu}<div class="tf-pet-screen-bottom">`);
     }
     html = decorateCompanionLife(html, data, { ritual: viewState.companionRitual, cleaning: viewState.companionCleaning, progress: viewState.companionCleanProgress, foodMenu: viewState.companionFoodMenuOpen, feedback: viewState.companionFeedback, gameResultOpen: viewState.companionGameResultOpen, renderPortrait: (photo, stage) => renderPixelCompanion(photo.species, 'home', true, { ...photo, life: { stage } }) });
-    return renderCompanionDevice(html, data, viewState, [COMPANION_CARE_ACTIONS[2], ...extraActions]);
+    return renderCompanionDevice(html, data, viewState, [COMPANION_CARE_ACTIONS[2], ...extraActions], displayScene);
 }
 
 function renderInventoryApp(data) {
@@ -4091,7 +4099,7 @@ async function openForumPromptViewer() {
             settings,
             existingPosts: data.posts,
             sourceContext,
-            excludedRoles: data.npcs.filter(npc => npc.blocked),
+            excludedRoles: data.npcs.filter(npc => resolveNpcIdentity(data, npc)?.blocked),
             linkedWorldInstruction,
         });
         const eventInstruction = buildStoryEventInstruction(data, { allowNew: (viewState.generationMode || 'all') === 'all' });
@@ -4186,8 +4194,7 @@ async function removePostImages(posts) {
     for (const post of posts || []) {
         const keys = [post.imageKey, ...(post.comments || []).map(comment => comment.imageKey)].filter(Boolean);
         for (const key of keys) {
-            await globalThis.SillyTavern?.libs?.localforage?.removeItem(key);
-            imageMemory.delete(key);
+            releaseImageAsset(key);
         }
     }
 }
@@ -4311,7 +4318,7 @@ function routeProactiveDirectMessages(data, events) {
     const routed = [];
     for (const event of (events || []).slice(0, settings.social.proactiveDms.maxPerRun)) {
         const key = event.targetHandle.replace(/^@/, '').toLocaleLowerCase();
-        const npc = data.npcs.find(item => String(item.handle || '').replace(/^@/, '').toLocaleLowerCase() === key);
+        const npc = resolveNpcIdentity(data, data.npcs.find(item => String(item.handle || '').replace(/^@/, '').toLocaleLowerCase() === key));
         if (!npc || !isRoleLibraryMember(npc) || npc.blocked || (settings.social.proactiveDms.requireFollow && !npc.followsUser)) continue;
         const conversation = npc.systemRole ? ensureCharacterConversation(data, getChatSnapshot()) : ensureNpcConversation(data, npc);
         const message = addConversationMessage(conversation, event.content, { senderNpcId: npc.id, senderName: npc.name, kind: 'proactive', eventId: event.eventId || '' });
@@ -4391,7 +4398,7 @@ async function runGeneration({ automatic = false, recoveredLog = null } = {}) {
         const linkedWorldInstruction = settings.orchestration.enabled
             ? buildLinkedWorldInstruction({ settings: instructionSettings, data })
             : '';
-        const request = buildForumGenerationRequest({ ...getChatSnapshot(), settings, existingPosts: data.posts, sourceContext: await getGenerationSourceContext(), excludedRoles: data.npcs.filter(npc => npc.blocked), linkedWorldInstruction });
+        const request = buildForumGenerationRequest({ ...getChatSnapshot(), settings, existingPosts: data.posts, sourceContext: await getGenerationSourceContext(), excludedRoles: data.npcs.filter(npc => resolveNpcIdentity(data, npc)?.blocked), linkedWorldInstruction });
         const eventInstruction = buildStoryEventInstruction(data, { allowNew: mode === 'all' });
         if (eventInstruction) appendWorldRequestInstruction(request, eventInstruction);
         controller.signal.throwIfAborted();
@@ -4426,7 +4433,7 @@ async function runGeneration({ automatic = false, recoveredLog = null } = {}) {
         const postsMaximum = Math.max(1, Math.min(10, Number(settings.generation.postsMax || 5)));
         const commentsMaximum = Math.max(0, Math.min(15, Number(settings.generation.commentsMax ?? 3)));
         generated.posts = generated.posts.slice(0, postsMaximum);
-        const isBlockedAuthor = author => data.npcs.some(npc => npc.blocked && (
+        const isBlockedAuthor = author => data.npcs.some(npc => resolveNpcIdentity(data, npc)?.blocked && (
             (String(npc.handle || '').replace(/^@/, '').toLocaleLowerCase() === String(author?.handle || '').replace(/^@/, '').toLocaleLowerCase())
             || (String(npc.name || '').trim() && String(npc.name || '').trim() === String(author?.author || author?.name || '').trim())
         ));
@@ -4901,9 +4908,9 @@ async function runThreadContinuation(postId, userComment) {
     render();
     try {
         const data = getForumData();
-        const request = buildThreadReplyRequest({ post, userComment, npcs: data.npcs, sourceContext: await getGenerationSourceContext(), settings: getSettings() });
+        const request = buildThreadReplyRequest({ post, userComment, npcs: getNpcIdentities(data), sourceContext: await getGenerationSourceContext(), settings: getSettings() });
         const replyMaximum = Math.max(1, Math.min(8, Number(getSettings().generation.repliesMax || 3)));
-        const replies = normalizeThreadReplies(await generateScopedText(data, getModuleApiConfig('forum'), request)).filter(reply => !data.npcs.some(npc => npc.blocked && (
+        const replies = normalizeThreadReplies(await generateScopedText(data, getModuleApiConfig('forum'), request)).filter(reply => !data.npcs.some(npc => resolveNpcIdentity(data, npc)?.blocked && (
             String(npc.handle || '').replace(/^@/, '').toLocaleLowerCase() === String(reply.handle || '').replace(/^@/, '').toLocaleLowerCase()
             || (String(npc.name || '').trim() && String(npc.name || '').trim() === String(reply.author || '').trim())
         ))).slice(0, replyMaximum);
@@ -4961,6 +4968,21 @@ async function runNpcProfileGeneration(npcId) {
     }
 }
 
+async function saveGeneratedImage(data, item, image, prefix, isPresent) {
+    const isCurrent = () => { assertForumDataCurrent(data); return isPresent(); };
+    const storage = globalThis.SillyTavern?.libs?.localforage;
+    assertImageOperationCurrent(isCurrent);
+    const key = image.type === 'base64'
+        ? await storeImageAsset(image.value, { storage, cache: imageMemory, prefix, isCurrent })
+        : '';
+    try { assertImageOperationCurrent(isCurrent); }
+    catch (error) { await discardNewImageAsset(key, storage, imageMemory); throw error; }
+    releaseImageAsset(item.imageKey);
+    item.imageKey = key;
+    item.imageUrl = key ? '' : image.value;
+    await saveForumData(data, true);
+}
+
 async function runImageGeneration(postId, rerender = true) {
     const data = getForumData();
     const post = data.posts.find(item => item.id === postId);
@@ -4986,20 +5008,7 @@ async function runImageGeneration(postId, rerender = true) {
     if (rerender) render();
     try {
         const image = await generateForumImage(config, promptText);
-        assertForumDataCurrent(data);
-        if (post.imageKey) await globalThis.SillyTavern?.libs?.localforage?.removeItem(post.imageKey);
-        if (image.type === 'base64') {
-            const key = `tavern-forum:image:${post.id}`;
-            if (!globalThis.SillyTavern?.libs?.localforage) throw new Error('当前酒馆不支持本地图片存储');
-            await globalThis.SillyTavern.libs.localforage.setItem(key, image.value);
-            imageMemory.set(key, image.value);
-            post.imageKey = key;
-            post.imageUrl = '';
-        } else {
-            post.imageUrl = image.value;
-            post.imageKey = '';
-        }
-        await saveForumData(data, true);
+        await saveGeneratedImage(data, post, image, 'post', () => data.posts.includes(post));
     } catch (error) {
         notify('error', error.message || '生图失败');
     } finally {
@@ -5035,20 +5044,7 @@ async function runCommentImageGeneration(postId, commentId, rerender = true) {
     if (rerender) render();
     try {
         const image = await generateForumImage(config, promptText);
-        assertForumDataCurrent(data);
-        if (comment.imageKey) await globalThis.SillyTavern?.libs?.localforage?.removeItem(comment.imageKey);
-        if (image.type === 'base64') {
-            const key = `tavern-forum:comment-image:${comment.id}`;
-            if (!globalThis.SillyTavern?.libs?.localforage) throw new Error('当前酒馆不支持本地图片存储');
-            await globalThis.SillyTavern.libs.localforage.setItem(key, image.value);
-            imageMemory.set(key, image.value);
-            comment.imageKey = key;
-            comment.imageUrl = '';
-        } else {
-            comment.imageUrl = image.value;
-            comment.imageKey = '';
-        }
-        await saveForumData(data, true);
+        await saveGeneratedImage(data, comment, image, 'comment', () => data.posts.includes(post) && post.comments.includes(comment));
     } catch (error) {
         notify('error', error.message || '评论生图失败');
     } finally {
@@ -5164,7 +5160,7 @@ async function runDirectMessageReply(conversationId) {
     viewState.dmBusy = true;
     render();
     try {
-        const baseNpc = conversation.type === 'npc' ? data.npcs.find(item => item.id === conversation.targetId) : null;
+        const baseNpc = conversation.type === 'npc' ? getConversationProfileNpc(data, conversation) : null;
         const npc = baseNpc ? { ...baseNpc, persona: [baseNpc.persona, baseNpc.bindingContent].filter(Boolean).join('\n绑定资料：') } : null;
         const charRole = conversation.type === 'char' ? data.npcs.find(item => item.bindingType === 'char' && item.bindingTarget === conversation.targetId) : null;
         const scopedRole = baseNpc || charRole;
@@ -5195,9 +5191,10 @@ async function runRoleDirectMessage(conversationId, speakerId, direction = '') {
     const data = getForumData();
     const conversation = data.conversations.find(item => item.id === conversationId && item.type === 'role_dm');
     if (!conversation || viewState.dmBusy) return;
-    const speaker = data.npcs.find(npc => npc.id === speakerId && conversation.participantIds.includes(npc.id));
-    const otherRole = data.npcs.find(npc => conversation.participantIds.includes(npc.id) && npc.id !== speaker?.id);
-    if (!speaker || !otherRole || speaker.blocked || otherRole.blocked) return notify('warning', '私信参与者不存在或已被拉黑');
+    const originalSpeaker = data.npcs.find(npc => npc.id === speakerId && conversation.participantIds.includes(npc.id));
+    const speaker = resolveNpcIdentity(data, originalSpeaker);
+    const otherRole = resolveNpcIdentity(data, data.npcs.find(npc => conversation.participantIds.includes(npc.id) && npc.id !== originalSpeaker?.id));
+    if (!speaker || !otherRole || speaker.id === otherRole.id || speaker.blocked || otherRole.blocked) return notify('warning', '私信参与者不存在、身份重复或已被拉黑');
     viewState.dmBusy = true;
     render();
     try {
@@ -5237,7 +5234,7 @@ function readFile(input) {
     return file ? file.text() : Promise.resolve(null);
 }
 
-async function readImageAsset(input, prefix) {
+async function readImageAsset(input, prefix, isCurrent = () => true, localforage = globalThis.SillyTavern?.libs?.localforage) {
     const file = input.files?.[0];
     input.value = '';
     if (!file) return null;
@@ -5249,28 +5246,95 @@ async function readImageAsset(input, prefix) {
         reader.onerror = () => reject(new Error('图片读取失败'));
         reader.readAsDataURL(file);
     });
-    const localforage = globalThis.SillyTavern?.libs?.localforage;
+    assertImageOperationCurrent(isCurrent);
     if (!localforage) return { url: dataUrl, imageKey: '', name: file.name };
-    const imageKey = `tavern-forum:asset:${prefix}:${createId('image')}`;
-    await localforage.setItem(imageKey, dataUrl);
-    imageMemory.set(imageKey, dataUrl);
+    const imageKey = await storeImageAsset(dataUrl, { storage: localforage, cache: imageMemory, prefix, isCurrent });
     return { url: '', imageKey, name: file.name };
 }
 
-async function removeImageAsset(imageKey) {
+async function importImageAsset(input) {
+    const inputId = input.id;
+    const currentChat = captureChatScope();
+    const data = getForumData();
+    const settings = getSettings();
+    const storage = globalThis.SillyTavern?.libs?.localforage;
+    const npcField = inputId === 'tf-import-npc-avatar-file' ? 'pendingNpcAvatarId'
+        : inputId === 'tf-import-npc-background-file' ? 'pendingNpcBackgroundId' : '';
+    const npc = npcField ? data.npcs.find(item => item.id === viewState[npcField]) : null;
+    const viewId = inputId === 'tf-import-view-wallpaper-file' ? viewState.pendingViewWallpaperId : '';
+    const theme = viewId ? settings.appearance.viewThemes[viewId] : null;
+    const profile = settings.profile, appearance = settings.appearance, ui = settings.ui;
+    const avatarName = inputId === 'tf-import-avatar-library-file' ? getRoot().querySelector('#tf-avatar-name')?.value.trim() : '';
+    if (npcField) viewState[npcField] = '';
+    if (inputId === 'tf-import-view-wallpaper-file') viewState.pendingViewWallpaperId = '';
+    if ((npcField && !npc) || (inputId === 'tf-import-view-wallpaper-file' && !theme)) { input.value = ''; return; }
+    const isCurrent = () => {
+        assertForumDataCurrent(data);
+        return currentChat() && globalThis.SillyTavern.getContext().extensionSettings[MODULE_ID] === settings
+            && (!npcField || data.npcs.includes(npc))
+            && (!theme || settings.appearance.viewThemes[viewId] === theme)
+            && settings.profile === profile && settings.appearance === appearance && settings.ui === ui;
+    };
+    let asset = null, attached = false;
+    try {
+        asset = await readImageAsset(input, inputId.replace('tf-import-', '').replace('-file', ''), isCurrent, storage);
+        if (!asset) return;
+        assertImageOperationCurrent(isCurrent);
+        if (npcField) {
+            attached = true;
+            if (npcField === 'pendingNpcAvatarId') {
+                releaseImageAsset(npc.avatarKey);
+                updateNpcAvatar(npc, asset, data);
+            } else {
+                releaseImageAsset(npc.backgroundKey);
+                npc.backgroundUrl = asset.url;
+                npc.backgroundKey = asset.imageKey;
+                npc.updatedAt = Date.now();
+            }
+            await saveForumData(data, true);
+        } else {
+            attached = true;
+            if (inputId === 'tf-import-avatar-library-file') {
+                settings.avatarLibrary.push({ id: createId('avatar'), name: avatarName || asset.name.replace(/\.[^.]+$/, ''), url: asset.url, imageKey: asset.imageKey });
+            } else {
+                const owner = inputId === 'tf-import-floating-button-file' ? ui
+                    : inputId === 'tf-import-brand-icon-file' || inputId === 'tf-import-forum-wallpaper-file' ? appearance
+                        : theme || profile;
+                const kind = owner === ui ? 'floatingButtonImage'
+                    : inputId === 'tf-import-brand-icon-file' ? 'brandIcon'
+                        : inputId === 'tf-import-forum-wallpaper-file' || theme ? 'wallpaper'
+                            : inputId.includes('background') ? 'background' : 'avatar';
+                releaseImageAsset(owner[`${kind}Key`]);
+                owner[`${kind}Url`] = asset.url;
+                owner[`${kind}Key`] = asset.imageKey;
+                if (theme) theme.inherit = false;
+            }
+            saveSettings();
+            if (inputId === 'tf-import-floating-button-file') updateLaunchers();
+        }
+        if (currentChat()) render();
+    } catch (error) {
+        if (!attached && asset?.imageKey) await discardNewImageAsset(asset.imageKey, storage, imageMemory);
+        throw error;
+    }
+}
+
+function releaseImageAsset(imageKey) {
     if (!imageKey) return;
-    await globalThis.SillyTavern?.libs?.localforage?.removeItem(imageKey);
+    // Other chats and the avatar library may still own this persistent image.
+    // Only detach the current reference; do not delete shared stored content.
     imageMemory.delete(imageKey);
 }
 
-function updateNpcAvatar(npc, { url = '', imageKey = '', avatarId = '' } = {}) {
+function updateNpcAvatar(npc, { url = '', imageKey = '', avatarId = '' } = {}, data = getForumData()) {
     if (!npc) return;
+    assertForumDataCurrent(data);
     npc.avatarUrl = url;
     npc.avatarKey = imageKey;
     npc.avatarId = avatarId;
     npc.avatarCustomized = true;
     npc.updatedAt = Date.now();
-    for (const conversation of getForumData().conversations.filter(item => item.type === 'npc' && item.targetId === npc.id)) {
+    for (const conversation of data.conversations.filter(item => item.type === 'npc' && item.targetId === npc.id)) {
         conversation.avatarUrl = url;
         conversation.avatarKey = imageKey;
     }
@@ -5364,7 +5428,7 @@ function handleSwitchAction(action, checked) {
 
 async function setRoleModeration(npcId, kind, enabled) {
     const data = getForumData();
-    const npc = data.npcs.find(item => item.id === npcId);
+    const npc = resolveNpcIdentity(data, npcId);
     if (!npc) return false;
     if (kind === 'muted') {
         npc.muted = Boolean(enabled);
@@ -5977,12 +6041,7 @@ async function handleRootClick(event) {
         if (trip) {
             trip.status = next[trip.status] || 'away';
             trip.updatedAt = Date.now();
-            if (trip.status === 'returned' && trip.souvenir && !trip.souvenirClaimedAt) {
-                const companionName = data.world.companion.name || trip.traveler || '旅伴';
-                const source = `${companionName}返程 · ${trip.id}`;
-                if (!data.world.inventory.some(item => item.name === trip.souvenir && item.source === source)) data.world.inventory.push({ id: createId('item'), name: trip.souvenir, description: `${companionName}从${trip.destination}带回的小物件。`, quantity: 1, effect: '可收藏，也可在合适的情境中使用。', source, usable: true, consumed: false, createdAt: Date.now(), updatedAt: Date.now() });
-                trip.souvenirClaimedAt = Date.now();
-            }
+            if (trip.status === 'returned') claimCompanionTravelSouvenir(data, trip.id);
             await saveForumData(data, true);
             syncInjection();
         }
@@ -6020,6 +6079,7 @@ async function handleRootClick(event) {
             addConversationMessage(conversation, data.world.companion.message, { kind: 'companion' });
             addModuleNotification(data, 'companion', result.summary, { actorName: data.world.companion.name, moduleId: 'travel', conversationId: conversation.id });
         }
+        retryPendingInventoryRewards(data);
         await saveForumData(data, true);
         syncInjection();
         notify('success', result.summary);
@@ -6029,10 +6089,12 @@ async function handleRootClick(event) {
         if (!window.confirm('确定删除这条模块记录吗？')) return;
         const kind = target.dataset.kind;
         const id = target.closest('[data-world-item-id]')?.dataset.worldItemId;
-        if (kind === 'inventory' && isInventoryItemTraveling(getForumData(), id)) return notify('info', '这件道具正在旅行中，返家后才能删除');
-        if (['tasks', 'trips', 'inventory', 'health'].includes(kind)) getForumData().world[kind] = getForumData().world[kind].filter(item => item.id !== id);
+        const data = getForumData();
+        if (kind === 'inventory' && isInventoryItemTraveling(data, id)) return notify('info', '这件道具正在旅行中，返家后才能删除');
+        if (['tasks', 'trips', 'inventory', 'health'].includes(kind)) data.world[kind] = data.world[kind].filter(item => item.id !== id);
+        if (kind === 'inventory') retryPendingInventoryRewards(data);
         if (kind === 'inventory' && viewState.selectedInventoryItemId === id) viewState.selectedInventoryItemId = '';
-        await saveForumData(getForumData(), true);
+        await saveForumData(data, true);
         syncInjection();
         return render();
     }
@@ -6120,7 +6182,8 @@ async function handleRootClick(event) {
     if (action === 'back-dm-list') { viewState.mobileDmChat = false; return render(); }
     if (action === 'start-npc-dm') {
         const data = getForumData();
-        const npc = data.npcs.find(item => item.id === target.dataset.npcId);
+        const npc = resolveNpcIdentity(data, target.dataset.npcId);
+        if (npc?.blocked) return notify('warning', '已拉黑的角色不能继续私信');
         if (!isRoleLibraryMember(npc)) return notify('warning', '请先生成该角色的人设，加入角色库后才能开启私信');
         if (!strangerDmAllowed(npc, { decide: true })) {
             await saveForumData(data, true);
@@ -6189,10 +6252,9 @@ async function handleRootClick(event) {
     }
 
     if (action === 'open-npc') {
-        const npcId = target.dataset.npcId;
-        const npc = getForumData().npcs.find(item => item.id === npcId);
+        const npc = npcForId(target.dataset.npcId);
         if (!npc) return;
-        viewState.publicNpcId = npcId;
+        viewState.publicNpcId = npc.id;
         viewState.selectedPostId = '';
         getSettings().ui.activeTab = 'home';
         saveSettings();
@@ -6200,10 +6262,9 @@ async function handleRootClick(event) {
         return;
     }
     if (action === 'edit-npc') {
-        const npcId = target.dataset.npcId;
-        const npc = getForumData().npcs.find(item => item.id === npcId);
+        const npc = npcForId(target.dataset.npcId);
         if (!isRoleLibraryMember(npc)) return notify('warning', '该角色尚未生成人设');
-        viewState.selectedNpcId = npcId;
+        viewState.selectedNpcId = npc.id;
         viewState.publicNpcId = '';
         viewState.selectedPostId = '';
         setMeSection('npcs');
@@ -6272,7 +6333,7 @@ async function handleRootClick(event) {
     if (action === 'clear-view-wallpaper') {
         const theme = getSettings().appearance.viewThemes[target.dataset.viewId];
         if (!theme) return;
-        await removeImageAsset(theme.wallpaperKey);
+        releaseImageAsset(theme.wallpaperKey);
         theme.wallpaperUrl = '';
         theme.wallpaperKey = '';
         saveSettings();
@@ -6281,7 +6342,7 @@ async function handleRootClick(event) {
     if (action === 'clear-brand-icon' || action === 'clear-forum-wallpaper') {
         const appearance = getSettings().appearance;
         const kind = action === 'clear-brand-icon' ? 'brandIcon' : 'wallpaper';
-        await removeImageAsset(appearance[`${kind}Key`]);
+        releaseImageAsset(appearance[`${kind}Key`]);
         appearance[`${kind}Url`] = '';
         appearance[`${kind}Key`] = '';
         saveSettings();
@@ -6290,7 +6351,7 @@ async function handleRootClick(event) {
     if (action === 'upload-floating-button-image') return getRoot().querySelector('#tf-import-floating-button-file')?.click();
     if (action === 'clear-floating-button-image') {
         const ui = getSettings().ui;
-        await removeImageAsset(ui.floatingButtonImageKey);
+        releaseImageAsset(ui.floatingButtonImageKey);
         ui.floatingButtonImageUrl = '';
         ui.floatingButtonImageKey = '';
         saveSettings();
@@ -6314,7 +6375,7 @@ async function handleRootClick(event) {
     if (action === 'clear-profile-avatar' || action === 'clear-profile-background') {
         const profile = getSettings().profile;
         const kind = action.endsWith('background') ? 'background' : 'avatar';
-        await removeImageAsset(profile[`${kind}Key`]);
+        releaseImageAsset(profile[`${kind}Key`]);
         profile[`${kind}Url`] = '';
         profile[`${kind}Key`] = '';
         saveSettings();
@@ -6322,32 +6383,34 @@ async function handleRootClick(event) {
     }
     if (action === 'select-profile-default-avatar') {
         const profile = getSettings().profile;
-        await removeImageAsset(profile.avatarKey);
+        releaseImageAsset(profile.avatarKey);
         profile.avatarUrl = DEFAULT_AVATARS[Number(target.dataset.avatarIndex)]?.url || createDefaultAvatarDataUrl(profile.displayName || 'me');
         profile.avatarKey = '';
         saveSettings();
         return render();
     }
     if (action === 'select-npc-default-avatar' || action === 'clear-npc-avatar') {
-        const npc = getForumData().npcs.find(item => item.id === target.dataset.npcId);
+        const data = getForumData();
+        const npc = data.npcs.find(item => item.id === target.dataset.npcId);
         if (!npc) return;
-        await removeImageAsset(npc.avatarKey);
+        releaseImageAsset(npc.avatarKey);
         const index = action === 'select-npc-default-avatar' ? Number(target.dataset.avatarIndex) : null;
-        updateNpcAvatar(npc, { url: Number.isInteger(index) ? DEFAULT_AVATARS[index]?.url : createDefaultAvatarDataUrl(`${npc.name}:${Date.now()}`) });
-        await saveForumData(getForumData(), true);
+        updateNpcAvatar(npc, { url: Number.isInteger(index) ? DEFAULT_AVATARS[index]?.url : createDefaultAvatarDataUrl(`${npc.name}:${Date.now()}`) }, data);
+        await saveForumData(data, true);
         return render();
     }
     if (action === 'clear-npc-background') {
-        const npc = getForumData().npcs.find(item => item.id === target.dataset.npcId);
+        const data = getForumData();
+        const npc = data.npcs.find(item => item.id === target.dataset.npcId);
         if (!npc) return;
-        await removeImageAsset(npc.backgroundKey);
+        releaseImageAsset(npc.backgroundKey);
         npc.backgroundUrl = '';
         npc.backgroundKey = '';
-        await saveForumData(getForumData(), true);
+        await saveForumData(data, true);
         return render();
     }
     if (action === 'toggle-follow-role') {
-        const npc = getForumData().npcs.find(item => item.id === target.dataset.npcId);
+        const npc = npcForId(target.dataset.npcId);
         if (!npc) return;
         if (npc.blocked) return notify('warning', '请先取消拉黑再关注');
         npc.followedByUser = !npc.followedByUser;
@@ -6356,7 +6419,7 @@ async function handleRootClick(event) {
         return render();
     }
     if (action === 'toggle-role-muted' || action === 'toggle-role-blocked') {
-        const npc = getForumData().npcs.find(item => item.id === target.dataset.npcId);
+        const npc = npcForId(target.dataset.npcId);
         if (!npc) return;
         const kind = action === 'toggle-role-muted' ? 'muted' : 'blocked';
         const next = !npc[kind];
@@ -6381,7 +6444,7 @@ async function handleRootClick(event) {
     }
     if (action === 'delete-avatar-url') {
         const item = getSettings().avatarLibrary.find(entry => entry.id === target.dataset.avatarId);
-        await removeImageAsset(item?.imageKey);
+        releaseImageAsset(item?.imageKey);
         getSettings().avatarLibrary = getSettings().avatarLibrary.filter(entry => entry.id !== target.dataset.avatarId);
         saveSettings();
         return render();
@@ -6433,6 +6496,7 @@ async function handleRootClick(event) {
     if (action === 'generate-moderator-profiles') {
         if (viewState.moduleBusy.has('moderator-profiles')) return;
         if (!hasActiveChat()) return notify('warning', '请先打开一个角色聊天');
+        const data = getForumData();
         viewState.moduleBusy.add('moderator-profiles');
         render({ preserveScroll: true });
         try {
@@ -6443,7 +6507,6 @@ async function handleRootClick(event) {
             assertForumDataCurrent(data);
             const profiles = normalizeModeratorProfiles(result.text);
             if (!profiles.length) throw new Error('没有读取到管理员人设');
-            const data = getForumData();
             const usedHandles = new Set(data.npcs.map(npc => String(npc.handle || '').toLocaleLowerCase()));
             for (const profile of profiles) {
                 let handle = profile.handle;
@@ -7066,7 +7129,7 @@ function handleRootChange(event) {
         }
         if (target.dataset.action === 'toggle-role-follows-user') {
             const data = getForumData();
-            const npc = data.npcs.find(item => item.id === target.closest('[data-npc-id]')?.dataset.npcId);
+            const npc = resolveNpcIdentity(data, target.closest('[data-npc-id]')?.dataset.npcId);
             if (npc) {
                 const wasMutual = npc.followsUser && npc.followedByUser;
                 npc.followsUser = target.checked;
@@ -7078,7 +7141,7 @@ function handleRootChange(event) {
             return render({ preserveScroll: true });
         }
         if (target.dataset.action === 'toggle-role-muted' || target.dataset.action === 'toggle-role-blocked') {
-            const npc = getForumData().npcs.find(item => item.id === target.closest('[data-npc-id]')?.dataset.npcId);
+            const npc = npcForId(target.closest('[data-npc-id]')?.dataset.npcId);
             if (!npc) return;
             const kind = target.dataset.action === 'toggle-role-muted' ? 'muted' : 'blocked';
             void setRoleModeration(npc.id, kind, target.checked).then(() => render({ preserveScroll: true }));
@@ -7117,10 +7180,27 @@ function handleRootChange(event) {
         if (!allowed.includes(target.value)) return;
         companion[field] = target.value;
         if (field === 'habitat') {
+            cancelHomesteadCommand();
+            cancelHomesteadMotion();
+            cancelCompanionRoomCommand();
+            clearCompanionRitual();
+            companionRoamController?.cancel({ reset: true });
+            viewState.companionRoomCare = null;
+            viewState.companionRoomFoodTarget = null;
+            viewState.companionHomesteadPanel = '';
+            viewState.companionHomesteadNotice = '';
+            viewState.companionHomesteadFxUntil = 0;
+            viewState.companionVisualAction = '';
+            viewState.companionFeedback = null;
+            viewState.companionActionToken += 1;
+            clearTimeout(viewState.companionActionTimer);
+            // Scene selection is a real move out of the current local scene.
+            // Preserve the room layout and homestead progression for returning.
+            companion.homestead.location = 'home';
             companion.room = normalizeCompanionRoom({ ...companion.room, enabled: false });
             const habitat = COMPANION_HABITATS.find(item => item.id === target.value);
             companion.lastAction = 'hide';
-            companion.message = habitat?.arrival ? `${companion.name}${habitat.arrival}` : `${companion.name}在${habitat?.name || '新小窝'}里四处看了看，挑中了最喜欢的位置。`;
+            companion.message = habitat?.arrival ? `${companion.name}${habitat.arrival}` : `${companion.name}在${habitat?.name || '新场景'}里四处看了看，挑中了最喜欢的位置。`;
             companion.mood = '好奇';
         } else {
             const [reaction, mood] = getCompanionWeatherReaction(getForumData());
@@ -7171,26 +7251,28 @@ function handleRootChange(event) {
         const data = getForumData();
         const npc = data.npcs.find(item => item.id === target.closest('[data-npc-id]')?.dataset.npcId);
         const item = getSettings().avatarLibrary.find(entry => entry.id === target.value);
-        if (npc && item) { updateNpcAvatar(npc, { url: item.url, imageKey: item.imageKey, avatarId: item.id }); void saveForumData(data); render(); }
+        if (npc && item) { updateNpcAvatar(npc, { url: item.url, imageKey: item.imageKey, avatarId: item.id }, data); void saveForumData(data); render(); }
         return;
     }
     if (target.dataset.npcAvatarUrl !== undefined) {
-        const npc = getForumData().npcs.find(item => item.id === target.closest('[data-npc-id]')?.dataset.npcId);
+        const data = getForumData();
+        const npc = data.npcs.find(item => item.id === target.closest('[data-npc-id]')?.dataset.npcId);
         const url = target.value.trim();
         if (url && !isSafeImageUrl(url)) return notify('warning', '请填写有效的 http/https 图片直链');
-        if (npc) { void removeImageAsset(npc.avatarKey); updateNpcAvatar(npc, { url }); void saveForumData(getForumData(), true); render(); }
+        if (npc) { releaseImageAsset(npc.avatarKey); updateNpcAvatar(npc, { url }, data); void saveForumData(data, true); render(); }
         return;
     }
     if (target.dataset.npcBackgroundUrl !== undefined) {
-        const npc = getForumData().npcs.find(item => item.id === target.closest('[data-npc-id]')?.dataset.npcId);
+        const data = getForumData();
+        const npc = data.npcs.find(item => item.id === target.closest('[data-npc-id]')?.dataset.npcId);
         const url = target.value.trim();
         if (url && !isSafeImageUrl(url)) return notify('warning', '请填写有效的 http/https 图片直链');
         if (npc) {
-            void removeImageAsset(npc.backgroundKey);
+            releaseImageAsset(npc.backgroundKey);
             npc.backgroundUrl = url;
             npc.backgroundKey = '';
             npc.updatedAt = Date.now();
-            void saveForumData(getForumData(), true);
+            void saveForumData(data, true);
             render();
         }
         return;
@@ -7239,7 +7321,7 @@ function handleRootChange(event) {
         const url = target.value.trim();
         if (url && !isSafeImageUrl(url)) return notify('warning', '请填写有效的 http/https 图片直链');
         const profile = getSettings().profile;
-        void removeImageAsset(profile[`${kind}Key`]);
+        releaseImageAsset(profile[`${kind}Key`]);
         profile[`${kind}Url`] = url;
         profile[`${kind}Key`] = '';
         saveSettings(); render();
@@ -7250,7 +7332,7 @@ function handleRootChange(event) {
         const url = target.value.trim();
         if (url && !isSafeImageUrl(url)) return notify('warning', '请填写有效的 http/https 图片直链');
         const appearance = getSettings().appearance;
-        void removeImageAsset(appearance[`${kind}Key`]);
+        releaseImageAsset(appearance[`${kind}Key`]);
         appearance[`${kind}Url`] = url;
         appearance[`${kind}Key`] = '';
         saveSettings();
@@ -7261,7 +7343,7 @@ function handleRootChange(event) {
         const url = target.value.trim();
         if (url && !isSafeImageUrl(url)) return notify('warning', '请填写有效的 http/https 图片直链');
         const ui = getSettings().ui;
-        void removeImageAsset(ui.floatingButtonImageKey);
+        releaseImageAsset(ui.floatingButtonImageKey);
         ui.floatingButtonImageUrl = url;
         ui.floatingButtonImageKey = '';
         saveSettings();
@@ -7348,65 +7430,7 @@ function handleRootChange(event) {
         return;
     }
     if (['tf-import-profile-avatar-file', 'tf-import-profile-background-file', 'tf-import-avatar-library-file', 'tf-import-npc-avatar-file', 'tf-import-npc-background-file', 'tf-import-floating-button-file', 'tf-import-brand-icon-file', 'tf-import-forum-wallpaper-file', 'tf-import-view-wallpaper-file'].includes(target.id)) {
-        void (async () => {
-            const asset = await readImageAsset(target, target.id.replace('tf-import-', '').replace('-file', ''));
-            if (!asset) return;
-            if (target.id === 'tf-import-floating-button-file') {
-                const ui = getSettings().ui;
-                await removeImageAsset(ui.floatingButtonImageKey);
-                ui.floatingButtonImageUrl = asset.url;
-                ui.floatingButtonImageKey = asset.imageKey;
-                saveSettings();
-                updateLaunchers();
-            } else if (target.id === 'tf-import-brand-icon-file' || target.id === 'tf-import-forum-wallpaper-file') {
-                const kind = target.id === 'tf-import-brand-icon-file' ? 'brandIcon' : 'wallpaper';
-                const appearance = getSettings().appearance;
-                await removeImageAsset(appearance[`${kind}Key`]);
-                appearance[`${kind}Url`] = asset.url;
-                appearance[`${kind}Key`] = asset.imageKey;
-                saveSettings();
-            } else if (target.id === 'tf-import-view-wallpaper-file') {
-                const theme = getSettings().appearance.viewThemes[viewState.pendingViewWallpaperId];
-                if (theme) {
-                    await removeImageAsset(theme.wallpaperKey);
-                    theme.wallpaperUrl = asset.url;
-                    theme.wallpaperKey = asset.imageKey;
-                    theme.inherit = false;
-                    saveSettings();
-                }
-                viewState.pendingViewWallpaperId = '';
-            } else if (target.id === 'tf-import-profile-avatar-file' || target.id === 'tf-import-profile-background-file') {
-                const kind = target.id.includes('background') ? 'background' : 'avatar';
-                const profile = getSettings().profile;
-                await removeImageAsset(profile[`${kind}Key`]);
-                profile[`${kind}Url`] = asset.url;
-                profile[`${kind}Key`] = asset.imageKey;
-                saveSettings();
-            } else if (target.id === 'tf-import-avatar-library-file') {
-                const name = getRoot().querySelector('#tf-avatar-name')?.value.trim() || asset.name.replace(/\.[^.]+$/, '');
-                getSettings().avatarLibrary.push({ id: createId('avatar'), name, url: asset.url, imageKey: asset.imageKey });
-                saveSettings();
-            } else if (target.id === 'tf-import-npc-avatar-file') {
-                const npc = getForumData().npcs.find(item => item.id === viewState.pendingNpcAvatarId);
-                if (npc) {
-                    await removeImageAsset(npc.avatarKey);
-                    updateNpcAvatar(npc, asset);
-                    await saveForumData(getForumData(), true);
-                }
-                viewState.pendingNpcAvatarId = '';
-            } else {
-                const npc = getForumData().npcs.find(item => item.id === viewState.pendingNpcBackgroundId);
-                if (npc) {
-                    await removeImageAsset(npc.backgroundKey);
-                    npc.backgroundUrl = asset.url;
-                    npc.backgroundKey = asset.imageKey;
-                    npc.updatedAt = Date.now();
-                    await saveForumData(getForumData(), true);
-                }
-                viewState.pendingNpcBackgroundId = '';
-            }
-            render();
-        })().catch(error => notify('error', `图片导入失败：${error.message}`));
+        void importImageAsset(target).catch(error => notify(error.name === 'AbortError' ? 'info' : 'error', `图片导入失败：${error.message}`));
         return;
     }
     if (target.id === 'tf-import-prompts-file') {
@@ -7633,7 +7657,7 @@ function bindSillyTavernEvents() {
         if (viewState.autoRefreshTimer) window.clearTimeout(viewState.autoRefreshTimer);
         viewState.autoRefreshTimer = 0;
     };
-    if (context.eventTypes?.CHAT_CHANGED) context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => { cancelHomesteadMotion(); companionRoamController?.cancel({ reset: true }); viewState.companionHomesteadCommand = null; viewState.companionHomesteadPanel = ''; viewState.companionHomesteadNotice = ''; clearCompanionRitual(); viewState.companionDeviceCursor = -1; viewState.companionMenuSelection = 'status'; viewState.companionCareReturnPanel = ''; viewState.companionPanel = 'home'; viewState.companionProfileOpen = false; viewState.companionAppearanceDraft = null; viewState.companionRoomDraft = null; viewState.companionRoomCare = null; viewState.companionRoomFoodTarget = null; viewState.companionRoomCommand = null; companionGamePlayer?.stop(false); viewState.companionGameResultOpen = false; cancelCompanionTouch(); viewState.companionCleaning = false; viewState.companionCleanProgress = 0; viewState.companionFeedback = null; viewState.companionFoodMenuOpen = false; viewState.companionVisualAction = ""; viewState.companionActionToken += 1; clearTimeout(viewState.companionActionTimer); clearTimeout(viewState.companionFeedbackTimer); cancelAutoRefresh(); viewState.generationController?.abort(); viewState.generationStage = ''; viewState.pendingImport = null; viewState.worldCatalog = []; viewState.promptSourceContext = null; viewState.selectedNpcId = ''; viewState.publicNpcId = ''; viewState.selectedPostId = ''; viewState.selectedConversationId = ''; viewState.selectedEventId = ''; viewState.eventHubOpen = false; viewState.deliverySelections.clear(); viewState.deliveryReviews.clear(); viewState.replyTarget = null; viewState.expandedComments.clear(); refresh(); });
+    if (context.eventTypes?.CHAT_CHANGED) context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => { cancelHomesteadMotion(); companionRoamController?.cancel({ reset: true }); viewState.companionHomesteadCommand = null; viewState.companionHomesteadPanel = ''; viewState.companionHomesteadNotice = ''; clearCompanionRitual(); viewState.companionDeviceCursor = -1; viewState.companionMenuSelection = 'status'; viewState.companionCareReturnPanel = ''; viewState.companionPanel = 'home'; viewState.companionProfileOpen = false; viewState.companionAppearanceDraft = null; viewState.companionRoomDraft = null; viewState.companionRoomCare = null; viewState.companionRoomFoodTarget = null; viewState.companionRoomCommand = null; companionGamePlayer?.stop(false); viewState.companionGameResultOpen = false; cancelCompanionTouch(); viewState.companionCleaning = false; viewState.companionCleanProgress = 0; viewState.companionFeedback = null; viewState.companionFoodMenuOpen = false; viewState.companionVisualAction = ""; viewState.companionActionToken += 1; clearTimeout(viewState.companionActionTimer); clearTimeout(viewState.companionFeedbackTimer); cancelAutoRefresh(); viewState.generationController?.abort(); viewState.generationStage = ''; viewState.pendingImport = null; viewState.pendingNpcAvatarId = ''; viewState.pendingNpcBackgroundId = ''; viewState.pendingViewWallpaperId = ''; viewState.worldCatalog = []; viewState.promptSourceContext = null; viewState.selectedNpcId = ''; viewState.publicNpcId = ''; viewState.selectedPostId = ''; viewState.selectedConversationId = ''; viewState.selectedEventId = ''; viewState.eventHubOpen = false; viewState.deliverySelections.clear(); viewState.deliveryReviews.clear(); viewState.replyTarget = null; viewState.expandedComments.clear(); refresh(); });
     if (context.eventTypes?.MESSAGE_RECEIVED) context.eventSource.on(context.eventTypes.MESSAGE_RECEIVED, (_messageId, type) => {
         if (type === 'first_message' || !getSettings().generation.autoRefreshOnMessage || !getSettings().modules.forum.enabled || !hasActiveChat()) return;
         cancelAutoRefresh();

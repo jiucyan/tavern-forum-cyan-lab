@@ -465,6 +465,18 @@ function renderAccessory(kind, accessory, layer, growth, stage) {
     return `<g class="tf-pixel-accessory is-${accessory} is-slot-${definition.slot} is-layer-${layer}" data-accessory="${accessory}" data-slot="${definition.slot}" data-fit="${kind}" data-anchor="${definition.anchor}" data-material="${definition.material}" data-growth-fit="${stage}" data-design="${kind}:${accessory}"><g class="tf-pixel-accessory-art">${art}</g></g>`;
 }
 
+// Swimming artwork uses the animal centre as its room anchor. Juvenile drawings
+// sit low in their native canvas; compensate in presentation, never in roaming.
+export function getAquaticCompanionArtFrame(kind, stage = 'adult') {
+    const growth = getCompanionGrowthArt(kind, stage);
+    const [x, y, width, height] = growth?.displayBounds || getCompanionRasterData(kind)?.target || [0, 0, 64, 64];
+    const scale = growth?.displayScale || 1;
+    const mouth = kind === 'frog' ? [28, 49] : stage === 'baby' ? [14, 44] : stage === 'young' ? [11, 39] : [6.1, 30.8];
+    const project = ([px, py]) => ({ x: 50 + (px - x - width / 2) * scale / 64 * 100, y: 50 + (py - y - height / 2) * scale / 64 * 100 });
+    return { scale, width: width * scale / 64, height: height * scale / 64,
+        x: (32 - x - width / 2) * scale / 64 * 100, y: (32 - y - height / 2) * scale / 64 * 100, mouth: project(mouth) };
+}
+
 export function renderCompanionArtwork(kind = 'mystery', accessory = 'none', stage = 'adult', { roomPoses = false } = {}) {
     kind = Object.hasOwn(SPECIES_ART, kind) ? kind : 'mystery';
     stage = ['baby', 'young', 'adult'].includes(stage) ? stage : 'adult';

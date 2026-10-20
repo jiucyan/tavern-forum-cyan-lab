@@ -274,6 +274,7 @@ export function buyCompanionItem(data, itemId, now = Date.now()) {
     if (life.coins < item.cost) throw new Error('陪伴币还不够，可以一起玩小游戏获得');
     const existing = item.kind === 'food' ? data.world.inventory.find(entry => entry.source === '陪伴小铺' && entry.name === item.name) : null;
     if (existing?.quantity >= 9999) throw new Error('这种点心已经装满了');
+    if (item.kind === 'food' && !existing && data.world.inventory.length >= 300) throw new Error('背包已经装满了，先整理一些物品再兑换吧');
     life.coins -= item.cost;
     if (item.kind === 'food') {
         if (existing) { existing.quantity++; existing.consumed = false; existing.updatedAt = now; }

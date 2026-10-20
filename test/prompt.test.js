@@ -11,6 +11,7 @@ import {
     buildForumPromptPresetExport,
     buildModeratorProfilesRequest,
     buildNpcInjection,
+    buildThreadReplyRequest,
     extractAssistantReasoning,
     extractAssistantText,
     formatChatContext,
@@ -151,6 +152,16 @@ test('JSON parsing repairs missing commas and trailing commas from models', () =
     assert.deepEqual(parseJsonResponse('{"posts":[{"content":"第一条"}\n{"content":"第二条"},]}'), {
         posts: [{ content: '第一条' }, { content: '第二条' }],
     });
+});
+
+test('JSON parsing preserves literal closing brackets, commas and escaped quotes in valid and repaired payloads', () => {
+    const content = '原样贴出：[第一项, ]，配置为 { key: "引号\\路径", }';
+    const expected = { posts: [{ content }], worldUpdates: { tasks: [] } };
+    const valid = JSON.stringify(expected);
+    assert.deepEqual(parseJsonResponse(valid), expected);
+    const malformed = `{"posts":[{"content":${JSON.stringify(content)},},],"worldUpdates":{"tasks":[],},}`;
+    assert.deepEqual(parseJsonResponse(malformed), expected);
+    assert.equal(normalizeGeneratedForum(malformed).posts[0].content, content);
 });
 
 test('normalization creates injectable posts and comments', () => {
@@ -418,6 +429,23 @@ test('thread replies and NPC profiles are normalized', () => {
     assert.equal(profile.followers, 99);
 });
 
+test('thread continuation filters hidden and deleted comments before selecting recent visible replies', () => {
+    const post = {
+        author: '发帖人', handle: 'author', content: '公开主题',
+        comments: [
+            { author: '可见用户', handle: 'visible', content: 'VISIBLE_REPLY_SENTINEL' },
+            ...Array.from({ length: 20 }, (_, index) => ({
+                author: '被删除用户', handle: 'hidden', content: `HIDDEN_REPLY_SENTINEL_${index}`,
+                moderation: { hidden: true, action: index % 2 ? 'hide' : 'delete' },
+            })),
+        ],
+    };
+    const request = buildThreadReplyRequest({ post, settings: {} });
+    assert.match(request.user, /VISIBLE_REPLY_SENTINEL/);
+    assert.doesNotMatch(request.user, /HIDDEN_REPLY_SENTINEL/);
+    assert.equal(post.comments.length, 21);
+});
+
 test('direct messages use character or forum-role identity and normalize replies', () => {
     const request = buildDirectMessageRequest({
         conversation: { type: 'npc', name: '小北', handle: 'north' },
@@ -523,6 +551,19 @@ test('NPC authors are linked and their evidence can be collected', () => {
     assert.equal(data.npcs.length, 1);
     assert.equal(data.posts[0].npcId, data.npcs[0].id);
     assert.deepEqual(collectNpcEvidence(data, data.npcs[0].id), ['主帖：第一条', '回帖：补充']);
+});
+
+test('profile evidence excludes hidden comments and every comment under a hidden parent post', () => {
+    const data = normalizeForumDataShape({ posts: [
+        { id: 'visible', author: '小北', handle: 'north', content: '公开主帖', comments: [
+            { author: '小北', handle: 'north', content: '公开评论' },
+            { author: '小北', handle: 'north', content: '隐藏评论', moderation: { hidden: true } },
+        ] },
+        { id: 'hidden', author: '小北', handle: 'north', content: '隐藏主帖', moderation: { hidden: true }, comments: [
+            { author: '小北', handle: 'north', content: '隐藏主帖下的评论' },
+        ] },
+    ] });
+    assert.deepEqual(collectNpcEvidence(data, data.npcs[0].id), ['主帖：公开主帖', '回帖：公开评论']);
 });
 
 test('automatic cleanup keeps favorites even above the limit', () => {

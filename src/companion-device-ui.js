@@ -1,5 +1,6 @@
 import { getCompanionLifeView, canCareForCompanion } from './companion-life.js';
 import { renderCompanionIcon } from './companion-icons.js';
+import { getAquaticCompanionArtFrame } from './companion-art.js';
 import { renderCompanionRoomEditor } from './companion-room-ui.js';
 import { renderHomesteadScene, renderHomeStations, renderHomesteadBar, renderHomesteadPanel, getHomeStationGeometry } from './companion-homestead-ui.js';
 import { renderHomesteadMotion, renderFishingRod } from './companion-homestead-motion-ui.js';
@@ -20,7 +21,7 @@ function deviceControlLabels(home, state, petAction = '') {
     if (state.companionHomesteadBusy) return state.companionHomesteadJob?.committed ? ['菜单', '保存中', '等待'] : ['菜单', '忙碌', '取消'];
     if (state.companionHomesteadPanel) return ['选择', '确认', '返回'];
     if (state.companionFoodMenuOpen) return ['选择', '确认', '返回'];
-    if (!home) return ['选择', '确认', '回小窝'];
+    if (!home) return ['选择', '确认', '返回'];
     const returnFromCare = state.companionCareReturnPanel && state.companionCareReturnPanel !== 'home';
     const middle = state.companionCleaning ? '擦洗' : petAction.includes('叫醒') ? '叫醒' : petAction.includes('继续') ? '继续' : '摸摸';
     const last = state.companionCleaning ? returnFromCare ? '返回' : '收起' : '状态';
@@ -29,7 +30,7 @@ function deviceControlLabels(home, state, petAction = '') {
 const deviceControlHint = labels => labels.map((text, i) => `${'ABC'[i]} ${text}`).join(' · ');
 
 // Reuse the existing controls and handlers; only their placement and presentation change.
-export function renderCompanionDevice(html, data, state, extraActions) {
+export function renderCompanionDevice(html, data, state, extraActions, scene) {
     const template = document.createElement('template');
     template.innerHTML = html;
     const page = template.content.querySelector('.tf-companion-page');
@@ -43,7 +44,17 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     const aquatic = isAquaticCompanion(kind, growthStage, pet.avatarUrl);
     if (aquatic) {
         const control = room.querySelector('.tf-pet-sprite-control');
-        const location = pet.homestead?.location || 'home', habitat = getAquaticHabitat(location);
+        const frame = getAquaticCompanionArtFrame(kind, growthStage);
+        const location = scene.aquaticLocation, habitat = getAquaticHabitat(location);
+        const sceneScale = habitat.bodyScale || 1;
+        character.style.setProperty('--tf-aquatic-art-scale', frame.scale * sceneScale);
+        character.style.setProperty('--tf-aquatic-art-x', `${frame.x * sceneScale}%`);
+        character.style.setProperty('--tf-aquatic-art-y', `${frame.y * sceneScale}%`);
+        control.style.setProperty('--tf-aquatic-scene-scale', sceneScale);
+        control.style.setProperty('--tf-aquatic-body-width', frame.width * sceneScale);
+        control.style.setProperty('--tf-aquatic-body-height', frame.height * sceneScale);
+        control.style.setProperty('--tf-aquatic-mouth-x', `calc(50% + var(--pet-sprite-size) * ${(frame.mouth.x - 50) * sceneScale / 100})`);
+        control.style.setProperty('--tf-aquatic-mouth-y', `calc(50% + var(--pet-sprite-size) * ${(frame.mouth.y - 50) * sceneScale / 100})`);
         const point = life.sleeping ? habitat.rest : habitat.spawn;
         control.dataset.aquatic = kind === 'goldfish' ? 'fish' : 'tadpole';
         room.dataset.aquaticHabitat = location;
@@ -72,17 +83,21 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     page.classList.add('is-panel-' + current);
     page.dataset.devicePage = current;
     page.dataset.homesteadLocation = pet.homestead?.location || 'home';
+    for (const node of [page, room]) {
+        node.dataset.sceneId = scene.id;
+        node.dataset.sceneIndoor = String(scene.indoor);
+    }
     const homesteadVisible = current === 'home' && !pet.life.game && !state.companionGameResultOpen
-        && !state.companionCleaning && !state.companionFoodMenuOpen && !state.companionRoomCare;
+        && !state.companionCleaning && !state.companionFoodMenuOpen && !state.companionRoomCare && !scene.reason;
     if ((homesteadVisible || aquatic && current === 'home' && !pet.life.game && !state.companionGameResultOpen) && pet.status !== 'away') {
-        const scene = renderHomesteadScene(pet);
-        if (scene.html) {
-            room.classList.add(pet.homestead.location === 'kitchen' ? 'is-homestead-kitchen' : 'is-homestead-outdoors');
+        const worldScene = scene.homestead ? renderHomesteadScene(pet) : null;
+        if (worldScene?.html) {
+            room.classList.add(scene.indoor ? 'is-homestead-kitchen' : 'is-homestead-outdoors');
             const layer = room.querySelector('.tf-pet-habitat-layer');
             layer.removeAttribute('aria-hidden');
-            layer.innerHTML = scene.html;
+            layer.innerHTML = worldScene.html;
             room.querySelectorAll('.tf-room-foreground,.tf-room-live-hit').forEach(node => node.remove());
-        } else room.insertAdjacentHTML('beforeend', renderHomeStations(pet));
+        } else if (scene.homeStations) room.insertAdjacentHTML('beforeend', renderHomeStations(pet));
         const motion = state.companionHomesteadMotion;
         if (motion) {
             room.classList.add('is-homestead-working');
@@ -102,7 +117,7 @@ export function renderCompanionDevice(html, data, state, extraActions) {
             control.setAttribute('aria-disabled', 'true');
             control.setAttribute('aria-label', label);
             const taskTarget = [...room.querySelectorAll('[data-action="homestead-target"]')].find(node => node.dataset.target === state.companionHomesteadJob?.target);
-            const homeStations = getHomeStationGeometry(pet);
+            const homeStations = getHomeStationGeometry(pet, scene);
             const homeWorkPoint = homeStations.find(station => station.id === state.companionHomesteadJob?.target)?.work
                 || homeStations.find(station => station.id === (motion.action === 'pack' ? 'packing' : 'storage'))?.work;
             const workPoint = taskTarget?.dataset.workX && taskTarget?.dataset.workY
@@ -134,7 +149,7 @@ export function renderCompanionDevice(html, data, state, extraActions) {
         node.setAttribute('aria-label', title);
         const simpleHeader = id === 'menu' || id === 'room';
         const tabs = simpleHeader ? `<b>${title}</b>` : `<nav class="tf-device-page-tabs" aria-label="切换旅伴功能">${pageTabs.map(([panel, label]) => `<button type="button" data-action="companion-device-open" data-panel="${panel}" aria-current="${panel === id ? 'page' : 'false'}">${renderCompanionIcon(panel)}<span>${label}</span></button>`).join('')}</nav>`;
-        node.innerHTML = `<header class="${simpleHeader ? '' : 'has-page-tabs'}">${tabs}<button type="button" class="tf-device-home" data-action="companion-panel" data-panel="home" aria-label="回到小窝">${renderCompanionIcon('home')}<span>回小窝</span></button></header><div class="tf-pet-device-content"></div>`;
+        node.innerHTML = `<header class="${simpleHeader ? '' : 'has-page-tabs'}">${tabs}<button type="button" class="tf-device-home" data-action="companion-panel" data-panel="home" aria-label="返回当前场景">${renderCompanionIcon('home')}<span>返回场景</span></button></header><div class="tf-pet-device-content"></div>`;
         return node;
     };
     const mainMenu = pane('menu', '今天做什么');
@@ -179,7 +194,7 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     const profile = take('.tf-companion-profile-content');
     for (const [selector, title] of [
         ['.tf-companion-identity-section', '选择旅伴与名字'], ['.tf-pet-appearance-controls', '颜色与配饰'],
-        ['.tf-pet-environment-controls', '小窝环境'], ['.tf-device-skin-section', '更换机身'],
+        ['.tf-pet-environment-controls', '场景与天气'], ['.tf-device-skin-section', '更换机身'],
     ]) {
         const details = document.createElement('details');
         details.className = 'tf-pet-life-details tf-device-setting-group';
@@ -223,7 +238,7 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     const labels = deviceControlLabels(current === 'home', state, room.querySelector('.tf-pet-sprite-control')?.getAttribute('aria-label') || '');
     bottom.innerHTML = `<span class="tf-device-selection-label" aria-live="polite">${pet.life.game ? '一起玩' : deviceControlHint(labels)}</span>`;
     screen.replaceChildren(top, viewport, bottom);
-    if (homesteadVisible) bottom.insertAdjacentHTML('beforebegin', renderHomesteadBar(pet));
+    if (homesteadVisible) bottom.insertAdjacentHTML('beforebegin', renderHomesteadBar(pet, scene));
     if (pet.life.game || state.companionGameResultOpen) device.querySelectorAll('.tf-pet-device-controls button').forEach(node => {
         node.dataset.gameLabel = node.querySelector('span').innerHTML;
         node.dataset.gameAria = node.getAttribute('aria-label');
@@ -231,12 +246,14 @@ export function renderCompanionDevice(html, data, state, extraActions) {
     const wrap = document.createElement('div'); wrap.className = 'tf-pet-console-wrap'; wrap.append(device);
     const home = document.createElement('section'); home.className = 'tf-companion-home';
     home.append(wrap);
-    home.insertAdjacentHTML('beforeend', `<p class="tf-pet-move-guide">${aquatic ? `${getAquaticHabitat(pet.homestead?.location).kind === 'free' ? '点场景空处' : '点水面'}，让它游过去 · 种地和做菜由你来操作` : '点小窝空地，让它走过去 · 点宠物摸摸它'}</p>`);
+    home.insertAdjacentHTML('beforeend', '<p class="tf-pet-move-guide"></p>');
     const guide = home.querySelector('.tf-pet-move-guide');
     guide.setAttribute('role', 'status');
     guide.textContent = state.companionFishing ? state.companionFishing.error || '看浮漂轻轻晃动，等鱼儿咬钩后点击收竿 · C 可收起鱼竿' : state.companionHomesteadBusy
         ? state.companionHomesteadJob?.committed ? '已经忙完啦，正在记下这份小收获。' : '等它忙完这一小会 · 点空地或按 C 可以取消'
-        : state.companionHomesteadNotice || '点空地走过去 · 从小窝出门，去种菜和采集';
+        : state.companionHomesteadNotice || (aquatic
+            ? `${getAquaticHabitat(scene.aquaticLocation).kind === 'free' ? '点场景空处' : '点水面'}，让它游过去 · 点旅伴摸摸它`
+            : '点场景空地，让它走过去 · 点旅伴摸摸它');
     page.replaceChildren(home);
     return page.outerHTML;
 }

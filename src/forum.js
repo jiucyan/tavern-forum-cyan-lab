@@ -110,6 +110,29 @@ export function createConversation({ type = 'npc', targetId = '', name = '新联
     };
 }
 
+// Legacy anonymous copies retain their own chat records, but all account and
+// permission operations must use the one identity selected for that task.
+export function resolveNpcIdentity(data, npcOrId) {
+    if (npcOrId === null || npcOrId === undefined || npcOrId === '') return null;
+    const npcs = Array.isArray(data?.npcs) ? data.npcs : [];
+    const npc = npcOrId && typeof npcOrId === 'object'
+        ? npcOrId : npcs.find(item => item.id === npcOrId) || null;
+    if (!npc || (!npc.anonymousTaskId && !(npc.taskContact && npc.temporaryContact))) return npc;
+    let taskId = text(npc.anonymousTaskId);
+    if (!taskId) {
+        const handle = handleKey(npc.handle);
+        const canonical = npcs.find(item => item.anonymousTaskId && handle && (
+            handleKey(item.handle) === handle
+            || `masked_${seedNumber(item.anonymousTaskId).toString(36)}` === handle
+        ));
+        taskId = text(canonical?.anonymousTaskId);
+    }
+    if (!taskId) return npc;
+    const contacts = npcs.filter(item => item.anonymousTaskId === taskId);
+    const task = (Array.isArray(data?.world?.tasks) ? data.world.tasks : []).find(item => item.id === taskId && item.anonymous);
+    return contacts.find(item => item.id === task?.issuerNpcId) || contacts[0] || npc;
+}
+
 export function ensureCompanionConversation(data) {
     data.conversations = Array.isArray(data.conversations) ? data.conversations : [];
     const companion = data.world?.companion || {};
@@ -131,6 +154,8 @@ export function ensureCompanionConversation(data) {
 }
 
 export function ensureRoleConversation(data, firstNpc, secondNpc) {
+    firstNpc = resolveNpcIdentity(data, firstNpc);
+    secondNpc = resolveNpcIdentity(data, secondNpc);
     if (!firstNpc || !secondNpc || firstNpc.id === secondNpc.id) return null;
     data.conversations = Array.isArray(data.conversations) ? data.conversations : [];
     const participantIds = [String(firstNpc.id), String(secondNpc.id)].sort();
@@ -170,6 +195,7 @@ export function ensureCharacterConversation(data, snapshot = {}) {
 }
 
 export function ensureNpcConversation(data, npc) {
+    npc = resolveNpcIdentity(data, npc);
     if (!npc) return null;
     data.conversations = Array.isArray(data.conversations) ? data.conversations : [];
     let conversation = data.conversations.find(item => item.type === 'npc' && item.targetId === npc.id);
@@ -190,13 +216,25 @@ export function ensureTaskIssuerConversation(data, task) {
     if (!data || !task) return { npc: null, conversation: null };
     data.npcs = Array.isArray(data.npcs) ? data.npcs : [];
     const handle = handleKey(task.issuerHandle);
-    let npc = !task.anonymous && task.issuerNpcId ? data.npcs.find(item => item.id === task.issuerNpcId) : null;
+    const anonymousHandle = `masked_${seedNumber(task.id).toString(36)}`;
+    // Older versions created a new copy of this identity on every startup.
+    // Keep all existing conversations, while reusing one contact and its restrictions.
+    const anonymousContacts = task.anonymous ? data.npcs.filter(item =>
+        handleKey(item.handle) === anonymousHandle
+        || (task.id && item.anonymousTaskId === task.id)
+        || (item.id === task.issuerNpcId && item.taskContact && item.temporaryContact)) : [];
+    let npc = task.anonymous
+        ? anonymousContacts.find(item => task.id && item.anonymousTaskId === task.id && item.id === task.issuerNpcId)
+            || anonymousContacts.find(item => task.id && item.anonymousTaskId === task.id)
+            || anonymousContacts.find(item => item.blocked)
+            || anonymousContacts.find(item => item.id === task.issuerNpcId) || anonymousContacts[0] || null
+        : task.issuerNpcId ? data.npcs.find(item => item.id === task.issuerNpcId) : null;
     if (!npc && !task.anonymous && handle) npc = data.npcs.find(item => handleKey(item.handle) === handle);
     if (!npc && !task.anonymous && text(task.issuer)) npc = data.npcs.find(item => text(item.name).toLocaleLowerCase() === text(task.issuer).toLocaleLowerCase());
     if (!npc) {
         const anonymous = Boolean(task.anonymous);
         const fallbackHandle = anonymous
-            ? `masked_${seedNumber(task.id).toString(36)}`
+            ? anonymousHandle
             : handle || `request_${seedNumber(task.issuer || task.id).toString(36)}`;
         npc = createNpc({
             name: anonymous ? '匿名委托人' : text(task.issuer, '委托联络人'),
@@ -214,7 +252,10 @@ export function ensureTaskIssuerConversation(data, task) {
     }
     task.issuerNpcId = npc.id;
     task.issuerHandle = npc.handle;
-    if (task.anonymous) task.issuer = '匿名委托人';
+    if (task.anonymous) {
+        task.issuer = '匿名委托人';
+        npc.anonymousTaskId = task.id;
+    }
     const conversation = ensureNpcConversation(data, npc);
     conversation.taskContact = true;
     return { npc, conversation };
@@ -568,9 +609,10 @@ export function linkNpcAuthors(data, posts = data?.posts || [], { remember = tru
 export function collectNpcEvidence(data, npcId) {
     const evidence = [];
     for (const post of data?.posts || []) {
+        if (post.moderation?.hidden) continue;
         if (post.npcId === npcId) evidence.push(`主帖：${text(post.content)}`);
         for (const comment of post.comments || []) {
-            if (comment.npcId === npcId) evidence.push(`回帖：${text(comment.content)}`);
+            if (comment.npcId === npcId && !comment.moderation?.hidden) evidence.push(`回帖：${text(comment.content)}`);
         }
     }
     return evidence.slice(-40);

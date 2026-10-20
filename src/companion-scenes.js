@@ -1,3 +1,5 @@
+import { HOMESTEAD_LOCATIONS } from './companion-homestead.js';
+
 // The picker and saved-data validation share the same scene catalogue.
 export const COMPANION_HABITATS = Object.freeze([
     { id: 'meadow', name: '风吹草地', symbol: '≋', note: '风车与野餐篮', arrival: '走过柔软的草坡，在小风车旁发现了野餐篮。' },
@@ -36,6 +38,39 @@ export function resolveCompanionScene(companion, {
     if (sleeping || companion?.status === 'resting') return scene('bedroom', 'sleep');
     if (action === 'play' || action === 'dance') return scene('garden', 'play');
     return scene();
+}
+
+// A single request-only description owns the visible background and its physical
+// rules. The saved habitat, room layout and walking destination remain untouched.
+export function resolveCompanionDisplayScene(companion, state = {}) {
+    const selected = normalizeCompanionHabitat(companion?.habitat);
+    const place = HOMESTEAD_LOCATIONS.find(entry => entry.id === companion?.homestead?.location) || HOMESTEAD_LOCATIONS[0];
+    const location = place.id, away = companion?.status === 'away';
+    const customHome = companion?.room?.enabled === true;
+    const baseHomestead = location !== 'home' && !away;
+    const baseHabitat = baseHomestead ? location === 'kitchen' ? 'kitchen' : place.habitat : customHome ? 'custom-room' : selected;
+    const baseId = baseHomestead ? `homestead:${location}` : customHome ? 'custom-room' : `habitat:${selected}`;
+    let habitat = baseHabitat, id = baseId, reason = '';
+    const waterCare = state.aquatic && !state.game && !away;
+    const active = !['paused', 'daycare'].includes(companion?.life?.mode);
+    if (!waterCare && state.roomCare && customHome && location === 'home' && !away && active && !state.game) {
+        habitat = 'custom-room'; id = 'custom-room'; reason = 'room-care';
+    } else if (!waterCare) {
+        const activity = resolveCompanionScene(companion, state);
+        if (activity.reason) {
+            habitat = activity.habitat; id = `habitat:${habitat}`; reason = activity.reason;
+        }
+    }
+    const customized = id === 'custom-room';
+    const homestead = id.startsWith('homestead:');
+    const catalogue = COMPANION_HABITATS.find(entry => entry.id === habitat);
+    const indoor = customized || (homestead ? location === 'kitchen' : catalogue?.indoor === true);
+    const label = customized ? '小窝' : homestead ? place.name : catalogue.name;
+    return { habitat, customized, reason, temporary: id !== baseId, id, location, label, indoor, outdoors: !indoor, homestead,
+        // Catalogue scenes already contain their own furniture and landmarks.
+        // Only the editable room needs these additional household stations.
+        homeStations: location === 'home' && !away && !reason && customized,
+        aquaticLocation: homestead ? location : indoor ? 'home' : `habitat:${habitat}` };
 }
 
 // Small, code-native pixel sets keep the foreground clear for the pet.

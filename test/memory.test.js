@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createNpc, normalizeForumDataShape, linkNpcAuthors } from '../src/forum.js';
-import { refreshMemorySummary, recordRelationshipEvent, applyRelationshipTransition, compactRoleMemory, formatMemoryContinuity } from '../src/memory.js';
-import { buildDirectMessageRequest, buildForumGenerationRequest, buildRoleDirectMessageRequest } from '../src/prompt.js';
+import { refreshMemorySummary, recordRelationshipEvent, applyRelationshipTransition, compactRoleMemory, formatMemoryContinuity, getReadableRoleMemory } from '../src/memory.js';
+import { buildDirectMessageRequest, buildForumGenerationRequest, buildRoleDirectMessageRequest, buildThreadReplyRequest } from '../src/prompt.js';
 import { applyWorldUpdates, normalizeWorldUpdates } from '../src/world.js';
 import { DEFAULT_SETTINGS } from '../src/constants.js';
 
@@ -76,4 +76,56 @@ test('turning automatic summaries off keeps the prior summary until explicitly r
     assert.equal(npc.memory.publicSummary, before); assert.equal(npc.memory.relationshipScore, 0);
     compactRoleMemory(npc); assert.match(npc.memory.publicSummary, /新增经历/);
     assert.match(formatMemoryContinuity(npc), /不代表信任/);
+});
+
+test('removed AI speech stays out of requests through history and multiline summary excerpts without erasing saved or manual memories', () => {
+    const npc = createNpc({ name: '甲', handle: 'a' });
+    const hiddenContent = `HIDDEN_MEMORY_SENTINEL\n第二行${'长'.repeat(240)}`;
+    const post = { id: 'p', author: '用户', handle: 'me', isAi: false, content: '公开主帖', comments: [
+        { id: 'c', isAi: true, handle: 'a', author: '甲', content: hiddenContent },
+        { id: 'public', isAi: true, handle: 'a', author: '甲', content: 'VISIBLE_MEMORY_SENTINEL' },
+    ] };
+    const data = { npcs: [npc], posts: [post] };
+    linkNpcAuthors(data);
+    npc.memory.publicHistory.push('用户手工记下的往事');
+    npc.memory.privateTalks.push('PRIVATE_MEMORY_SENTINEL');
+    refreshMemorySummary(npc, { force: true });
+    npc.memory.publicSummary = `手工编写的摘要段落\n\n${npc.memory.publicSummary}`;
+    post.comments[0].moderation = { hidden: true, action: 'delete' };
+    const before = structuredClone(npc.memory);
+    const readable = getReadableRoleMemory(npc, data.posts);
+    assert.notEqual(readable, npc);
+    assert.notEqual(readable.memory, npc.memory);
+    assert.doesNotMatch(readable.memory.publicSummary, /HIDDEN_MEMORY_SENTINEL|第二行/);
+    assert.equal(readable.memory.publicHistory.includes(`回帖：${hiddenContent}`), false);
+    assert.match(readable.memory.publicSummary, /手工编写的摘要段落|VISIBLE_MEMORY_SENTINEL/);
+    assert.deepEqual(readable.memory.privateTalks, ['PRIVATE_MEMORY_SENTINEL']);
+
+    const sourceContext = { roleMemories: [readable] };
+    const requests = [
+        buildThreadReplyRequest({ post, npcs: [npc], settings: {}, sourceContext }),
+        buildForumGenerationRequest({ existingPosts: data.posts, settings: structuredClone(DEFAULT_SETTINGS), sourceContext: { roleMemories: [npc] } }),
+        buildDirectMessageRequest({ conversation: { type: 'npc', name: '甲', handle: 'a' }, npc, sourceContext }),
+        buildRoleDirectMessageRequest({ conversation: {}, speaker: npc, otherRole: createNpc({ name: '乙', handle: 'b' }), sourceContext }),
+    ];
+    for (const request of requests) {
+        assert.doesNotMatch(JSON.stringify(request), /HIDDEN_MEMORY_SENTINEL|第二行/);
+        assert.match(JSON.stringify(request), /VISIBLE_MEMORY_SENTINEL/);
+        assert.match(JSON.stringify(request), /手工编写的摘要段落/);
+    }
+    assert.deepEqual(npc.memory, before);
+});
+
+test('readable memory handles recycled parent posts and keeps a record that still has a visible source', () => {
+    const npc = createNpc({ handle: 'a' });
+    const recycled = { id: 'old', npcId: npc.id, handle: 'a', content: 'RECYCLED_POST_SENTINEL', comments: [
+        { npcId: npc.id, handle: 'a', content: 'RECYCLED_COMMENT_SENTINEL' },
+    ] };
+    const repeated = { npcId: npc.id, handle: 'a', content: '仍然公开的相同发言', comments: [] };
+    npc.memory.publicHistory = ['发帖：RECYCLED_POST_SENTINEL', '回帖：RECYCLED_COMMENT_SENTINEL', '发帖：仍然公开的相同发言'];
+    refreshMemorySummary(npc, { force: true });
+    const readable = getReadableRoleMemory(npc, [repeated, { ...repeated, moderation: { hidden: true } }], [recycled]);
+    assert.deepEqual(readable.memory.publicHistory, ['发帖：仍然公开的相同发言']);
+    assert.doesNotMatch(readable.memory.publicSummary, /RECYCLED_/);
+    assert.match(readable.memory.publicSummary, /仍然公开的相同发言/);
 });

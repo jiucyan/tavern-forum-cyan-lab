@@ -1,4 +1,5 @@
 import { normalizeDeliveryRequirements, normalizeTaskReceipt } from './task-delivery.js';
+import { resolveNpcIdentity } from './forum.js';
 import { normalizeCompanionLife, advanceCompanionLife, canCareForCompanion, recordCompanionCare, addCompanionMilestone, getCompanionLifeView } from './companion-life.js';
 import { applyRelationshipTransition, recordRelationshipEvent } from './memory.js';
 import { DEFAULT_BUILTIN_PROMPTS, WORLD_MODULE_DEFINITIONS } from './constants.js';
@@ -27,6 +28,24 @@ function hasOwn(target, key) {
 
 function now(value) {
     return Math.max(0, Number(value || Date.now()));
+}
+
+function inventoryItem(item) {
+    return {
+        id: text(item?.id) || createId('item'),
+        travelTripId: text(item?.travelTripId),
+        petItemId: Object.hasOwn(PET_ITEMS, item?.petItemId || '') ? item.petItemId : '',
+        name: text(item?.name, '未命名物品'), description: text(item?.description),
+        quantity: integer(item?.quantity, 1, 0, 9999), effect: text(item?.effect), source: text(item?.source),
+        usable: item?.usable !== false, consumed: Boolean(item?.consumed),
+        createdAt: now(item?.createdAt), updatedAt: now(item?.updatedAt || item?.createdAt),
+    };
+}
+
+function hasPendingTravelReward(trip) {
+    return trip.status === 'returned' && (trip.homesteadDestination
+        ? !trip.recalled && !trip.homesteadRewardClaimedAt
+        : Boolean(trip.souvenir) && !trip.souvenirClaimedAt);
 }
 
 function color(value) {
@@ -198,20 +217,14 @@ function normalizeWorldStateValues(value) {
         souvenirClaimedAt: Math.max(0, Number(item?.souvenirClaimedAt || 0)),
         createdAt: now(item?.createdAt),
         updatedAt: now(item?.updatedAt || item?.createdAt),
-    })).slice(-120);
-    world.inventory = list(world.inventory).map(item => ({
-        id: text(item?.id) || createId('item'),
-        petItemId: Object.hasOwn(PET_ITEMS, item?.petItemId || '') ? item.petItemId : '',
-        name: text(item?.name, '未命名物品'),
-        description: text(item?.description),
-        quantity: integer(item?.quantity, 1, 0, 9999),
-        effect: text(item?.effect),
-        source: text(item?.source),
-        usable: item?.usable !== false,
-        consumed: Boolean(item?.consumed),
-        createdAt: now(item?.createdAt),
-        updatedAt: now(item?.updatedAt || item?.createdAt),
-    })).slice(-300);
+    }));
+    // History can be bounded only after its undelivered rewards have settled.
+    world.trips = world.trips.filter((trip, index, entries) => index >= entries.length - 120 || hasPendingTravelReward(trip));
+    // Capacity is enforced when acquiring items. Loading or saving must never
+    // discard possessions from an older over-capacity save.
+    world.inventory = list(world.inventory).map(inventoryItem);
+    world.pendingInventoryRewards = list(world.pendingInventoryRewards).filter(item => item && typeof item === 'object')
+        .map(inventoryItem).filter(item => item.quantity > 0 && !item.consumed);
     world.health = list(world.health).map(item => ({
         id: text(item?.id) || createId('health'),
         subject: text(item?.subject, '当前角色'),
@@ -482,11 +495,10 @@ export function advanceCompanionJourney(data, options = {}) {
     if (!data?.world) return { changed: false, delivered: [], returned: false, souvenir: '', trip: null };
     const timestamp = Math.max(0, Number(options.now || Date.now()));
     data.world = normalizeWorldState(data.world);
+    const settled = settlePendingInventoryRewards(data, timestamp);
     const trip = [...data.world.trips].reverse().find(item => item.status === 'away');
     if (!trip) {
-        const pending = data.world.trips.find(item => item.status === 'returned' && item.homesteadDestination && !item.homesteadRewardClaimedAt && !item.recalled);
-        const souvenir = pending ? claimHomesteadTravelReward(data, pending, timestamp) : '';
-        return { changed: Boolean(souvenir), delivered: [], returned: false, souvenir, trip: pending || null };
+        return { changed: settled.changed, delivered: [], returned: false, souvenir: settled.items.join('、'), trip: settled.trip };
     }
     const companion = data.world.companion;
     const delivered = [];
@@ -504,7 +516,7 @@ export function advanceCompanionJourney(data, options = {}) {
     }
     const returnAt = Number(trip.returnAt || companion.expectedReturnAt || 0);
     const shouldReturn = Boolean(options.forceReturn || (returnAt && timestamp >= returnAt));
-    if (!delivered.length && !shouldReturn) return { changed: false, delivered: [], returned: false, souvenir: '', trip };
+    if (!delivered.length && !shouldReturn) return { changed: settled.changed, delivered: [], returned: false, souvenir: settled.items.join('、'), trip };
     trip.updatedAt = timestamp;
     companion.updatedAt = timestamp;
     if (!shouldReturn) return { changed: true, delivered, returned: false, souvenir: '', trip };
@@ -530,6 +542,7 @@ export function advanceCompanionJourney(data, options = {}) {
     if (companion.homestead) companion.homestead.location = 'home';
     if (souvenir) companion.message = `${companion.message} “${souvenir}”已经放进背包。`;
     else if (trip.homesteadDestination && !trip.recalled && !trip.homesteadRewardClaimedAt) companion.message += ' 背包满了，种子已替你留好，腾出位置后会自动收进背包。';
+    else if (trip.souvenir && !trip.souvenirClaimedAt) companion.message += ' 背包满了，纪念品已替你留好，腾出位置后会自动收进背包。';
     companion.updatedAt = timestamp;
     return { changed: true, delivered, returned: true, souvenir, trip };
 }
@@ -854,7 +867,8 @@ function normalizeCompanionPatch(value) {
 
 function normalizeInventoryItem(item) {
     if (!item || typeof item !== 'object') return null;
-    return normalizeWorldState({ inventory: [item] }).inventory[0];
+    // The local journey receipt is never accepted from model-generated items.
+    return normalizeWorldState({ inventory: [{ ...item, travelTripId: '' }] }).inventory[0];
 }
 
 function normalizeHealthItem(item) {
@@ -991,7 +1005,7 @@ export function roleCan(settings, npc, capability) {
 
 function findNpcByHandle(data, handle) {
     const key = text(handle).replace(/^@/, '').toLocaleLowerCase();
-    return list(data?.npcs).find(npc => text(npc.handle).replace(/^@/, '').toLocaleLowerCase() === key);
+    return resolveNpcIdentity(data, list(data?.npcs).find(npc => text(npc.handle).replace(/^@/, '').toLocaleLowerCase() === key));
 }
 
 function executeModerationAction(data, settings, action) {
@@ -1030,9 +1044,12 @@ function executeModerationAction(data, settings, action) {
 function addTravelSouvenirToInventory(data, trip, companionName, timestamp = Date.now()) {
     if (!trip || trip.status !== 'returned' || !trip.souvenir || trip.souvenirClaimedAt) return '';
     const source = `${companionName}返程 · ${trip.id}`;
-    if (!data.world.inventory.some(item => item.name === trip.souvenir && item.source === source)) {
+    const alreadyCollected = data.world.inventory.some(item => item.travelTripId === trip.id
+        || (!item.travelTripId && item.name === trip.souvenir && item.source.endsWith(`返程 · ${trip.id}`)));
+    if (!alreadyCollected) {
+        if (data.world.inventory.length >= 300) return '';
         data.world.inventory.push({
-            id: createId('item'), name: trip.souvenir,
+            id: createId('item'), travelTripId: trip.id, name: trip.souvenir,
             description: trip.souvenirDescription || `${companionName}从${trip.destination || '旅途'}带回的小物件。`,
             quantity: 1, effect: trip.souvenirEffect || '可收藏，也可在合适的情境中使用。', source,
             usable: true, consumed: false, createdAt: timestamp, updatedAt: timestamp,
@@ -1043,26 +1060,75 @@ function addTravelSouvenirToInventory(data, trip, companionName, timestamp = Dat
     return trip.souvenir;
 }
 
+export function claimCompanionTravelSouvenir(data, tripId, timestamp = Date.now()) {
+    if (!data?.world) return '';
+    data.world = normalizeWorldState(data.world);
+    const trip = data.world.trips.find(item => item.id === tripId);
+    if (!trip || trip.status !== 'returned') return '';
+    return trip.homesteadDestination ? claimHomesteadTravelReward(data, trip, timestamp)
+        : addTravelSouvenirToInventory(data, trip, trip.traveler === '未知旅人' ? data.world.companion.name : trip.traveler, timestamp);
+}
+
+const inventorySignature = item => `${item.name}|${item.source}|${item.description}`;
+
+function addOrReserveInventoryItem(data, incoming) {
+    const world = data.world, signature = inventorySignature(incoming);
+    const existing = world.inventory.find(item => inventorySignature(item) === signature);
+    if (existing) return true;
+    if (world.pendingInventoryRewards.some(item => inventorySignature(item) === signature)) return false;
+    if ([...world.inventory, ...world.pendingInventoryRewards].some(item => item.id === incoming.id)) incoming = { ...incoming, id: createId('item') };
+    if (world.inventory.length < 300) { world.inventory.push(incoming); return true; }
+    world.pendingInventoryRewards.push(incoming);
+    return false;
+}
+
+function settlePendingInventoryRewards(data, timestamp) {
+    const world = data.world, items = [];
+    let changed = false, settledTrip = null;
+    for (const trip of world.trips.filter(hasPendingTravelReward)) {
+        const souvenir = trip.homesteadDestination ? claimHomesteadTravelReward(data, trip, timestamp)
+            : addTravelSouvenirToInventory(data, trip, trip.traveler === '未知旅人' ? world.companion.name : trip.traveler, timestamp);
+        if (!souvenir) continue;
+        changed = true; items.push(souvenir); settledTrip ||= trip;
+    }
+    world.pendingInventoryRewards = world.pendingInventoryRewards.filter(item => {
+        const existing = world.inventory.some(entry => entry.id === item.id || inventorySignature(entry) === inventorySignature(item));
+        if (!existing && world.inventory.length >= 300) return true;
+        if (!existing) world.inventory.push(item);
+        changed = true; items.push(item.name);
+        return false;
+    });
+    return { changed, items, pending: world.pendingInventoryRewards.length + world.trips.filter(hasPendingTravelReward).length, trip: settledTrip };
+}
+
+// Explicit local settlement, also called by the journey clock. Normalization
+// remains pure with respect to acquiring rewards.
+export function retryPendingInventoryRewards(data, timestamp = Date.now()) {
+    if (!data?.world) return { changed: false, items: [], pending: 0, trip: null };
+    data.world = normalizeWorldState(data.world);
+    return settlePendingInventoryRewards(data, timestamp);
+}
+
 function addCompanionCarryingToInventory(data, companion, previousCompanion, alreadyClaimed = new Set()) {
     if (companion.status !== 'home' || previousCompanion.status === 'home' || !companion.carrying) return '';
     const itemName = companion.carrying;
     if (itemName === previousCompanion.departedCarrying) return '';
     const claimKey = `${previousCompanion.departedAt || companion.updatedAt}|${itemName}`;
     if (companion.lastCarryingClaimKey === claimKey) return '';
+    let collected = true;
     if (!alreadyClaimed.has(itemName)) {
         const source = `${companion.name}返程 · ${claimKey}`;
-        if (!data.world.inventory.some(item => item.name === itemName && item.source === source)) {
-            data.world.inventory.push({
-                id: createId('item'), name: itemName,
-                description: `${companion.name}回家时从旅途中带回的东西。`,
-                quantity: 1, effect: '可收藏，也可在合适的情境中使用。', source,
-                usable: true, consumed: false, createdAt: Date.now(), updatedAt: Date.now(),
-            });
-        }
-    }
+        collected = addOrReserveInventoryItem(data, {
+            id: createId('item'), name: itemName,
+            description: `${companion.name}回家时从旅途中带回的东西。`,
+            quantity: 1, effect: '可收藏，也可在合适的情境中使用。', source,
+            usable: true, consumed: false, createdAt: Date.now(), updatedAt: Date.now(),
+        });
+    } else collected = !data.world.trips.some(trip => trip.souvenir === itemName && hasPendingTravelReward(trip));
     companion.lastCarryingClaimKey = claimKey;
     companion.carrying = '';
-    return itemName;
+    if (!collected) companion.message += ` 背包满了，“${itemName}”已替你留好，腾出位置后会自动收进背包。`;
+    return collected ? itemName : '';
 }
 
 export function applyWorldUpdates(data, updates, settings) {
@@ -1091,8 +1157,10 @@ export function applyWorldUpdates(data, updates, settings) {
         applied.push(`外出 ${updates.travel.length}`);
         for (const incoming of journeys) {
             const stored = data.world.trips.find(item => `${item.traveler}|${item.destination}|${item.notes}` === `${incoming.traveler}|${incoming.destination}|${incoming.notes}`);
-            const souvenir = addTravelSouvenirToInventory(data, stored, companionName);
-            if (souvenir) claimedSouvenirs.add(souvenir);
+            addTravelSouvenirToInventory(data, stored, companionName);
+            // A matching pending journey also owns its reward; the compatibility
+            // carrying field must not create a second copy while the bag is full.
+            if (stored?.status === 'returned' && stored.souvenir) claimedSouvenirs.add(stored.souvenir);
         }
     }
     if (settings.modules?.travel?.enabled && updates.companion && !hasScheduledJourney && !companionUnavailable) {
@@ -1112,7 +1180,7 @@ export function applyWorldUpdates(data, updates, settings) {
         }
     }
     if (settings.modules?.inventory?.enabled && updates.inventory?.length) {
-        appendUnique(data.world.inventory, updates.inventory, item => `${item.name}|${item.source}|${item.description}`);
+        for (const item of updates.inventory) addOrReserveInventoryItem(data, inventoryItem(item));
         applied.push(`物品 ${updates.inventory.length}`);
     }
     if (settings.modules?.health?.enabled && updates.health?.length) {
@@ -1275,7 +1343,7 @@ export function buildLinkedWorldInstruction({ settings, data, onlyModuleId = '' 
     if (!moduleIds.length && !proactive && !npcReports && !permissionAssignments) return '';
     const prompts = moduleIds.map(id => `【${getModuleDefinition(id)?.name || id}模块规则】\n${builtinPrompt(settings, id === 'tasks' ? 'task' : id)}`).join('\n\n');
     const current = buildWorldStateSummary(data, settings, npcReports && !moduleIds.includes('moderation') ? [...moduleIds, 'moderation'] : moduleIds);
-    const dmInstruction = proactive ? `\n\n【主动私信】\n${builtinPrompt(settings, 'proactiveDirectMessage')}\n只允许以下已有人设且未拉黑的账号主动私信：${list(data?.npcs).filter(npc => (npc.profileGenerated || npc.systemRole) && !npc.blocked && (!settings.social.proactiveDms.requireFollow || npc.followsUser)).map(npc => `@${npc.handle}`).join('、') || '暂无可用账号'}。最多 ${integer(settings.social.proactiveDms.maxPerRun, 2, 0, 8)} 条。在 forum_data 根对象加入 "dmEvents":[{"targetHandle":"账号","content":"私信正文","reason":"主动联系动机"}]；没有自然动机时返回 []。` : '';
+    const dmInstruction = proactive ? `\n\n【主动私信】\n${builtinPrompt(settings, 'proactiveDirectMessage')}\n只允许以下已有人设且未拉黑的账号主动私信：${list(data?.npcs).filter(npc => (npc.profileGenerated || npc.systemRole) && !resolveNpcIdentity(data, npc)?.blocked && (!settings.social.proactiveDms.requireFollow || resolveNpcIdentity(data, npc)?.followsUser)).map(npc => `@${npc.handle}`).join('、') || '暂无可用账号'}。最多 ${integer(settings.social.proactiveDms.maxPerRun, 2, 0, 8)} 条。在 forum_data 根对象加入 "dmEvents":[{"targetHandle":"账号","content":"私信正文","reason":"主动联系动机"}]；没有自然动机时返回 []。` : '';
     const reportInstruction = npcReports ? '\n\n【NPC 站内举报】\nNPC 可以根据自身立场举报已有帖子或评论，但不得伪造账号、帖子 ID 或评论 ID，也不能举报自己的内容。只有确实有动机时才填写 reports；否则返回空数组。此步骤共用本轮论坛生成，不发起额外请求。' : '';
     const permissionInstruction = permissionAssignments ? `\n\n【论坛成员权限】\n可以依据成员已经表现出的身份、职责和世界观地位，在 permissionAssignments 中调整权限。现有权限角色只有：${list(settings.moderation.permissionLevels).map(level => `${level.id}（${level.name}）`).join('、')}。不要为了活跃气氛随意授予 moderator 或 admin；没有明确任命依据时返回空数组。此步骤与论坛生成共用一次请求。` : '';
     const shapeIds = [...moduleIds, ...(npcReports ? ['__npcReports'] : []), ...(permissionAssignments ? ['__permissionAssignments'] : [])];

@@ -1,8 +1,9 @@
 import { normalizeForumDataShape } from './forum.js';
 import { createId } from './prompt.js';
+import { isImageDataUrl } from './image-assets.js';
 
 const arrayFields = ['posts', 'npcs', 'conversations', 'notifications', 'facts', 'generationLogs', 'deletedPosts', 'events'];
-const worldArrays = ['tasks', 'trips', 'inventory', 'health', 'reports', 'proposals', 'auditLog', 'fortuneHistory'];
+const worldArrays = ['tasks', 'trips', 'inventory', 'pendingInventoryRewards', 'health', 'reports', 'proposals', 'auditLog', 'fortuneHistory'];
 const assetFields = new Set(['imageKey', 'avatarKey', 'backgroundKey', 'wallpaperKey', 'brandIconKey', 'floatingButtonImageKey']);
 
 function visit(value, callback) {
@@ -21,7 +22,7 @@ export async function buildForumBackup(data, settings, storage) {
     visit(bundle.presentation, (_, __, key) => keys.add(key));
     for (const key of keys) {
         const value = await storage?.getItem(key);
-        if (typeof value === 'string' && value.startsWith('data:image/')) bundle.assets[key] = value;
+        if (isImageDataUrl(value)) bundle.assets[key] = value;
         else bundle.missingAssets.push(key);
     }
     return bundle;
@@ -43,7 +44,7 @@ export function readForumBackup(payload) {
     const keys = new Set();
     visit(data, (_, __, key) => keys.add(key));
     visit(presentation, (_, __, key) => keys.add(key));
-    for (const key of keys) if (typeof supplied[key] === 'string' && /^data:image\/(?:png|jpeg|jpg|gif|webp|svg\+xml)[;,]/i.test(supplied[key])) assets[key] = supplied[key];
+    for (const key of keys) if (isImageDataUrl(supplied[key])) assets[key] = supplied[key];
     return { data, presentation, assets, missingAssets: [...keys].filter(key => !assets[key]) };
 }
 
@@ -62,6 +63,15 @@ export function mergeForumBackup(current, incoming) {
     for (const field of arrayFields) merged[field] = mergeItems(current[field], incoming[field], field === 'posts' ? 'comments' : field === 'conversations' ? 'messages' : field === 'events' ? 'entries' : '');
     merged.world ||= {};
     for (const field of worldArrays) merged.world[field] = mergeItems(current.world?.[field], incoming.world?.[field]);
+    // A reward receipt is monotonic even when the rest of a local trip is kept.
+    // Merging an older pending snapshot must never make a paid reward collectible again.
+    for (const trip of merged.world.trips) {
+        const other = incoming.world?.trips?.find(item => item.id === trip.id);
+        if (!other) continue;
+        for (const field of ['souvenirClaimedAt', 'homesteadRewardClaimedAt']) {
+            trip[field] = Math.max(Number(trip[field] || 0), Number(other[field] || 0));
+        }
+    }
     // Keep the current companion and fortune when merging two separate worlds.
     return normalizeForumDataShape(merged);
 }

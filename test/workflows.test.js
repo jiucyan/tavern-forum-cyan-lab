@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_SETTINGS, EMPTY_FORUM_DATA } from '../src/constants.js';
-import { normalizeForumDataShape, createNpc } from '../src/forum.js';
+import { normalizeForumDataShape, createNpc, ensureNpcConversation, ensureTaskIssuerConversation, ensureRoleConversation, resolveNpcIdentity } from '../src/forum.js';
 import { normalizeWorldState, applyWorldUpdates, advanceCompanionJourney, prepareCompanionJourney, getTaskProgress, hasTaskVerificationEvidence } from '../src/world.js';
 import { buildForumBackup, readForumBackup, mergeForumBackup, remapBackupAssets } from '../src/backup.js';
 import { selectWorldUpdates, parseThreadUpdates, recordRelationshipEvent, compactRoleMemory } from '../src/workflows.js';
@@ -60,6 +60,147 @@ test('thread-only updates ignore unknown posts and blocked authors', () => {
     const updates = parseThreadUpdates(raw, state);
     assert.equal(updates.length, 1); assert.equal(updates[0].replies.length, 1);
     assert.equal(updates[0].replies[0].content, '继续讨论');
+});
+
+test('thread-only updates normalize blocked handles and still reject the blocked display name', () => {
+    const state = data(); state.posts.push({ id: 'p', content: '讨论', comments: [] });
+    state.npcs.push(createNpc({ name: '被拉黑用户', handle: '@BaD' }));
+    state.npcs[0].blocked = true;
+    const updates = parseThreadUpdates({ threadUpdates: [{ postId: 'p', comments: [
+        ...['BAD', '@bad', ' @BaD '].map(handle => ({ handle, author: '新显示名', content: '不应保存' })),
+        { handle: 'newhandle', author: ' 被拉黑用户 ', content: '不应保存' },
+        { handle: 'good', author: '其他用户', content: '继续讨论' },
+    ] }] }, state);
+    assert.equal(updates.length, 1);
+    assert.deepEqual(updates[0].replies.map(reply => reply.content), ['继续讨论']);
+});
+
+test('blocked renamed anonymous identities cannot reappear through an old alias in thread updates', () => {
+    const state = data();
+    const { npc } = ensureTaskIssuerConversation(state, { id: 'renamed-mask', anonymous: true, title: '委托' });
+    const alias = { ...structuredClone(npc), id: 'old-mask-copy', anonymousTaskId: '', blocked: false };
+    state.npcs.unshift(alias);
+    npc.name = '新昵称'; npc.handle = 'new_mask'; npc.blocked = true;
+    state.posts.push({ id: 'discussion', content: '讨论', comments: [] });
+    const updates = parseThreadUpdates({ threadUpdates: [{ postId: 'discussion', comments: [
+        { handle: alias.handle, author: alias.name, content: '不应保存' },
+        { handle: 'other', author: '路人', content: '正常回帖' },
+    ] }] }, state);
+    assert.deepEqual(updates[0].replies.map(reply => reply.content), ['正常回帖']);
+});
+
+test('anonymous task delivery reuses its contact and conversation across saves without resetting restrictions', () => {
+    let state = data();
+    state.world.tasks.push({ id: 'anonymous-task', title: '送信', anonymous: true });
+    let task = state.world.tasks[0];
+    const first = ensureTaskIssuerConversation(state, task);
+    first.npc.blocked = true;
+    first.npc.socialState = 'blocked';
+    first.npc.dmAccess = 'denied';
+    first.conversation.messages.push({ id: 'existing-message', role: 'user', content: '已有私信' });
+    state = normalizeForumDataShape(JSON.parse(JSON.stringify(state)));
+    task = state.world.tasks[0];
+    const second = ensureTaskIssuerConversation(state, task);
+    assert.equal(second.npc.id, first.npc.id);
+    assert.equal(second.conversation.id, first.conversation.id);
+    assert.equal(second.npc.blocked, true);
+    assert.equal(second.npc.dmAccess, 'denied');
+    assert.equal(second.conversation.messages[0].content, '已有私信');
+    assert.equal(state.npcs.length, 1);
+    assert.equal(state.conversations.length, 1);
+});
+
+test('legacy duplicate anonymous contacts preserve all chats and migrate the blocked identity only once', () => {
+    const state = data();
+    const task = { id: 'anonymous-task', title: '送信', anonymous: true };
+    const first = ensureTaskIssuerConversation(state, task);
+    delete first.npc.anonymousTaskId;
+    first.npc.blocked = true;
+    const duplicate = { ...structuredClone(first.npc), id: 'legacy-duplicate', blocked: false };
+    state.npcs.push(duplicate);
+    const duplicateConversation = ensureNpcConversation(state, duplicate);
+    first.conversation.messages.push({ id: 'old-message', content: '旧会话记录' });
+    duplicateConversation.messages.push({ id: 'new-message', content: '重复会话记录' });
+    task.issuerNpcId = duplicate.id;
+    const beforeMessages = state.conversations.map(conversation => structuredClone(conversation.messages));
+    const repaired = ensureTaskIssuerConversation(state, task);
+    assert.equal(repaired.npc.id, first.npc.id);
+    assert.equal(task.issuerNpcId, first.npc.id);
+    assert.equal(state.npcs.length, 2);
+    assert.equal(state.conversations.length, 2);
+    assert.deepEqual(state.conversations.map(conversation => conversation.messages), beforeMessages);
+    repaired.npc.blocked = false;
+    assert.equal(ensureTaskIssuerConversation(state, task).npc, repaired.npc);
+    assert.equal(repaired.npc.blocked, false);
+});
+
+test('legacy anonymous copies share canonical relationship permissions while retaining separate chat histories', () => {
+    const state = data();
+    const task = { id: 'anonymous-task', title: '送信', anonymous: true };
+    state.world.tasks.push(task);
+    const first = ensureTaskIssuerConversation(state, task);
+    delete first.npc.anonymousTaskId;
+    first.npc.blocked = true;
+    const duplicate = { ...structuredClone(first.npc), id: 'legacy-duplicate', blocked: false };
+    state.npcs.push(duplicate);
+    const oldConversation = ensureNpcConversation(state, duplicate);
+    oldConversation.messages.push({ id: 'old-copy-message', content: '旧副本私信' });
+    first.conversation.messages.push({ id: 'original-message', content: '原联系人私信' });
+    task.issuerNpcId = duplicate.id;
+    const canonical = ensureTaskIssuerConversation(state, task).npc;
+    const beforeChats = structuredClone(state.conversations);
+    assert.equal(resolveNpcIdentity(state, duplicate), canonical);
+    assert.equal(resolveNpcIdentity(state, oldConversation.targetId).blocked, true);
+
+    // Actions from the old copy update the same account, including unblocking.
+    resolveNpcIdentity(state, duplicate.id).blocked = false;
+    resolveNpcIdentity(state, duplicate).muted = true;
+    resolveNpcIdentity(state, duplicate).followedByUser = true;
+    assert.equal(resolveNpcIdentity(state, canonical.id).blocked, false);
+    assert.equal(resolveNpcIdentity(state, oldConversation.targetId).blocked, false);
+    assert.equal(canonical.muted, true);
+    assert.equal(canonical.followedByUser, true);
+    assert.equal(ensureNpcConversation(state, duplicate), first.conversation);
+    assert.deepEqual(state.conversations, beforeChats);
+    assert.equal(ensureRoleConversation(state, duplicate, canonical), null);
+    assert.equal(state.npcs.length, 2);
+    assert.equal(state.conversations.length, 2);
+
+    canonical.handle = 'renamed-anonymous-contact';
+    assert.equal(resolveNpcIdentity(state, duplicate), canonical);
+    const loaded = normalizeForumDataShape(JSON.parse(JSON.stringify(state)));
+    assert.equal(resolveNpcIdentity(loaded, duplicate.id).id, canonical.id);
+    assert.equal(resolveNpcIdentity(loaded, duplicate.id).blocked, false);
+    assert.equal(loaded.conversations.find(item => item.id === oldConversation.id).messages[0].content, '旧副本私信');
+});
+
+test('identity resolution leaves ordinary same-handle roles and unmigrated contacts independent', () => {
+    const state = data();
+    const task = { id: 'anonymous-task', title: '送信', anonymous: true };
+    const canonical = ensureTaskIssuerConversation(state, task).npc;
+    const ordinary = createNpc({ name: '其他角色', handle: canonical.handle });
+    const unmigrated = createNpc({ name: '旧临时角色', handle: 'unrelated-contact' });
+    Object.assign(unmigrated, { taskContact: true, temporaryContact: true });
+    state.npcs.push(ordinary, unmigrated);
+    assert.equal(resolveNpcIdentity(state, ordinary.id), ordinary);
+    assert.equal(resolveNpcIdentity(state, unmigrated.id), unmigrated);
+    assert.equal(resolveNpcIdentity(state, 'missing'), null);
+});
+
+test('anonymous task masks a real issuer reference and recovers its existing anonymous handle if the reference is missing', () => {
+    const state = data();
+    const realIssuer = createNpc({ name: '真实委托人', handle: 'real-issuer' });
+    state.npcs.push(realIssuer);
+    const task = { id: 'anonymous-task', title: '送信', anonymous: true, issuerNpcId: realIssuer.id, issuerHandle: realIssuer.handle };
+    const first = ensureTaskIssuerConversation(state, task);
+    assert.notEqual(first.npc.id, realIssuer.id);
+    assert.match(first.npc.handle, /^masked_/);
+    delete first.npc.anonymousTaskId;
+    task.issuerNpcId = 'missing';
+    const second = ensureTaskIssuerConversation(state, task);
+    assert.equal(second.npc, first.npc);
+    assert.equal(second.conversation, first.conversation);
+    assert.equal(state.npcs.length, 2);
 });
 
 test('full backups include local media, omit API credentials and merge without erasing local edits', async () => {

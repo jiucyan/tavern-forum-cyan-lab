@@ -50,6 +50,7 @@ function mammal(kind, baby) {
 
 function frog(baby) {
     return baby ? {
+        displayBounds: [11, 27, 50, 30], displayScale: 1.12,
         back: group('tf-pixel-tail tf-growth-swim-tail', solid('M39 39h8v-4h7v-7h6v15h-5v6h-8v4H36z') + path('M47 40h6v-5h3v7h-5v5h-6z', 'light')),
         body: solid('M22 27h14v3h7v5h3v13h-4v5h-8v3H21v-3h-7v-5h-3V36h4v-5h7z') + path('M17 45h22v7H20v-3h-3z', 'light') + cheeks(14, 37, 44),
         eyes: { left: 20, right: 32, y: 36 }, faces: faces(28, 47), fit: { cx: 28, top: 27, width: 30, neck: 52, left: 20, right: 32, eyeY: 36, bagX: 39, bagY: 46 },
@@ -84,7 +85,8 @@ function octopus(baby) {
 }
 
 function fish(baby) {
-    return { back: group('tf-pixel-tail tf-betta-tail', solid(baby ? 'M37 36h8v-5h9v19h-9v-5h-8z' : 'M39 29h8v-7h6v-7h7v33h-7v-7h-6v-5h-8z')
+    return { displayBounds: baby ? [13, 28, 42, 26] : [10, 11, 51, 44], displayScale: baby ? 1.18 : 1,
+        back: group('tf-pixel-tail tf-betta-tail', solid(baby ? 'M37 36h8v-5h9v19h-9v-5h-8z' : 'M39 29h8v-7h6v-7h7v33h-7v-7h-6v-5h-8z')
             + path(baby ? 'M46 35h5v11h-5z' : 'M50 24h6v18h-4v-6h-5v-7h3z', 'accent')),
         body: group('tf-pixel-fins', group('tf-betta-fin is-dorsal', path(baby ? 'M25 34v-6h10v6z' : 'M24 28V16h5v-5h4v6h6v11z', 'accent'))
             + group('tf-betta-fin is-ventral', path(baby ? 'M25 47h9v7h-9z' : 'M25 42h15v7h-5v6h-5v-7h-5z', 'accent')))

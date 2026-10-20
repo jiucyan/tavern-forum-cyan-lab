@@ -17,7 +17,7 @@ const server = createServer(async (request, response) => {
         if (!file.startsWith(root + sep)) throw new Error('outside root');
         let body = await readFile(file);
         // Test hooks exist only in this isolated server's responses.
-        if (pathname === '/src/ui-v3.js') body = Buffer.from(body.toString() + '\nglobalThis.workflowTest = { runGeneration, runTaskVerification, runWorldModuleGeneration, viewState, render, applyForumImport, setMeSection };');
+        if (pathname === '/src/ui-v3.js') body = Buffer.from(body.toString() + '\nglobalThis.workflowTest = { runGeneration, runTaskVerification, runWorldModuleGeneration, viewState, render, applyForumImport, setMeSection, setRoleModeration, isConversationAllowed, getRoleLibrary, runThreadContinuation, routeProactiveDirectMessages };');
         if (pathname === '/preview.html') body = Buffer.from(body.toString().replace('const listeners = new Map();', 'const listeners = globalThis.workflowListeners = new Map();'));
         response.writeHead(200, { 'Content-Type': { '.js': 'text/javascript', '.html': 'text/html', '.css': 'text/css', '.svg': 'image/svg+xml' }[extname(pathname)] || 'application/octet-stream' });
         response.end(body);
@@ -34,6 +34,14 @@ async function fresh(width = 1440) {
     await page.goto(`http://127.0.0.1:${server.address().port}/preview.html`);
     await page.waitForFunction(() => globalThis.workflowTest);
     return page;
+}
+
+async function openPetCareSettings(page) {
+    if (await page.locator('.tf-companion-device').getAttribute('data-device-page') !== 'status') {
+        await openCompanionMenu(page, 'status', 'click');
+    }
+    const settings = page.locator('.tf-pet-care-settings');
+    if (!await settings.evaluate(node => node.open)) await settings.locator(':scope > summary').click();
 }
 
 try {
@@ -54,6 +62,91 @@ try {
     });
     assert.equal(switched.topic, 'B'); assert.deepEqual(switched.ids, ['b-only']); assert.equal(switched.logs, 0);
     console.log('PASS chat switch preserves the destination forum');
+    await page.close();
+
+    page = await fresh();
+    await page.evaluate(async () => {
+        const { getSettings } = await import('/src/store.js');
+        getSettings().sources.worldInfo = false;
+        globalThis.moderatorCalls = 0;
+        SillyTavern.getContext().generateRaw = async () => {
+            moderatorCalls++;
+            return JSON.stringify({ admins: [
+                { name: '港口巡查员', handle: 'harbor_mod', persona: '谨慎，熟悉码头，先核实再处理。', permissionRole: 'moderator' },
+                { name: '社区协调员', handle: 'community_admin', persona: '善于调解，认真维护社区秩序。', permissionRole: 'admin' },
+            ] });
+        };
+        workflowTest.setMeSection('moderation');
+    });
+    await page.locator('[data-action="generate-moderator-profiles"]').click();
+    await page.waitForFunction(() => !workflowTest.viewState.moduleBusy.has('moderator-profiles'));
+    const moderators = await page.evaluate(async () => {
+        const { getForumData } = await import('/src/store.js');
+        return { calls: moderatorCalls, roles: getForumData().npcs.filter(npc => ['harbor_mod', 'community_admin'].includes(npc.handle)).map(npc => npc.permissionRole).sort() };
+    });
+    assert.deepEqual(moderators, { calls: 1, roles: ['admin', 'moderator'] });
+    console.log('PASS moderator profile generation uses one request and saves both roles');
+    await page.close();
+
+    page = await fresh();
+    await page.evaluate(async () => {
+        const { getSettings } = await import('/src/store.js');
+        getSettings().sources.worldInfo = false;
+        SillyTavern.getContext().generateRaw = () => new Promise(resolve => { globalThis.finishModeratorProfiles = resolve; });
+        workflowTest.setMeSection('moderation');
+    });
+    await page.locator('[data-action="generate-moderator-profiles"]').click();
+    await page.waitForFunction(() => globalThis.finishModeratorProfiles);
+    await page.evaluate(() => {
+        const context = SillyTavern.getContext();
+        context.chatId = 'moderator-chat-b';
+        context.chatMetadata = { tavern_forum_data: { topic: 'B-original', posts: [] } };
+        workflowListeners.get('chat_changed')();
+        finishModeratorProfiles(JSON.stringify({ admins: [{ name: '不要写入B', handle: 'stale_mod', persona: '属于A聊天的管理员。' }] }));
+    });
+    await page.waitForFunction(() => !workflowTest.viewState.moduleBusy.has('moderator-profiles'));
+    const staleModerators = await page.evaluate(async () => {
+        const { getForumData } = await import('/src/store.js');
+        const data = getForumData();
+        return { topic: data.topic, stale: data.npcs.some(npc => npc.handle === 'stale_mod') };
+    });
+    assert.deepEqual(staleModerators, { topic: 'B-original', stale: false });
+    console.log('PASS switching chats discards a late moderator profile response');
+    await page.close();
+
+    page = await fresh();
+    const anonymousPermissions = await page.evaluate(async () => {
+        const { getForumData, getSettings } = await import('/src/store.js');
+        const { ensureTaskIssuerConversation } = await import('/src/forum.js');
+        const data = getForumData();
+        const task = { id: 'legacy-anonymous-task', title: '匿名委托', anonymous: true };
+        const { npc } = ensureTaskIssuerConversation(data, task);
+        const legacy = { ...structuredClone(npc), id: 'legacy-anonymous-copy', anonymousTaskId: '', blocked: false, persona: 'BLOCKED_ALIAS_PERSONA_SENTINEL' };
+        data.npcs.unshift(legacy);
+        data.conversations.push({ id: 'legacy-anonymous-chat', type: 'npc', targetId: legacy.id,
+            messages: [{ id: 'old-message', role: 'user', content: '保留旧聊天。' }] });
+        npc.blocked = true;
+        getForumData();
+        const conversation = data.conversations.find(item => item.id === 'legacy-anonymous-chat');
+        const history = JSON.stringify(conversation.messages);
+        const blocked = workflowTest.isConversationAllowed(data, conversation);
+        await workflowTest.setRoleModeration(legacy.id, 'blocked', false);
+        const unblocked = workflowTest.isConversationAllowed(data, conversation);
+        await workflowTest.setRoleModeration(legacy.id, 'muted', true);
+        await workflowTest.setRoleModeration(legacy.id, 'blocked', true);
+        getSettings().sources.worldInfo = false;
+        getSettings().social.proactiveDms.requireFollow = false;
+        const routed = workflowTest.routeProactiveDirectMessages(data, [{ targetHandle: legacy.handle, content: '不要送达。' }]);
+        let requestText = '', calls = 0;
+        SillyTavern.getContext().generateRaw = async options => { calls++; requestText = JSON.stringify(options); return '{"replies":[]}'; };
+        await workflowTest.runThreadContinuation('post-1');
+        return { blocked, unblocked, blockedAgain: workflowTest.isConversationAllowed(data, conversation),
+            canonicalMuted: npc.muted, copiesInLibrary: workflowTest.getRoleLibrary(data).filter(role => role.id === npc.id || role.id === legacy.id).length,
+            historyUnchanged: JSON.stringify(conversation.messages) === history, routed: routed.length, calls,
+            personaLeaked: requestText.includes('BLOCKED_ALIAS_PERSONA_SENTINEL') };
+    });
+    assert.deepEqual(anonymousPermissions, { blocked: false, unblocked: true, blockedAgain: false, canonicalMuted: true, copiesInLibrary: 1, historyUnchanged: true, routed: 0, calls: 1, personaLeaked: false });
+    console.log('PASS legacy anonymous chats share block and mute state without losing history');
     await page.close();
 
     page = await fresh();
@@ -173,7 +266,9 @@ try {
     await page.waitForFunction(() => !workflowTest.viewState.moduleBusy.has('travel'));
     assert.equal(await page.locator('.tf-travel-record').count(), 1);
     assert.doesNotMatch(await page.locator('.tf-travel-history').textContent(), /完整结局隐藏文字|溪石纪念章|尚未到达的瀑布/);
-    assert.equal(await page.locator('[data-packed-item-id="test-map"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-packed-item-id="test-map"]').count(), 0);
+    assert.match(await page.locator('.tf-packing-items').innerText(), /溪流地图/);
+    assert.equal(await page.locator('.tf-packing [data-companion-field="carrying"]').isDisabled(), true);
     const settled = await page.evaluate(async () => {
         const { getForumData } = await import('/src/store.js'); const { advanceCompanionJourney } = await import('/src/world.js');
         const data = getForumData(); const trip = data.world.trips.at(-1);
@@ -367,15 +462,18 @@ try {
         globalThis.petApiCalls = 0; SillyTavern.getContext().generateRaw = async () => { petApiCalls++; throw new Error('local pet requested a model'); };
         await saveForumData(data, true); workflowTest.render();
     });
-    await openCompanionMenu(page, 'status', 'click');
-    await page.locator('.tf-pet-care-settings > summary').click();
+    await openPetCareSettings(page);
     await page.locator('.tf-pet-care-settings [data-action="pet-tend"][data-tend="clean"]').click();
+    await openPetCareSettings(page);
     assert.equal(await page.locator('.tf-pet-life meter').getAttribute('value'), '55');
     await page.locator('.tf-pet-care-settings [data-action="pet-mode"][data-mode="paused"]').click();
+    await openPetCareSettings(page);
     assert.equal(await page.locator('.tf-pet-care-settings [data-action="pet-tend"][data-tend="clean"]').isDisabled(), true);
     await page.locator('.tf-pet-care-settings [data-action="pet-mode"][data-mode="active"]').click();
+    await openPetCareSettings(page);
     await page.locator('.tf-pet-care-settings [data-action="pet-tend"][data-tend="rest"]').click();
     assert.equal(await page.locator('.is-living-sleep').count(), 1);
+    await openPetCareSettings(page);
     await page.locator('.tf-pet-care-settings [data-action="pet-tend"][data-tend="wake"]').click();
     await openCompanionMenu(page, 'dress', 'click');
     const shop = page.locator('.tf-pet-life-details').filter({ has: page.locator('.tf-pet-shop') });

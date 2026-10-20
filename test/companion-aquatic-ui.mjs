@@ -59,7 +59,7 @@ async function geometry(page) {
     return page.evaluate(() => {
         const c = document.querySelector('.tf-pet-sprite-control'), h = document.querySelector('.tf-aquatic-habitat'), s = document.querySelector('.tf-pet-stage');
         const b = el => { const r = el.getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height}; };
-        return { control:b(c), habitat:h?b(h):null, stage:b(s), location:s.dataset.aquaticHabitat, mode:s.dataset.aquaticMode, detached: !h || h.parentElement===s, aquariumInPet: c.querySelectorAll('.tf-aquatic-habitat,.tf-aquatic-back,.tf-aquatic-wheel').length };
+        return { control:b(c), canvas:b(c.querySelector('.tf-pixel-avatar')), habitat:h?b(h):null, stage:b(s), location:s.dataset.aquaticHabitat, mode:s.dataset.aquaticMode, detached: !h || h.parentElement===s, aquariumInPet: c.querySelectorAll('.tf-aquatic-habitat,.tf-aquatic-back,.tf-aquatic-wheel').length };
     });
 }
 async function finish(page) { for (let i=0; i<150 && await page.evaluate(()=>petTest.viewState.companionHomesteadBusy); i++) await page.clock.runFor(50); }
@@ -72,7 +72,8 @@ try {
         await fixture(page,{species,stage,location}); const before=await geometry(page);
         const indoor = ['home','kitchen'].includes(location);
         assert.ok(before.detached); assert.equal(before.aquariumInPet,0); assert.equal(before.location,location);
-        assert.ok(Math.abs(before.control.w/before.stage.w-.175)<.002,'same aquatic body scale across home, kitchen and outdoor scenes');
+        assert.ok(Math.abs(before.canvas.w/before.stage.w-.2375)<.002,'same room-relative aquatic canvas across home, kitchen and outdoor scenes');
+        assert.ok(before.control.w>=44 && before.control.h>=44,'the visible-animal hit area remains touchable');
         if (indoor) {
             assert.equal(before.mode,'free'); assert.equal(before.habitat,null);
             assert.equal(await page.locator('.tf-aquatic-habitat,.tf-aquatic-surface').count(),0);
@@ -87,7 +88,7 @@ try {
         assert.ok(Math.abs(after.control.x-before.control.x)>1,'pet swims');
         assert.ok(after.control.x>=after.stage.x-.5 && after.control.y>=after.stage.y-.5
             && after.control.x+after.control.w<=after.stage.x+after.stage.w+.5
-            && after.control.y+after.control.h<=after.stage.y+after.stage.h+.5,'whole touch target remains inside scene at movement boundary');
+            && after.control.y+after.control.h<=after.stage.y+after.stage.h+.5,`${width}/${species}/${stage}/${location}: whole touch target remains inside scene at movement boundary ${JSON.stringify(after)}`);
         if (indoor) {
             const pointer = {x:before.stage.x+before.stage.w*.2,y:before.stage.y+before.stage.h*.2};
             if (width===320) await page.touchscreen.tap(pointer.x,pointer.y);
@@ -111,8 +112,8 @@ try {
         await page.evaluate(()=>petTest.openCompanionFoodMenu());
         await page.locator('[data-action="companion-feed-food"][data-food-id="fish-flake"]').click();
         await page.clock.runFor(1400);
-        const feeding=await page.evaluate(()=>{const c=document.querySelector('.tf-pet-sprite-control'), f=c.querySelector('.tf-feed-drop'), o=c.querySelector('.tf-food-offering');const b=c.getBoundingClientRect(),d=f.getBoundingClientRect();return {width:b.width,dropWidth:d.width,dx:Math.abs(b.x-d.x),dy:Math.abs(b.y-d.y),food:parseFloat(getComputedStyle(o).width),stage:document.querySelector('.tf-pet-stage').dataset.aquaticHabitat};});
-        assert.ok(Math.abs(feeding.width-feeding.dropWidth)<.1 && feeding.dx<.1 && feeding.dy<.1); assert.ok(feeding.food<feeding.width*.2); assert.equal(feeding.stage,'home');
+        const feeding=await page.evaluate(()=>{const c=document.querySelector('.tf-pet-sprite-control'), f=c.querySelector('.tf-feed-drop'), o=c.querySelector('.tf-food-offering');const b=c.getBoundingClientRect(),d=f.getBoundingClientRect();return {width:b.width,canvas:parseFloat(getComputedStyle(c.querySelector('.tf-pixel-avatar')).width),dropWidth:d.width,dx:Math.abs(b.x-d.x),dy:Math.abs(b.y-d.y),food:parseFloat(getComputedStyle(o).width),stage:document.querySelector('.tf-pet-stage').dataset.aquaticHabitat};});
+        assert.ok(Math.abs(feeding.width-feeding.dropWidth)<.1 && feeding.dx<.1 && feeding.dy<.1); assert.ok(feeding.food<feeding.canvas*.2); assert.equal(feeding.stage,'home');
         await page.locator('.tf-pet-stage').screenshot({path:join(output,`${width}-${species}-${stage}-feeding.png`)});
         checks.push({width,species,stage,careFeed:true});
     }
